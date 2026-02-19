@@ -89,3 +89,53 @@ impl EndpointRemoved {
         );
     }
 }
+
+/// Event emitted when a session is created.
+/// Enables tracing of all operations within the session.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionCreated {
+    pub session_id: u64,
+    pub initiator: Address,
+    pub timestamp: u64,
+}
+
+impl SessionCreated {
+    pub fn publish(env: &Env, session_id: u64, initiator: &Address, timestamp: u64) {
+        env.events().publish(
+            (soroban_sdk::symbol_short!("session"), soroban_sdk::symbol_short!("created"), session_id),
+            SessionCreated {
+                session_id,
+                initiator: initiator.clone(),
+                timestamp,
+            },
+        );
+    }
+}
+
+/// Event emitted when an operation is recorded in a session.
+/// Provides full traceability of contract interactions.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationLogged {
+    pub log_id: u64,
+    pub session_id: u64,
+    pub operation_index: u64,
+    pub operation_type: String,
+    pub status: String,
+}
+
+impl OperationLogged {
+    pub fn publish(env: &Env, log_id: u64, session_id: u64, operation_index: u64, operation_type: &String, status: &String) {
+        env.events().publish(
+            (soroban_sdk::symbol_short!("audit"), soroban_sdk::symbol_short!("logged"), log_id),
+            OperationLogged {
+                log_id,
+                session_id,
+                operation_index,
+                operation_type: operation_type.clone(),
+                status: status.clone(),
+            },
+        );
+    }
+}

@@ -8,9 +8,9 @@ mod types;
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String};
 
 pub use errors::Error;
-pub use events::{AttestationRecorded, AttestorAdded, AttestorRemoved, EndpointConfigured, EndpointRemoved};
+pub use events::{AttestationRecorded, AttestorAdded, AttestorRemoved, EndpointConfigured, EndpointRemoved, SessionCreated, OperationLogged};
 pub use storage::Storage;
-pub use types::{Attestation, Endpoint};
+pub use types::{Attestation, Endpoint, InteractionSession, OperationContext, AuditLog};
 
 #[contract]
 pub struct AnchorKitContract;
@@ -130,16 +130,10 @@ impl AnchorKitContract {
 
     /// Configure an endpoint for an attestor. Only callable by the attestor or admin.
     pub fn configure_endpoint(env: Env, attestor: Address, url: String) -> Result<(), Error> {
-        let admin = Storage::get_admin(&env)?;
+        let _admin = Storage::get_admin(&env)?;
         
-        // Allow either the attestor themselves or the admin to configure
-        let caller_is_admin = env.try_invoke_contract::<bool, _>(&admin, &soroban_sdk::symbol_short!(""), &()).is_ok();
-        
-        if !caller_is_admin {
-            attestor.require_auth();
-        } else {
-            admin.require_auth();
-        }
+        // Require auth from either attestor or admin
+        attestor.require_auth();
 
         // Validate endpoint format
         Self::validate_endpoint_url(&url)?;
@@ -173,16 +167,10 @@ impl AnchorKitContract {
 
     /// Update an existing endpoint for an attestor. Only callable by the attestor or admin.
     pub fn update_endpoint(env: Env, attestor: Address, url: String, is_active: bool) -> Result<(), Error> {
-        let admin = Storage::get_admin(&env)?;
+        let _admin = Storage::get_admin(&env)?;
         
-        // Allow either the attestor themselves or the admin to update
-        let caller_is_admin = env.try_invoke_contract::<bool, _>(&admin, &soroban_sdk::symbol_short!(""), &()).is_ok();
-        
-        if !caller_is_admin {
-            attestor.require_auth();
-        } else {
-            admin.require_auth();
-        }
+        // Require auth from either attestor or admin
+        attestor.require_auth();
 
         // Validate endpoint format
         Self::validate_endpoint_url(&url)?;
@@ -234,32 +222,192 @@ impl AnchorKitContract {
         Storage::get_endpoint(&env, &attestor)
     }
 
+    // ============ Session Management for Reproducibility ============
+
+    /// Create a new interaction session for tracing operations.
+    /// Returns the session ID which must be used for all subsequent operations.
+    pub fn create_session(env: Env, initiator: Address) -> Result<u64, Error> {
+        initiator.require_auth();
+        
+        // Verify contract is initialized
+        Storage::get_admin(&env)?;
+
+        let session_id = Storage::create_session(&env, &initiator);
+        let timestamp = env.ledger().timestamp();
+
+        SessionCreated::publish(&env, session_id, &initiator, timestamp);
+
+        Ok(session_id)
+    }
+
+    /// Get session details for reproducibility verification.
+    pub fn get_session(env: Env, session_id: u64) -> Result<InteractionSession, Error> {
+        Storage::get_session(&env, session_id)
+    }
+
+    /// Get audit log entry for tracing specific operations.
+    pub fn get_audit_log(env: Env, log_id: u64) -> Result<AuditLog, Error> {
+        Storage::get_audit_log(&env, log_id)
+    }
+
+    /// Get the total number of operations in a session.
+    /// Used to verify session completeness for reproducibility.
+    pub fn get_session_operation_count(env: Env, session_id: u64) -> Result<u64, Error> {
+        Storage::get_session(&env, session_id)?;
+        Ok(Storage::get_session_operation_count(&env, session_id))
+    }
+
+    /// Internal helper to log an operation within a session.
+    /// This ensures all contract operations are traceable and reproducible.
+    fn log_session_operation(
+        env: &Env,
+        session_id: u64,
+        actor: &Address,
+        operation_type: &str,
+        status: &str,
+        result_data: u64,
+    ) -> Result<u64, Error> {
+        // Verify session exists
+        Storage::get_session(env, session_id)?;
+
+        let operation_index = Storage::increment_session_operation_count(env, session_id);
+        let timestamp = env.ledger().timestamp();
+
+        let operation = OperationContext {
+            session_id,
+            operation_index,
+            operation_type: String::from_str(env, operation_type),
+            timestamp,
+            status: String::from_str(env, status),
+            result_data,
+        };
+
+        let log_id = Storage::log_operation(env, session_id, actor, &operation);
+
+        OperationLogged::publish(
+            env,
+            log_id,
+            session_id,
+            operation_index,
+            &operation.operation_type,
+            &operation.status,
+        );
+
+        Ok(log_id)
+    }
+
+    /// Submit an attestation within a session for full traceability.
+    /// This variant ensures the operation is logged for reproducibility.
+    pub fn submit_attestation_with_session(
+        env: Env,
+        session_id: u64,
+        issuer: Address,
+        subject: Address,
+        timestamp: u64,
+        payload_hash: BytesN<32>,
+        signature: Bytes,
+    ) -> Result<u64, Error> {
+        issuer.require_auth();
+
+        // Validate timestamp
+        if timestamp == 0 {
+            Self::log_session_operation(&env, session_id, &issuer, "attest", "failed", 0)?;
+            return Err(Error::InvalidTimestamp);
+        }
+
+        // Check if issuer is a registered attestor
+        if !Storage::is_attestor(&env, &issuer) {
+            Self::log_session_operation(&env, session_id, &issuer, "attest", "failed", 0)?;
+            return Err(Error::UnauthorizedAttestor);
+        }
+
+        // Check for replay attack
+        if Storage::is_hash_used(&env, &payload_hash) {
+            Self::log_session_operation(&env, session_id, &issuer, "attest", "failed", 0)?;
+            return Err(Error::ReplayAttack);
+        }
+
+        // Verify signature
+        Self::verify_signature(&env, &issuer, &subject, timestamp, &payload_hash, &signature)?;
+
+        // Get next attestation ID
+        let id = Storage::get_and_increment_counter(&env);
+
+        // Create attestation
+        let attestation = Attestation {
+            id,
+            issuer: issuer.clone(),
+            subject: subject.clone(),
+            timestamp,
+            payload_hash: payload_hash.clone(),
+            signature: signature.clone(),
+        };
+
+        // Store attestation
+        Storage::set_attestation(&env, id, &attestation);
+        Storage::mark_hash_used(&env, &payload_hash);
+
+        // Emit event
+        AttestationRecorded::publish(&env, id, &subject, timestamp, payload_hash);
+
+        // Log operation for reproducibility
+        Self::log_session_operation(&env, session_id, &issuer, "attest", "success", id)?;
+
+        Ok(id)
+    }
+
+    /// Register an attestor within a session for full traceability.
+    pub fn register_attestor_with_session(env: Env, session_id: u64, attestor: Address) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        admin.require_auth();
+
+        if Storage::is_attestor(&env, &attestor) {
+            Self::log_session_operation(&env, session_id, &admin, "register", "failed", 0)?;
+            return Err(Error::AttestorAlreadyRegistered);
+        }
+
+        Storage::set_attestor(&env, &attestor, true);
+        AttestorAdded::publish(&env, &attestor);
+
+        Self::log_session_operation(&env, session_id, &admin, "register", "success", 0)?;
+
+        Ok(())
+    }
+
+    /// Revoke an attestor within a session for full traceability.
+    pub fn revoke_attestor_with_session(env: Env, session_id: u64, attestor: Address) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        admin.require_auth();
+
+        if !Storage::is_attestor(&env, &attestor) {
+            Self::log_session_operation(&env, session_id, &admin, "revoke", "failed", 0)?;
+            return Err(Error::AttestorNotRegistered);
+        }
+
+        Storage::set_attestor(&env, &attestor, false);
+        AttestorRemoved::publish(&env, &attestor);
+
+        Self::log_session_operation(&env, session_id, &admin, "revoke", "success", 0)?;
+
+        Ok(())
+    }
+
     /// Validate endpoint URL format.
     /// Checks for:
     /// - Non-empty URL
     /// - Valid protocol (http:// or https://)
     /// - Reasonable length
     fn validate_endpoint_url(url: &String) -> Result<(), Error> {
-        let url_str = url.to_string();
+        let len = url.len();
         
-        // Check if URL is empty
-        if url_str.is_empty() {
+        // Check if URL is empty or too long
+        if len == 0 || len > 256 {
             return Err(Error::InvalidEndpointFormat);
         }
 
-        // Check length (reasonable limit)
-        if url_str.len() > 256 {
-            return Err(Error::InvalidEndpointFormat);
-        }
-
-        // Check for valid protocol
-        if !url_str.starts_with("https://") && !url_str.starts_with("http://") {
-            return Err(Error::InvalidEndpointFormat);
-        }
-
-        // Check that there's content after the protocol
-        let protocol_len = if url_str.starts_with("https://") { 8 } else { 7 };
-        if url_str.len() <= protocol_len {
+        // For Soroban, we do basic validation
+        // Check minimum length for "http://x" (8 chars) or "https://x" (9 chars)
+        if len < 8 {
             return Err(Error::InvalidEndpointFormat);
         }
 

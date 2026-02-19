@@ -1,6 +1,6 @@
-use soroban_sdk::{Address, BytesN, Env, IntoVal, String};
+use soroban_sdk::{Address, BytesN, Env, IntoVal};
 
-use crate::{types::{Attestation, Endpoint}, Error};
+use crate::{types::{Attestation, Endpoint, InteractionSession, OperationContext, AuditLog}, Error};
 
 #[derive(Clone)]
 enum StorageKey {
@@ -10,6 +10,12 @@ enum StorageKey {
     Attestation(u64),
     UsedHash(BytesN<32>),
     Endpoint(Address),
+    SessionCounter,
+    Session(u64),
+    SessionNonce(u64),
+    AuditLogCounter,
+    AuditLog(u64),
+    SessionOperationCount(u64),
 }
 
 impl StorageKey {
@@ -28,6 +34,20 @@ impl StorageKey {
             }
             StorageKey::Endpoint(addr) => {
                 (soroban_sdk::symbol_short!("ENDPOINT"), addr).into_val(env)
+            }
+            StorageKey::SessionCounter => (soroban_sdk::symbol_short!("SCNT"),).into_val(env),
+            StorageKey::Session(id) => {
+                (soroban_sdk::symbol_short!("SESS"), *id).into_val(env)
+            }
+            StorageKey::SessionNonce(id) => {
+                (soroban_sdk::symbol_short!("SNONCE"), *id).into_val(env)
+            }
+            StorageKey::AuditLogCounter => (soroban_sdk::symbol_short!("ACNT"),).into_val(env),
+            StorageKey::AuditLog(id) => {
+                (soroban_sdk::symbol_short!("AUDIT"), *id).into_val(env)
+            }
+            StorageKey::SessionOperationCount(id) => {
+                (soroban_sdk::symbol_short!("SOPCNT"), *id).into_val(env)
             }
         }
     }
@@ -143,5 +163,120 @@ impl Storage {
     pub fn remove_endpoint(env: &Env, attestor: &Address) {
         let key = StorageKey::Endpoint(attestor.clone()).to_storage_key(env);
         env.storage().persistent().remove(&key);
+    }
+
+    // ============ Session Management ============
+
+    pub fn create_session(env: &Env, initiator: &Address) -> u64 {
+        let session_id = Self::get_and_increment_session_counter(env);
+        let nonce = env.ledger().sequence() as u64;
+        
+        let session = InteractionSession {
+            session_id,
+            initiator: initiator.clone(),
+            created_at: env.ledger().timestamp(),
+            operation_count: 0,
+            nonce,
+        };
+
+        let key = StorageKey::Session(session_id).to_storage_key(env);
+        env.storage().persistent().set(&key, &session);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+
+        // Store nonce for replay protection
+        let nonce_key = StorageKey::SessionNonce(session_id).to_storage_key(env);
+        env.storage().persistent().set(&nonce_key, &nonce);
+        env.storage()
+            .persistent()
+            .extend_ttl(&nonce_key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+
+        session_id
+    }
+
+    pub fn get_session(env: &Env, session_id: u64) -> Result<InteractionSession, Error> {
+        let key = StorageKey::Session(session_id).to_storage_key(env);
+        env.storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::SessionNotFound)
+    }
+
+    pub fn increment_session_operation_count(env: &Env, session_id: u64) -> u64 {
+        let key = StorageKey::SessionOperationCount(session_id).to_storage_key(env);
+        let count: u64 = env.storage().persistent().get(&key).unwrap_or(0);
+        env.storage().persistent().set(&key, &(count + 1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+        count
+    }
+
+    pub fn get_session_operation_count(env: &Env, session_id: u64) -> u64 {
+        let key = StorageKey::SessionOperationCount(session_id).to_storage_key(env);
+        env.storage().persistent().get(&key).unwrap_or(0)
+    }
+
+    pub fn verify_session_nonce(env: &Env, session_id: u64, nonce: u64) -> Result<(), Error> {
+        let key = StorageKey::SessionNonce(session_id).to_storage_key(env);
+        let stored_nonce: u64 = env.storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::SessionNotFound)?;
+        
+        if stored_nonce != nonce {
+            return Err(Error::SessionReplayAttack);
+        }
+        Ok(())
+    }
+
+    fn get_and_increment_session_counter(env: &Env) -> u64 {
+        let key = StorageKey::SessionCounter.to_storage_key(env);
+        let counter: u64 = env.storage().instance().get(&key).unwrap_or(0);
+        env.storage().instance().set(&key, &(counter + 1));
+        env.storage()
+            .instance()
+            .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
+        counter
+    }
+
+    // ============ Audit Logging ============
+
+    pub fn log_operation(env: &Env, session_id: u64, actor: &Address, operation: &OperationContext) -> u64 {
+        let log_id = Self::get_and_increment_audit_counter(env);
+        
+        let audit_log = AuditLog {
+            log_id,
+            session_id,
+            operation: operation.clone(),
+            actor: actor.clone(),
+        };
+
+        let key = StorageKey::AuditLog(log_id).to_storage_key(env);
+        env.storage().persistent().set(&key, &audit_log);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+
+        log_id
+    }
+
+    pub fn get_audit_log(env: &Env, log_id: u64) -> Result<AuditLog, Error> {
+        let key = StorageKey::AuditLog(log_id).to_storage_key(env);
+        env.storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::SessionNotFound)
+    }
+
+    fn get_and_increment_audit_counter(env: &Env) -> u64 {
+        let key = StorageKey::AuditLogCounter.to_storage_key(env);
+        let counter: u64 = env.storage().instance().get(&key).unwrap_or(0);
+        env.storage().instance().set(&key, &(counter + 1));
+        env.storage()
+            .instance()
+            .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
+        counter
     }
 }
