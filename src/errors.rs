@@ -13,4 +13,7 @@ pub enum Error {
     InvalidTimestamp = 7,
     AttestationNotFound = 8,
     InvalidPublicKey = 9,
+    InvalidEndpointFormat = 10,
+    EndpointNotFound = 11,
+    EndpointAlreadyExists = 12,
 }

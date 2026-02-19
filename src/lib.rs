@@ -5,12 +5,12 @@ mod events;
 mod storage;
 mod types;
 
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String};
 
 pub use errors::Error;
-pub use events::{AttestationRecorded, AttestorAdded, AttestorRemoved};
+pub use events::{AttestationRecorded, AttestorAdded, AttestorRemoved, EndpointConfigured, EndpointRemoved};
 pub use storage::Storage;
-pub use types::Attestation;
+pub use types::{Attestation, Endpoint};
 
 #[contract]
 pub struct AnchorKitContract;
@@ -139,6 +139,144 @@ impl AnchorKitContract {
     /// Check if an address is a registered attestor.
     pub fn is_attestor(env: Env, attestor: Address) -> bool {
         Storage::is_attestor(&env, &attestor)
+    }
+
+    /// Configure an endpoint for an attestor. Only callable by the attestor or admin.
+    pub fn configure_endpoint(env: Env, attestor: Address, url: String) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        
+        // Allow either the attestor themselves or the admin to configure
+        let caller_is_admin = env.try_invoke_contract::<bool, _>(&admin, &soroban_sdk::symbol_short!(""), &()).is_ok();
+        
+        if !caller_is_admin {
+            attestor.require_auth();
+        } else {
+            admin.require_auth();
+        }
+
+        // Validate endpoint format
+        Self::validate_endpoint_url(&url)?;
+
+        // Check if attestor is registered
+        if !Storage::is_attestor(&env, &attestor) {
+            return Err(Error::AttestorNotRegistered);
+        }
+
+        // Check if endpoint already exists
+        if Storage::has_endpoint(&env, &attestor) {
+            return Err(Error::EndpointAlreadyExists);
+        }
+
+        let endpoint = Endpoint {
+            url: url.clone(),
+            attestor: attestor.clone(),
+            is_active: true,
+        };
+
+        Storage::set_endpoint(&env, &endpoint);
+
+        EndpointConfigured {
+            attestor,
+            url,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Update an existing endpoint for an attestor. Only callable by the attestor or admin.
+    pub fn update_endpoint(env: Env, attestor: Address, url: String, is_active: bool) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        
+        // Allow either the attestor themselves or the admin to update
+        let caller_is_admin = env.try_invoke_contract::<bool, _>(&admin, &soroban_sdk::symbol_short!(""), &()).is_ok();
+        
+        if !caller_is_admin {
+            attestor.require_auth();
+        } else {
+            admin.require_auth();
+        }
+
+        // Validate endpoint format
+        Self::validate_endpoint_url(&url)?;
+
+        // Check if endpoint exists
+        if !Storage::has_endpoint(&env, &attestor) {
+            return Err(Error::EndpointNotFound);
+        }
+
+        let endpoint = Endpoint {
+            url: url.clone(),
+            attestor: attestor.clone(),
+            is_active,
+        };
+
+        Storage::set_endpoint(&env, &endpoint);
+
+        EndpointConfigured {
+            attestor,
+            url,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Remove an endpoint for an attestor. Only callable by admin.
+    pub fn remove_endpoint(env: Env, attestor: Address) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        admin.require_auth();
+
+        // Check if endpoint exists
+        if !Storage::has_endpoint(&env, &attestor) {
+            return Err(Error::EndpointNotFound);
+        }
+
+        Storage::remove_endpoint(&env, &attestor);
+
+        EndpointRemoved {
+            attestor,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Get the endpoint configuration for an attestor.
+    pub fn get_endpoint(env: Env, attestor: Address) -> Result<Endpoint, Error> {
+        Storage::get_endpoint(&env, &attestor)
+    }
+
+    /// Validate endpoint URL format.
+    /// Checks for:
+    /// - Non-empty URL
+    /// - Valid protocol (http:// or https://)
+    /// - Reasonable length
+    fn validate_endpoint_url(url: &String) -> Result<(), Error> {
+        let url_str = url.to_string();
+        
+        // Check if URL is empty
+        if url_str.is_empty() {
+            return Err(Error::InvalidEndpointFormat);
+        }
+
+        // Check length (reasonable limit)
+        if url_str.len() > 256 {
+            return Err(Error::InvalidEndpointFormat);
+        }
+
+        // Check for valid protocol
+        if !url_str.starts_with("https://") && !url_str.starts_with("http://") {
+            return Err(Error::InvalidEndpointFormat);
+        }
+
+        // Check that there's content after the protocol
+        let protocol_len = if url_str.starts_with("https://") { 8 } else { 7 };
+        if url_str.len() <= protocol_len {
+            return Err(Error::InvalidEndpointFormat);
+        }
+
+        Ok(())
     }
 
     /// Internal function to verify ed25519 signature.
@@ -491,5 +629,262 @@ mod tests {
         
         // Try to get admin before initialization - should fail
         client.get_admin();
+    }
+
+    #[test]
+    fn test_configure_endpoint() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url = String::from_str(&env, "https://api.example.com/attest");
+        
+        // Configure endpoint
+        client.configure_endpoint(&attestor, &url);
+        
+        // Verify endpoint is configured
+        let endpoint = client.get_endpoint(&attestor);
+        assert_eq!(endpoint.url, url);
+        assert_eq!(endpoint.attestor, attestor);
+        assert_eq!(endpoint.is_active, true);
+        
+        // Check event was emitted
+        let events = env.events().all();
+        let event = events.last().unwrap();
+        assert_eq!(
+            event.1,
+            (soroban_sdk::symbol_short!("endpoint"), soroban_sdk::symbol_short!("config")).into_val(&env)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn test_configure_endpoint_invalid_format_no_protocol() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url = String::from_str(&env, "api.example.com/attest");
+        
+        // Try to configure endpoint with invalid format - should fail
+        client.configure_endpoint(&attestor, &url);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn test_configure_endpoint_invalid_format_empty() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url = String::from_str(&env, "");
+        
+        // Try to configure endpoint with empty URL - should fail
+        client.configure_endpoint(&attestor, &url);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn test_configure_endpoint_invalid_format_protocol_only() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url = String::from_str(&env, "https://");
+        
+        // Try to configure endpoint with protocol only - should fail
+        client.configure_endpoint(&attestor, &url);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #5)")]
+    fn test_configure_endpoint_unregistered_attestor_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        // Don't register attestor
+        
+        let url = String::from_str(&env, "https://api.example.com/attest");
+        
+        // Try to configure endpoint for unregistered attestor - should fail
+        client.configure_endpoint(&attestor, &url);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #12)")]
+    fn test_configure_endpoint_twice_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url = String::from_str(&env, "https://api.example.com/attest");
+        
+        // Configure endpoint
+        client.configure_endpoint(&attestor, &url);
+        
+        // Try to configure again - should fail
+        client.configure_endpoint(&attestor, &url);
+    }
+
+    #[test]
+    fn test_update_endpoint() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url1 = String::from_str(&env, "https://api.example.com/attest");
+        client.configure_endpoint(&attestor, &url1);
+        
+        // Update endpoint
+        let url2 = String::from_str(&env, "https://api.newdomain.com/attest");
+        client.update_endpoint(&attestor, &url2, &false);
+        
+        // Verify endpoint is updated
+        let endpoint = client.get_endpoint(&attestor);
+        assert_eq!(endpoint.url, url2);
+        assert_eq!(endpoint.is_active, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #11)")]
+    fn test_update_nonexistent_endpoint_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url = String::from_str(&env, "https://api.example.com/attest");
+        
+        // Try to update non-existent endpoint - should fail
+        client.update_endpoint(&attestor, &url, &true);
+    }
+
+    #[test]
+    fn test_remove_endpoint() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url = String::from_str(&env, "https://api.example.com/attest");
+        client.configure_endpoint(&attestor, &url);
+        
+        // Remove endpoint
+        client.remove_endpoint(&attestor);
+        
+        // Check event was emitted
+        let events = env.events().all();
+        let event = events.last().unwrap();
+        assert_eq!(
+            event.1,
+            (soroban_sdk::symbol_short!("endpoint"), soroban_sdk::symbol_short!("removed")).into_val(&env)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #11)")]
+    fn test_remove_nonexistent_endpoint_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        // Try to remove non-existent endpoint - should fail
+        client.remove_endpoint(&attestor);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #11)")]
+    fn test_get_nonexistent_endpoint_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        // Try to get non-existent endpoint - should fail
+        client.get_endpoint(&attestor);
+    }
+
+    #[test]
+    fn test_endpoint_with_http_protocol() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&attestor);
+        
+        let url = String::from_str(&env, "http://api.example.com/attest");
+        
+        // Configure endpoint with http protocol
+        client.configure_endpoint(&attestor, &url);
+        
+        // Verify endpoint is configured
+        let endpoint = client.get_endpoint(&attestor);
+        assert_eq!(endpoint.url, url);
     }
 }

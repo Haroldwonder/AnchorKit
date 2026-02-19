@@ -1,6 +1,6 @@
-use soroban_sdk::{Address, BytesN, Env, IntoVal};
+use soroban_sdk::{Address, BytesN, Env, IntoVal, String};
 
-use crate::{types::Attestation, Error};
+use crate::{types::{Attestation, Endpoint}, Error};
 
 #[derive(Clone)]
 enum StorageKey {
@@ -9,6 +9,7 @@ enum StorageKey {
     Counter,
     Attestation(u64),
     UsedHash(BytesN<32>),
+    Endpoint(Address),
 }
 
 impl StorageKey {
@@ -24,6 +25,9 @@ impl StorageKey {
             }
             StorageKey::UsedHash(hash) => {
                 (soroban_sdk::symbol_short!("USED"), hash.clone()).into_val(env)
+            }
+            StorageKey::Endpoint(addr) => {
+                (soroban_sdk::symbol_short!("ENDPOINT"), addr).into_val(env)
             }
         }
     }
@@ -113,5 +117,31 @@ impl Storage {
             .persistent()
             .get(&key)
             .unwrap_or(false)
+    }
+
+    pub fn set_endpoint(env: &Env, endpoint: &Endpoint) {
+        let key = StorageKey::Endpoint(endpoint.attestor.clone()).to_storage_key(env);
+        env.storage().persistent().set(&key, endpoint);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+    }
+
+    pub fn get_endpoint(env: &Env, attestor: &Address) -> Result<Endpoint, Error> {
+        let key = StorageKey::Endpoint(attestor.clone()).to_storage_key(env);
+        env.storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::EndpointNotFound)
+    }
+
+    pub fn has_endpoint(env: &Env, attestor: &Address) -> bool {
+        let key = StorageKey::Endpoint(attestor.clone()).to_storage_key(env);
+        env.storage().persistent().has(&key)
+    }
+
+    pub fn remove_endpoint(env: &Env, attestor: &Address) {
+        let key = StorageKey::Endpoint(attestor.clone()).to_storage_key(env);
+        env.storage().persistent().remove(&key);
     }
 }
