@@ -19,8 +19,13 @@ pub enum Error {
     InvalidEndpointFormat = 10,
     EndpointNotFound = 11,
     EndpointAlreadyExists = 12,
+
+    ServicesNotConfigured = 13,
+    InvalidServiceType = 14,
+
     /// Session-related errors (13-15 reserved for future use)
     SessionNotFound = 13,
     InvalidSessionId = 14,
     SessionReplayAttack = 15,
+
 }

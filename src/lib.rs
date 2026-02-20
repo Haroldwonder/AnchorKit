@@ -7,10 +7,17 @@ mod types;
 
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String};
 
+
 pub use errors::Error;
+
+pub use events::{AttestationRecorded, AttestorAdded, AttestorRemoved, EndpointConfigured, EndpointRemoved, ServicesConfigured};
+pub use storage::Storage;
+pub use types::{Attestation, Endpoint, ServiceType, AnchorServices};
+
 pub use events::{AttestationRecorded, AttestorAdded, AttestorRemoved, EndpointConfigured, EndpointRemoved, SessionCreated, OperationLogged};
 pub use storage::Storage;
 pub use types::{Attestation, Endpoint, InteractionSession, OperationContext, AuditLog};
+
 
 #[contract]
 pub struct AnchorKitContract;
@@ -222,6 +229,81 @@ impl AnchorKitContract {
         Storage::get_endpoint(&env, &attestor)
     }
 
+
+    /// Configure supported services for an anchor. Only callable by the anchor or admin.
+    pub fn configure_services(env: Env, anchor: Address, services: Vec<ServiceType>) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        
+        // Allow either the anchor themselves or the admin to configure
+        let caller_is_admin = env.try_invoke_contract::<bool, _>(&admin, &soroban_sdk::symbol_short!(""), &()).is_ok();
+        
+        if !caller_is_admin {
+            anchor.require_auth();
+        } else {
+            admin.require_auth();
+        }
+
+        // Validate services list
+        Self::validate_services(&services)?;
+
+        // Check if anchor is a registered attestor
+        if !Storage::is_attestor(&env, &anchor) {
+            return Err(Error::AttestorNotRegistered);
+        }
+
+        let anchor_services = AnchorServices {
+            anchor: anchor.clone(),
+            services: services.clone(),
+        };
+
+        Storage::set_anchor_services(&env, &anchor_services);
+
+        ServicesConfigured {
+            anchor,
+            services,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Get the list of supported services for an anchor.
+    pub fn get_supported_services(env: Env, anchor: Address) -> Result<Vec<ServiceType>, Error> {
+        let anchor_services = Storage::get_anchor_services(&env, &anchor)?;
+        Ok(anchor_services.services)
+    }
+
+    /// Check if an anchor supports a specific service.
+    pub fn supports_service(env: Env, anchor: Address, service: ServiceType) -> bool {
+        if let Ok(anchor_services) = Storage::get_anchor_services(&env, &anchor) {
+            anchor_services.services.contains(&service)
+        } else {
+            false
+        }
+    }
+
+    /// Validate services list.
+    /// Checks for:
+    /// - Non-empty list
+    /// - No duplicate services
+    /// - Valid service types
+    fn validate_services(services: &Vec<ServiceType>) -> Result<(), Error> {
+        // Check if services list is empty
+        if services.is_empty() {
+            return Err(Error::InvalidServiceType);
+        }
+
+        // Check for duplicates by comparing sorted list
+        let mut sorted_services = services.clone();
+        sorted_services.sort();
+        
+        for i in 1..sorted_services.len() {
+            if sorted_services.get(i - 1) == sorted_services.get(i) {
+                return Err(Error::InvalidServiceType);
+            }
+        }
+
+
     // ============ Session Management for Reproducibility ============
 
     /// Create a new interaction session for tracing operations.
@@ -388,6 +470,7 @@ impl AnchorKitContract {
         AttestorRemoved::publish(&env, &attestor);
 
         Self::log_session_operation(&env, session_id, &admin, "revoke", "success", 0)?;
+
 
         Ok(())
     }
@@ -1017,3 +1100,258 @@ mod tests {
         assert_eq!(endpoint.url, url);
     }
 }
+
+    #[test]
+    fn test_configure_services() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        
+        let mut services = Vec::new(&env);
+        services.push_back(ServiceType::Deposits);
+        services.push_back(ServiceType::Withdrawals);
+        services.push_back(ServiceType::KYC);
+        
+        // Configure services
+        client.configure_services(&anchor, &services);
+        
+        // Verify services are configured
+        let supported = client.get_supported_services(&anchor);
+        assert_eq!(supported.len(), 3);
+        assert!(supported.contains(&ServiceType::Deposits));
+        assert!(supported.contains(&ServiceType::Withdrawals));
+        assert!(supported.contains(&ServiceType::KYC));
+        
+        // Check event was emitted
+        let events = env.events().all();
+        let event = events.last().unwrap();
+        assert_eq!(
+            event.1,
+            (soroban_sdk::symbol_short!("services"), soroban_sdk::symbol_short!("config")).into_val(&env)
+        );
+    }
+
+    #[test]
+    fn test_configure_all_services() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        
+        let mut services = Vec::new(&env);
+        services.push_back(ServiceType::Deposits);
+        services.push_back(ServiceType::Withdrawals);
+        services.push_back(ServiceType::Quotes);
+        services.push_back(ServiceType::KYC);
+        
+        // Configure all services
+        client.configure_services(&anchor, &services);
+        
+        // Verify all services are configured
+        let supported = client.get_supported_services(&anchor);
+        assert_eq!(supported.len(), 4);
+        assert!(supported.contains(&ServiceType::Deposits));
+        assert!(supported.contains(&ServiceType::Withdrawals));
+        assert!(supported.contains(&ServiceType::Quotes));
+        assert!(supported.contains(&ServiceType::KYC));
+    }
+
+    #[test]
+    fn test_supports_service() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        
+        let mut services = Vec::new(&env);
+        services.push_back(ServiceType::Deposits);
+        services.push_back(ServiceType::KYC);
+        
+        client.configure_services(&anchor, &services);
+        
+        // Check individual services
+        assert!(client.supports_service(&anchor, &ServiceType::Deposits));
+        assert!(client.supports_service(&anchor, &ServiceType::KYC));
+        assert!(!client.supports_service(&anchor, &ServiceType::Withdrawals));
+        assert!(!client.supports_service(&anchor, &ServiceType::Quotes));
+    }
+
+    #[test]
+    fn test_supports_service_unconfigured_anchor() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        
+        // Check service for unconfigured anchor
+        assert!(!client.supports_service(&anchor, &ServiceType::Deposits));
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #5)")]
+    fn test_configure_services_unregistered_anchor_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        // Don't register anchor
+        
+        let mut services = Vec::new(&env);
+        services.push_back(ServiceType::Deposits);
+        
+        // Try to configure services for unregistered anchor - should fail
+        client.configure_services(&anchor, &services);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #14)")]
+    fn test_configure_services_empty_list_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        
+        let services = Vec::new(&env);
+        
+        // Try to configure with empty services list - should fail
+        client.configure_services(&anchor, &services);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #14)")]
+    fn test_configure_services_duplicate_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        
+        let mut services = Vec::new(&env);
+        services.push_back(ServiceType::Deposits);
+        services.push_back(ServiceType::Deposits); // Duplicate
+        
+        // Try to configure with duplicate services - should fail
+        client.configure_services(&anchor, &services);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #13)")]
+    fn test_get_services_unconfigured_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        
+        // Try to get services for unconfigured anchor - should fail
+        client.get_supported_services(&anchor);
+    }
+
+    #[test]
+    fn test_update_services() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        
+        // Configure initial services
+        let mut services1 = Vec::new(&env);
+        services1.push_back(ServiceType::Deposits);
+        client.configure_services(&anchor, &services1);
+        
+        // Update services
+        let mut services2 = Vec::new(&env);
+        services2.push_back(ServiceType::Deposits);
+        services2.push_back(ServiceType::Withdrawals);
+        services2.push_back(ServiceType::Quotes);
+        client.configure_services(&anchor, &services2);
+        
+        // Verify updated services
+        let supported = client.get_supported_services(&anchor);
+        assert_eq!(supported.len(), 3);
+        assert!(supported.contains(&ServiceType::Deposits));
+        assert!(supported.contains(&ServiceType::Withdrawals));
+        assert!(supported.contains(&ServiceType::Quotes));
+    }
+
+    #[test]
+    fn test_multiple_anchors_services() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let admin = Address::generate(&env);
+        let anchor1 = Address::generate(&env);
+        let anchor2 = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        
+        client.initialize(&admin);
+        client.register_attestor(&anchor1);
+        client.register_attestor(&anchor2);
+        
+        // Configure services for anchor1
+        let mut services1 = Vec::new(&env);
+        services1.push_back(ServiceType::Deposits);
+        services1.push_back(ServiceType::KYC);
+        client.configure_services(&anchor1, &services1);
+        
+        // Configure services for anchor2
+        let mut services2 = Vec::new(&env);
+        services2.push_back(ServiceType::Withdrawals);
+        services2.push_back(ServiceType::Quotes);
+        client.configure_services(&anchor2, &services2);
+        
+        // Verify anchor1 services
+        let supported1 = client.get_supported_services(&anchor1);
+        assert_eq!(supported1.len(), 2);
+        assert!(supported1.contains(&ServiceType::Deposits));
+        assert!(supported1.contains(&ServiceType::KYC));
+        
+        // Verify anchor2 services
+        let supported2 = client.get_supported_services(&anchor2);
+        assert_eq!(supported2.len(), 2);
+        assert!(supported2.contains(&ServiceType::Withdrawals));
+        assert!(supported2.contains(&ServiceType::Quotes));
+    }

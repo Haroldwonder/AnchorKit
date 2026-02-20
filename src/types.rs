@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Bytes, BytesN, String};
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, String, Vec};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -19,6 +19,25 @@ pub struct Endpoint {
     pub is_active: bool,
 }
 
+
+/// Supported service types for anchors
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum ServiceType {
+    Deposits = 1,
+    Withdrawals = 2,
+    Quotes = 3,
+    KYC = 4,
+}
+
+/// Configuration of supported services for an anchor
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AnchorServices {
+    pub anchor: Address,
+    pub services: Vec<ServiceType>,
+=======
 /// Represents a reproducible interaction session.
 /// Each session is uniquely identified and tracks all operations within it.
 #[contracttype]
@@ -67,4 +86,5 @@ pub struct AuditLog {
     pub operation: OperationContext,
     /// Actor performing the operation
     pub actor: Address,
+
 }

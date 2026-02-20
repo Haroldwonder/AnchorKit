@@ -1,6 +1,12 @@
+
+use soroban_sdk::{Address, BytesN, Env, IntoVal, String, Vec};
+
+use crate::{types::{Attestation, Endpoint, AnchorServices, ServiceType}, Error};
+
 use soroban_sdk::{Address, BytesN, Env, IntoVal};
 
 use crate::{types::{Attestation, Endpoint, InteractionSession, OperationContext, AuditLog}, Error};
+
 
 #[derive(Clone)]
 enum StorageKey {
@@ -10,12 +16,16 @@ enum StorageKey {
     Attestation(u64),
     UsedHash(BytesN<32>),
     Endpoint(Address),
+
+    AnchorServices(Address),
+
     SessionCounter,
     Session(u64),
     SessionNonce(u64),
     AuditLogCounter,
     AuditLog(u64),
     SessionOperationCount(u64),
+
 }
 
 impl StorageKey {
@@ -35,6 +45,10 @@ impl StorageKey {
             StorageKey::Endpoint(addr) => {
                 (soroban_sdk::symbol_short!("ENDPOINT"), addr).into_val(env)
             }
+
+            StorageKey::AnchorServices(addr) => {
+                (soroban_sdk::symbol_short!("SERVICES"), addr).into_val(env)
+
             StorageKey::SessionCounter => (soroban_sdk::symbol_short!("SCNT"),).into_val(env),
             StorageKey::Session(id) => {
                 (soroban_sdk::symbol_short!("SESS"), *id).into_val(env)
@@ -48,6 +62,7 @@ impl StorageKey {
             }
             StorageKey::SessionOperationCount(id) => {
                 (soroban_sdk::symbol_short!("SOPCNT"), *id).into_val(env)
+
             }
         }
     }
@@ -165,6 +180,27 @@ impl Storage {
         env.storage().persistent().remove(&key);
     }
 
+
+    pub fn set_anchor_services(env: &Env, services: &AnchorServices) {
+        let key = StorageKey::AnchorServices(services.anchor.clone()).to_storage_key(env);
+        env.storage().persistent().set(&key, services);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+    }
+
+    pub fn get_anchor_services(env: &Env, anchor: &Address) -> Result<AnchorServices, Error> {
+        let key = StorageKey::AnchorServices(anchor.clone()).to_storage_key(env);
+        env.storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::ServicesNotConfigured)
+    }
+
+    pub fn has_anchor_services(env: &Env, anchor: &Address) -> bool {
+        let key = StorageKey::AnchorServices(anchor.clone()).to_storage_key(env);
+        env.storage().persistent().has(&key)
+
     // ============ Session Management ============
 
     pub fn create_session(env: &Env, initiator: &Address) -> u64 {
@@ -278,5 +314,6 @@ impl Storage {
             .instance()
             .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
         counter
+
     }
 }

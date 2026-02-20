@@ -18,6 +18,8 @@ All error codes are in the range 100-120 and are guaranteed to remain stable acr
 | 106 | `InvalidTimestamp` | Timestamp is invalid (zero or in the future) | Submitting an attestation with a timestamp of 0 |
 | 107 | `AttestationNotFound` | Attestation with the given ID was not found | Querying an attestation ID that doesn't exist |
 | 108 | `InvalidPublicKey` | Public key format is invalid | Reserved for future use with signature verification |
+| 113 | `ServicesNotConfigured` | Anchor has not configured supported services | Querying services for an anchor that hasn't configured them |
+| 114 | `InvalidServiceType` | Service type list is invalid | Providing empty list or duplicate services |
 
 ### Error Code Stability Guarantee
 Error codes 100-120 are reserved for AnchorKit and will never be reassigned. New errors will be added to the end of the range, ensuring backward compatibility.
@@ -78,6 +80,35 @@ Checks if an address is a registered attestor. This method never fails.
 **Returns:**
 - `true` if registered
 - `false` if not registered
+
+### `configure_services(env: Env, anchor: Address, services: Vec<ServiceType>) -> Result<(), Error>`
+Configures the list of supported services for an anchor. Only callable by the anchor or admin.
+
+**Service Types:**
+- `Deposits` - Anchor supports deposit operations
+- `Withdrawals` - Anchor supports withdrawal operations
+- `Quotes` - Anchor supports quote generation
+- `KYC` - Anchor supports KYC verification
+
+**Returns:**
+- `Ok(())` on success
+- `Err(Error::NotInitialized)` if contract not initialized
+- `Err(Error::AttestorNotRegistered)` if anchor is not a registered attestor
+- `Err(Error::InvalidServiceType)` if services list is empty or contains duplicates
+
+### `get_supported_services(env: Env, anchor: Address) -> Result<Vec<ServiceType>, Error>`
+Retrieves the list of services supported by an anchor.
+
+**Returns:**
+- `Ok(Vec<ServiceType>)` containing the list of supported services
+- `Err(Error::ServicesNotConfigured)` if anchor hasn't configured services
+
+### `supports_service(env: Env, anchor: Address, service: ServiceType) -> bool`
+Checks if an anchor supports a specific service. This method never fails.
+
+**Returns:**
+- `true` if the anchor supports the service
+- `false` if the anchor doesn't support the service or hasn't configured services
 
 ## Event Schema
 
@@ -145,6 +176,27 @@ Data: {
 }
 ```
 
+### ServicesConfigured Event
+
+**Topic:** `("services", "config")`
+
+**Data:**
+```rust
+struct ServicesConfigured {
+    pub anchor: Address,
+    pub services: Vec<ServiceType>,
+}
+```
+
+**Example:**
+```
+Topic: ("services", "config")
+Data: {
+    anchor: GABC...XYZ,
+    services: [Deposits, Withdrawals, KYC]
+}
+```
+
 ### Event Indexing
 
 Events are designed for efficient querying:
@@ -169,7 +221,9 @@ const ERROR_CODES = {
   105: 'Replay attack detected',
   106: 'Invalid timestamp',
   107: 'Attestation not found',
-  108: 'Invalid public key'
+  108: 'Invalid public key',
+  113: 'Services not configured',
+  114: 'Invalid service type'
 };
 
 function parseError(error) {
@@ -196,6 +250,12 @@ contract.on('attest:recorded', (attestationId, subjectAddress, data) => {
   console.log(`Attestation ${attestationId} recorded for ${subjectAddress}`);
   console.log(`Timestamp: ${data.timestamp}`);
   console.log(`Payload hash: ${data.payload_hash}`);
+});
+
+// Listen for services configuration
+contract.on('services:config', (data) => {
+  console.log(`Services configured for anchor: ${data.anchor}`);
+  console.log(`Supported services: ${data.services.join(', ')}`);
 });
 ```
 
