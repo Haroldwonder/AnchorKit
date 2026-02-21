@@ -48,4 +48,15 @@ pub enum Error {
     InvalidAttestorName = 31,
     InvalidAttestorAddress = 32,
     InvalidAttestorRole = 33,
+
+    /// Credential errors
+    InvalidCredentialFormat = 34,
+    CredentialNotFound = 35,
+    InsecureCredentialStorage = 36,
+    CredentialExpired = 37,
+
+    /// Anchor metadata errors
+    InvalidAnchorMetadata = 38,
+    AnchorMetadataNotFound = 39,
+    NoAnchorsAvailable = 40,
 }

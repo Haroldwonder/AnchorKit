@@ -1,10 +1,11 @@
-use soroban_sdk::{Address, BytesN, Env, IntoVal};
+use soroban_sdk::{Address, BytesN, Env, IntoVal, Vec};
 
 use crate::{
     config::{ContractConfig, SessionConfig},
+    credentials::{CredentialPolicy, SecureCredential},
     types::{
-        AnchorMetadata, AnchorServices, Attestation, AuditLog, Endpoint, InteractionSession,
-        OperationContext, QuoteData,
+        AnchorMetadata, AnchorServices, Attestation, AuditLog, Endpoint, HealthStatus,
+        InteractionSession, OperationContext, QuoteData,
     },
     Error,
 };
@@ -29,6 +30,11 @@ enum StorageKey {
     SessionOperationCount(u64),
     ContractConfig,
     SessionConfig,
+    HealthStatus(Address),
+    CredentialPolicy(Address),
+    SecureCredential(Address),
+    AnchorMetadata(Address),
+    AnchorList,
 }
 
 impl StorageKey {
@@ -68,6 +74,19 @@ impl StorageKey {
             }
             StorageKey::ContractConfig => (soroban_sdk::symbol_short!("CONFIG"),).into_val(env),
             StorageKey::SessionConfig => (soroban_sdk::symbol_short!("SESSCFG"),).into_val(env),
+            StorageKey::HealthStatus(addr) => {
+                (soroban_sdk::symbol_short!("HEALTH"), addr).into_val(env)
+            }
+            StorageKey::CredentialPolicy(addr) => {
+                (soroban_sdk::symbol_short!("CREDPOL"), addr).into_val(env)
+            }
+            StorageKey::SecureCredential(addr) => {
+                (soroban_sdk::symbol_short!("CREDENT"), addr).into_val(env)
+            }
+            StorageKey::AnchorMetadata(addr) => {
+                (soroban_sdk::symbol_short!("ANCHMETA"), addr).into_val(env)
+            }
+            StorageKey::AnchorList => (soroban_sdk::symbol_short!("ANCHLIST"),).into_val(env),
         }
     }
 }
@@ -395,5 +414,80 @@ impl Storage {
             .instance()
             .get(&key)
             .ok_or(Error::InvalidConfig)
+    }
+
+    pub fn set_health_status(env: &Env, anchor: &Address, status: &HealthStatus) {
+        let key = StorageKey::HealthStatus(anchor.clone()).to_storage_key(env);
+        env.storage().persistent().set(&key, status);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+    }
+
+    pub fn get_health_status(env: &Env, anchor: &Address) -> Option<HealthStatus> {
+        let key = StorageKey::HealthStatus(anchor.clone()).to_storage_key(env);
+        env.storage().persistent().get(&key)
+    }
+
+    pub fn set_credential_policy(env: &Env, policy: &CredentialPolicy) {
+        let key = StorageKey::CredentialPolicy(policy.attestor.clone()).to_storage_key(env);
+        env.storage().persistent().set(&key, policy);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+    }
+
+    pub fn get_credential_policy(env: &Env, attestor: &Address) -> Option<CredentialPolicy> {
+        let key = StorageKey::CredentialPolicy(attestor.clone()).to_storage_key(env);
+        env.storage().persistent().get(&key)
+    }
+
+    pub fn set_secure_credential(env: &Env, credential: &SecureCredential) {
+        let key = StorageKey::SecureCredential(credential.attestor.clone()).to_storage_key(env);
+        env.storage().persistent().set(&key, credential);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+    }
+
+    pub fn get_secure_credential(env: &Env, attestor: &Address) -> Option<SecureCredential> {
+        let key = StorageKey::SecureCredential(attestor.clone()).to_storage_key(env);
+        env.storage().persistent().get(&key)
+    }
+
+    pub fn remove_secure_credential(env: &Env, attestor: &Address) {
+        let key = StorageKey::SecureCredential(attestor.clone()).to_storage_key(env);
+        env.storage().persistent().remove(&key);
+    }
+
+    pub fn set_anchor_metadata(env: &Env, metadata: &AnchorMetadata) {
+        let key = StorageKey::AnchorMetadata(metadata.anchor.clone()).to_storage_key(env);
+        env.storage().persistent().set(&key, metadata);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+    }
+
+    pub fn get_anchor_metadata(env: &Env, anchor: &Address) -> Option<AnchorMetadata> {
+        let key = StorageKey::AnchorMetadata(anchor.clone()).to_storage_key(env);
+        env.storage().persistent().get(&key)
+    }
+
+    pub fn add_to_anchor_list(env: &Env, anchor: &Address) {
+        let key = StorageKey::AnchorList.to_storage_key(env);
+        let mut list: Vec<Address> = env.storage().persistent().get(&key).unwrap_or(Vec::new(env));
+        
+        if !list.iter().any(|a| a == *anchor) {
+            list.push_back(anchor.clone());
+            env.storage().persistent().set(&key, &list);
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
+        }
+    }
+
+    pub fn get_anchor_list(env: &Env) -> Vec<Address> {
+        let key = StorageKey::AnchorList.to_storage_key(env);
+        env.storage().persistent().get(&key).unwrap_or(Vec::new(env))
     }
 }

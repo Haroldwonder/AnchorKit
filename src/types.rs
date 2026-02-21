@@ -196,6 +196,16 @@ pub struct AnchorMetadata {
     pub is_active: bool,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HealthStatus {
+    pub anchor: Address,
+    pub latency_ms: u64,
+    pub failure_count: u32,
+    pub availability_percent: u32, // 0-10000 (100.00%)
+    pub last_check: u64,
+}
+
 /// Routing request parameters
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

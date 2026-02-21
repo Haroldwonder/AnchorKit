@@ -1,6 +1,7 @@
 #![no_std]
 
 mod config;
+mod credentials;
 mod errors;
 mod events;
 mod storage;
@@ -29,10 +30,11 @@ pub use events::{
     SettlementConfirmed,
     TransferInitiated,
 };
+pub use credentials::{CredentialManager, CredentialPolicy, CredentialType, SecureCredential};
 pub use storage::Storage;
 pub use types::{
     AnchorMetadata, AnchorOption, AnchorServices, Attestation, AuditLog, Endpoint,
-    InteractionSession, OperationContext, QuoteData, QuoteRequest, RateComparison,
+    HealthStatus, InteractionSession, OperationContext, QuoteData, QuoteRequest, RateComparison,
     RoutingRequest, RoutingResult, RoutingStrategy, ServiceType, TransactionIntent,
     TransactionIntentBuilder,
 };
@@ -123,9 +125,19 @@ impl AnchorKitContract {
         let admin = Storage::get_admin(&env)?;
         admin.require_auth();
 
+        if Storage::is_attestor(&env, &attestor) {
+            return Err(Error::AttestorAlreadyRegistered);
+        }
+
+        Storage::set_attestor(&env, &attestor, true);
+        AttestorAdded::publish(&env, &attestor);
+
+        Ok(())
+    }
+
     /// Get a specific quote and notify listeners that it has been received.
     /// This fulfills the "Quote Received" requirement.
-    pub fn get_quote(
+    pub fn receive_quote(
         env: Env,
         receiver: Address,
         anchor: Address,
@@ -801,6 +813,7 @@ impl AnchorKitContract {
     }
 }
 
+#[contractimpl]
 impl AnchorKitContract {
     // ============ Multi-Anchor Routing ============
 
@@ -850,6 +863,43 @@ impl AnchorKitContract {
     /// Get list of all registered anchors.
     pub fn get_all_anchors(env: Env) -> Vec<Address> {
         Storage::get_anchor_list(&env)
+    }
+
+    // ============ Health Monitoring ============
+
+    /// Update health status for an anchor. Only callable by admin or the anchor itself.
+    pub fn update_health_status(
+        env: Env,
+        anchor: Address,
+        latency_ms: u64,
+        failure_count: u32,
+        availability_percent: u32,
+    ) -> Result<(), Error> {
+        anchor.require_auth();
+
+        if !Storage::is_attestor(&env, &anchor) {
+            return Err(Error::AttestorNotRegistered);
+        }
+
+        if availability_percent > 10000 {
+            return Err(Error::InvalidAnchorMetadata);
+        }
+
+        let status = HealthStatus {
+            anchor: anchor.clone(),
+            latency_ms,
+            failure_count,
+            availability_percent,
+            last_check: env.ledger().timestamp(),
+        };
+
+        Storage::set_health_status(&env, &anchor, &status);
+        Ok(())
+    }
+
+    /// Get health status for an anchor.
+    pub fn get_health_status(env: Env, anchor: Address) -> Option<HealthStatus> {
+        Storage::get_health_status(&env, &anchor)
     }
 
     /// Route a transaction request to the best anchor based on strategy.
