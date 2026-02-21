@@ -35,4 +35,17 @@ pub enum Error {
     /// Transaction intent / compliance errors
     InvalidTransactionIntent = 23,
     ComplianceNotMet = 24,
+
+    /// Configuration validation errors
+    InvalidConfig = 25,
+    DuplicateAttestor = 26,
+    NoEnabledAttestors = 27,
+    
+    /// Detailed config validation errors
+    InvalidConfigName = 28,
+    InvalidConfigVersion = 29,
+    InvalidConfigNetwork = 30,
+    InvalidAttestorName = 31,
+    InvalidAttestorAddress = 32,
+    InvalidAttestorRole = 33,
 }

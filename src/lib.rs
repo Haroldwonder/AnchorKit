@@ -1,12 +1,18 @@
 #![no_std]
 
+mod config;
 mod errors;
 mod events;
 mod storage;
 mod types;
+mod validation;
+
+#[cfg(test)]
+mod config_tests;
 
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
 
+pub use config::{AttestorConfig, ContractConfig, SessionConfig};
 pub use errors::Error;
 pub use events::{
     AttestationRecorded, AttestorAdded, AttestorRemoved, EndpointConfigured, EndpointRemoved,
@@ -18,6 +24,7 @@ pub use types::{
     QuoteData, QuoteRequest, RateComparison, ServiceType, TransactionIntent,
     TransactionIntentBuilder,
 };
+pub use validation::{validate_init_config, validate_attestor_batch, validate_session_config};
 
 #[contract]
 pub struct AnchorKitContract;
@@ -33,6 +40,71 @@ impl AnchorKitContract {
 
         admin.require_auth();
         Storage::set_admin(&env, &admin);
+        Ok(())
+    }
+
+    /// Initialize with validated configuration to prevent misconfiguration bugs
+    pub fn initialize_with_config(
+        env: Env,
+        admin: Address,
+        config: ContractConfig,
+    ) -> Result<(), Error> {
+        if Storage::has_admin(&env) {
+            return Err(Error::AlreadyInitialized);
+        }
+
+        // Strict validation before initialization
+        validate_init_config(&config)?;
+        admin.require_auth();
+        
+        Storage::set_admin(&env, &admin);
+        Storage::set_contract_config(&env, &config);
+        
+        Ok(())
+    }
+
+    /// Batch register attestors with strict validation
+    pub fn batch_register_attestors(
+        env: Env,
+        attestors: Vec<AttestorConfig>,
+    ) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        admin.require_auth();
+
+        // Strict batch validation
+        validate_attestor_batch(&attestors)?;
+
+        for i in 0..attestors.len() {
+            let config = attestors.get(i).unwrap();
+            if !config.enabled {
+                continue;
+            }
+
+            let attestor_addr = Address::from_string(&config.address);
+            
+            if Storage::is_attestor(&env, &attestor_addr) {
+                return Err(Error::AttestorAlreadyRegistered);
+            }
+
+            Storage::set_attestor(&env, &attestor_addr, true);
+            AttestorAdded::publish(&env, &attestor_addr);
+        }
+
+        Ok(())
+    }
+
+    /// Configure session settings with strict validation
+    pub fn configure_session_settings(
+        env: Env,
+        config: SessionConfig,
+    ) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        admin.require_auth();
+
+        // Strict validation with business rules
+        validate_session_config(&config)?;
+        Storage::set_session_config(&env, &config);
+
         Ok(())
     }
 

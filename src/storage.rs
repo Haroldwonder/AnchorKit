@@ -1,6 +1,7 @@
 use soroban_sdk::{Address, BytesN, Env, IntoVal};
 
 use crate::{
+    config::{ContractConfig, SessionConfig},
     types::{
         AnchorServices, Attestation, AuditLog, Endpoint, InteractionSession, OperationContext,
         QuoteData,
@@ -26,6 +27,8 @@ enum StorageKey {
     AuditLogCounter,
     AuditLog(u64),
     SessionOperationCount(u64),
+    ContractConfig,
+    SessionConfig,
 }
 
 impl StorageKey {
@@ -53,6 +56,8 @@ impl StorageKey {
             StorageKey::SessionOperationCount(id) => {
                 (soroban_sdk::symbol_short!("SOPCNT"), *id).into_val(env)
             }
+            StorageKey::ContractConfig => (soroban_sdk::symbol_short!("CONFIG"),).into_val(env),
+            StorageKey::SessionConfig => (soroban_sdk::symbol_short!("SESSCFG"),).into_val(env),
         }
     }
 }
@@ -345,5 +350,37 @@ impl Storage {
             .instance()
             .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
         counter
+    }
+
+    pub fn set_contract_config(env: &Env, config: &ContractConfig) {
+        let key = StorageKey::ContractConfig.to_storage_key(env);
+        env.storage().instance().set(&key, config);
+        env.storage()
+            .instance()
+            .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
+    }
+
+    pub fn get_contract_config(env: &Env) -> Result<ContractConfig, Error> {
+        let key = StorageKey::ContractConfig.to_storage_key(env);
+        env.storage()
+            .instance()
+            .get(&key)
+            .ok_or(Error::InvalidConfig)
+    }
+
+    pub fn set_session_config(env: &Env, config: &SessionConfig) {
+        let key = StorageKey::SessionConfig.to_storage_key(env);
+        env.storage().instance().set(&key, config);
+        env.storage()
+            .instance()
+            .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
+    }
+
+    pub fn get_session_config(env: &Env) -> Result<SessionConfig, Error> {
+        let key = StorageKey::SessionConfig.to_storage_key(env);
+        env.storage()
+            .instance()
+            .get(&key)
+            .ok_or(Error::InvalidConfig)
     }
 }
