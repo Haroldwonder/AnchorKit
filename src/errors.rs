@@ -35,4 +35,9 @@ pub enum Error {
     /// Transaction intent / compliance errors
     InvalidTransactionIntent = 23,
     ComplianceNotMet = 24,
+
+    /// Multi-anchor routing errors
+    InvalidAnchorMetadata = 30,
+    AnchorMetadataNotFound = 31,
+    NoAnchorsAvailable = 32,
 }

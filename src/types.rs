@@ -171,3 +171,59 @@ pub struct AuditLog {
     pub operation: OperationContext,
     pub actor: Address,
 }
+
+/// Routing criteria for selecting anchors
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RoutingStrategy {
+    BestRate,           // Choose anchor with best exchange rate
+    LowestFee,          // Choose anchor with lowest fees
+    FastestSettlement,  // Choose anchor with fastest settlement time
+    HighestLiquidity,   // Choose anchor with highest liquidity
+    Custom,             // Custom scoring logic
+}
+
+/// Anchor metadata for routing decisions
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AnchorMetadata {
+    pub anchor: Address,
+    pub reputation_score: u32,      // 0-10000 (100.00%)
+    pub average_settlement_time: u64, // seconds
+    pub liquidity_score: u32,       // 0-10000 (100.00%)
+    pub uptime_percentage: u32,     // 0-10000 (100.00%)
+    pub total_volume: u64,          // historical volume
+    pub is_active: bool,
+}
+
+/// Routing request parameters
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoutingRequest {
+    pub request: QuoteRequest,
+    pub strategy: RoutingStrategy,
+    pub max_anchors: u32,           // Maximum number of anchors to consider
+    pub require_kyc: bool,
+    pub min_reputation: u32,        // Minimum reputation score (0-10000)
+}
+
+/// Routing result with selected anchor and alternatives
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoutingResult {
+    pub selected_anchor: Address,
+    pub selected_quote: QuoteData,
+    pub score: u64,                 // Routing score for selected anchor
+    pub alternatives: Vec<AnchorOption>,
+    pub routing_timestamp: u64,
+}
+
+/// Alternative anchor option
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AnchorOption {
+    pub anchor: Address,
+    pub quote: QuoteData,
+    pub score: u64,
+    pub metadata: AnchorMetadata,
+}

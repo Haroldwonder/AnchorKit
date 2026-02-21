@@ -14,8 +14,9 @@ pub use events::{
 };
 pub use storage::Storage;
 pub use types::{
-    AnchorServices, Attestation, AuditLog, Endpoint, InteractionSession, OperationContext,
-    QuoteData, QuoteRequest, RateComparison, ServiceType, TransactionIntent,
+    AnchorMetadata, AnchorOption, AnchorServices, Attestation, AuditLog, Endpoint,
+    InteractionSession, OperationContext, QuoteData, QuoteRequest, RateComparison,
+    RoutingRequest, RoutingResult, RoutingStrategy, ServiceType, TransactionIntent,
     TransactionIntentBuilder,
 };
 
@@ -674,6 +675,285 @@ impl AnchorKitContract {
         _payload_hash: &BytesN<32>,
         _signature: &Bytes,
     ) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl AnchorKitContract {
+    // ============ Multi-Anchor Routing ============
+
+    /// Set metadata for an anchor. Only callable by admin or the anchor itself.
+    pub fn set_anchor_metadata(
+        env: Env,
+        anchor: Address,
+        reputation_score: u32,
+        average_settlement_time: u64,
+        liquidity_score: u32,
+        uptime_percentage: u32,
+        total_volume: u64,
+    ) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        admin.require_auth();
+
+        if !Storage::is_attestor(&env, &anchor) {
+            return Err(Error::AttestorNotRegistered);
+        }
+
+        // Validate scores (0-10000 = 0-100%)
+        if reputation_score > 10000 || liquidity_score > 10000 || uptime_percentage > 10000 {
+            return Err(Error::InvalidAnchorMetadata);
+        }
+
+        let metadata = AnchorMetadata {
+            anchor: anchor.clone(),
+            reputation_score,
+            average_settlement_time,
+            liquidity_score,
+            uptime_percentage,
+            total_volume,
+            is_active: true,
+        };
+
+        Storage::set_anchor_metadata(&env, &metadata);
+        Storage::add_to_anchor_list(&env, &anchor);
+
+        Ok(())
+    }
+
+    /// Get metadata for an anchor.
+    pub fn get_anchor_metadata(env: Env, anchor: Address) -> Result<AnchorMetadata, Error> {
+        Storage::get_anchor_metadata(&env, &anchor).ok_or(Error::AnchorMetadataNotFound)
+    }
+
+    /// Get list of all registered anchors.
+    pub fn get_all_anchors(env: Env) -> Vec<Address> {
+        Storage::get_anchor_list(&env)
+    }
+
+    /// Route a transaction request to the best anchor based on strategy.
+    pub fn route_transaction(
+        env: Env,
+        routing_request: RoutingRequest,
+    ) -> Result<RoutingResult, Error> {
+        Storage::get_admin(&env)?;
+
+        let current_timestamp = env.ledger().timestamp();
+        let anchors = Storage::get_anchor_list(&env);
+
+        if anchors.is_empty() {
+            return Err(Error::NoAnchorsAvailable);
+        }
+
+        let mut options: Vec<AnchorOption> = Vec::new(&env);
+
+        // Collect valid options from all anchors
+        for anchor in anchors.iter() {
+            // Check if anchor is registered and active
+            if !Storage::is_attestor(&env, &anchor) {
+                continue;
+            }
+
+            // Get anchor metadata
+            let metadata = match Storage::get_anchor_metadata(&env, &anchor) {
+                Some(m) => m,
+                None => continue,
+            };
+
+            if !metadata.is_active {
+                continue;
+            }
+
+            // Check reputation threshold
+            if metadata.reputation_score < routing_request.min_reputation {
+                continue;
+            }
+
+            // Check if anchor supports the required service
+            let services = match Storage::get_anchor_services(&env, &anchor) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+
+            if !services.services.contains(&routing_request.request.operation_type) {
+                continue;
+            }
+
+            // Check KYC requirement
+            if routing_request.require_kyc && !services.services.contains(&ServiceType::KYC) {
+                continue;
+            }
+
+            // Try to get a quote from this anchor
+            if let Some(quote) = Self::get_latest_quote_for_anchor(
+                &env,
+                &anchor,
+                &routing_request.request,
+            ) {
+                // Validate quote
+                if quote.valid_until > current_timestamp
+                    && quote.base_asset == routing_request.request.base_asset
+                    && quote.quote_asset == routing_request.request.quote_asset
+                    && routing_request.request.amount >= quote.minimum_amount
+                    && routing_request.request.amount <= quote.maximum_amount
+                {
+                    // Calculate score based on strategy
+                    let score = Self::calculate_routing_score(
+                        &routing_request.strategy,
+                        &quote,
+                        &metadata,
+                        routing_request.request.amount,
+                    );
+
+                    options.push_back(AnchorOption {
+                        anchor: anchor.clone(),
+                        quote: quote.clone(),
+                        score,
+                        metadata: metadata.clone(),
+                    });
+                }
+            }
+        }
+
+        if options.is_empty() {
+            return Err(Error::NoQuotesAvailable);
+        }
+
+        // Sort options by score (descending)
+        let mut sorted_options = options.clone();
+        for i in 0..sorted_options.len() {
+            for j in (i + 1)..sorted_options.len() {
+                let score_i = sorted_options.get(i).unwrap().score;
+                let score_j = sorted_options.get(j).unwrap().score;
+                if score_j > score_i {
+                    let temp = sorted_options.get(i).unwrap();
+                    sorted_options.set(i, sorted_options.get(j).unwrap());
+                    sorted_options.set(j, temp);
+                }
+            }
+        }
+
+        // Limit alternatives
+        let max_alternatives = routing_request.max_anchors.min(sorted_options.len());
+        let mut alternatives: Vec<AnchorOption> = Vec::new(&env);
+        for i in 1..max_alternatives {
+            alternatives.push_back(sorted_options.get(i).unwrap());
+        }
+
+        let best = sorted_options.get(0).unwrap();
+
+        Ok(RoutingResult {
+            selected_anchor: best.anchor.clone(),
+            selected_quote: best.quote.clone(),
+            score: best.score,
+            alternatives,
+            routing_timestamp: current_timestamp,
+        })
+    }
+
+    /// Find best anchor for a specific service and asset pair.
+    pub fn find_best_anchor(
+        env: Env,
+        base_asset: String,
+        quote_asset: String,
+        amount: u64,
+        operation_type: ServiceType,
+        strategy: RoutingStrategy,
+    ) -> Result<Address, Error> {
+        let request = QuoteRequest {
+            base_asset,
+            quote_asset,
+            amount,
+            operation_type,
+        };
+
+        let routing_request = RoutingRequest {
+            request,
+            strategy,
+            max_anchors: 1,
+            require_kyc: false,
+            min_reputation: 0,
+        };
+
+        let result = Self::route_transaction(env, routing_request)?;
+        Ok(result.selected_anchor)
+    }
+
+    /// Calculate routing score based on strategy.
+    fn calculate_routing_score(
+        strategy: &RoutingStrategy,
+        quote: &QuoteData,
+        metadata: &AnchorMetadata,
+        amount: u64,
+    ) -> u64 {
+        match strategy {
+            RoutingStrategy::BestRate => {
+                // Higher rate is better (inverted for scoring)
+                let effective_rate = Self::calculate_effective_rate(quote, amount);
+                // Invert so lower effective rate = higher score
+                if effective_rate > 0 {
+                    1_000_000_000 / effective_rate
+                } else {
+                    0
+                }
+            }
+            RoutingStrategy::LowestFee => {
+                // Lower fee is better
+                let max_fee = 10000u32; // 100%
+                let fee_score = max_fee.saturating_sub(quote.fee_percentage);
+                fee_score as u64 * 100_000
+            }
+            RoutingStrategy::FastestSettlement => {
+                // Lower settlement time is better
+                let max_time = 86400u64; // 24 hours
+                let time_score = max_time.saturating_sub(metadata.average_settlement_time);
+                time_score * 10_000
+            }
+            RoutingStrategy::HighestLiquidity => {
+                // Higher liquidity is better
+                metadata.liquidity_score as u64 * 100_000
+            }
+            RoutingStrategy::Custom => {
+                // Weighted combination of all factors
+                let rate_score = if quote.rate > 0 {
+                    (1_000_000 / quote.rate) * 30 // 30% weight
+                } else {
+                    0
+                };
+                let fee_score = (10000u32.saturating_sub(quote.fee_percentage) as u64) * 25; // 25% weight
+                let reputation_score = metadata.reputation_score as u64 * 20; // 20% weight
+                let liquidity_score = metadata.liquidity_score as u64 * 15; // 15% weight
+                let uptime_score = metadata.uptime_percentage as u64 * 10; // 10% weight
+
+                rate_score + fee_score + reputation_score + liquidity_score + uptime_score
+            }
+        }
+    }
+
+    /// Deactivate an anchor (admin only).
+    pub fn deactivate_anchor(env: Env, anchor: Address) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        admin.require_auth();
+
+        let mut metadata = Storage::get_anchor_metadata(&env, &anchor)
+            .ok_or(Error::AnchorMetadataNotFound)?;
+
+        metadata.is_active = false;
+        Storage::set_anchor_metadata(&env, &metadata);
+
+        Ok(())
+    }
+
+    /// Reactivate an anchor (admin only).
+    pub fn reactivate_anchor(env: Env, anchor: Address) -> Result<(), Error> {
+        let admin = Storage::get_admin(&env)?;
+        admin.require_auth();
+
+        let mut metadata = Storage::get_anchor_metadata(&env, &anchor)
+            .ok_or(Error::AnchorMetadataNotFound)?;
+
+        metadata.is_active = true;
+        Storage::set_anchor_metadata(&env, &metadata);
+
         Ok(())
     }
 }
