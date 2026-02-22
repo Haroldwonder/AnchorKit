@@ -1,3 +1,62 @@
+    #[test]
+    fn test_compare_rates_missing_fields_graceful_fail() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        let mut anchors = Vec::new(&env);
+        anchors.push_back(anchor.clone());
+        // No quotes submitted, so missing fields
+        let request = QuoteRequest {
+            base_asset: String::from_str(&env, "USD"),
+            quote_asset: String::from_str(&env, "USDC"),
+            amount: 1000_000000u64,
+            operation_type: ServiceType::Deposits,
+        };
+        let result = client.try_compare_rates_for_anchors(&request, &anchors);
+        assert_eq!(result, Err(Error::NoQuotesAvailable));
+    }
+
+    #[test]
+    fn test_compare_rates_unexpected_types_graceful_fail() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        let (_contract_id, client) = create_test_contract(&env);
+        client.initialize(&admin);
+        client.register_attestor(&anchor);
+        let mut services = Vec::new(&env);
+        services.push_back(ServiceType::Quotes);
+        client.configure_services(&anchor, &services);
+        // Submit a quote with unexpected type (simulate by passing invalid rate)
+        let base_asset = String::from_str(&env, "USD");
+        let quote_asset = String::from_str(&env, "USDC");
+        let quote_id = client.submit_quote(
+            &anchor,
+            &base_asset,
+            &quote_asset,
+            &0u64, // Invalid rate (unexpected type/invalid value)
+            &25u32,
+            &100_000000u64,
+            &10000_000000u64,
+            &(env.ledger().timestamp() + 300),
+        );
+        let request = QuoteRequest {
+            base_asset: base_asset.clone(),
+            quote_asset: quote_asset.clone(),
+            amount: 1000_000000u64,
+            operation_type: ServiceType::Deposits,
+        };
+        let mut anchors = Vec::new(&env);
+        anchors.push_back(anchor.clone());
+        let result = client.try_compare_rates_for_anchors(&request, &anchors);
+        // Should fail gracefully, not panic
+        assert_eq!(result, Err(Error::NoQuotesAvailable));
+    }
 #[cfg(test)]
 mod rate_comparison_tests {
     use super::*;

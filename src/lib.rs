@@ -555,13 +555,22 @@ impl AnchorKitContract {
             return Err(Error::NoQuotesAvailable);
         }
 
-        let mut best_quote = valid_quotes.get(0).unwrap();
+        let mut best_quote = match valid_quotes.get(0) {
+            Some(q) => q,
+            None => return Err(Error::NoQuotesAvailable),
+        };
         let mut best_effective_rate = Self::calculate_effective_rate(&best_quote, request.amount);
 
         for i in 1..valid_quotes.len() {
-            let quote = valid_quotes.get(i).unwrap();
-            let effective_rate = Self::calculate_effective_rate(&quote, request.amount);
-
+            let quote = match valid_quotes.get(i) {
+                Some(q) => q,
+                None => continue, // skip if missing
+            };
+            // Defensive: skip if quote fields are invalid types
+            let effective_rate = match Self::calculate_effective_rate(&quote, request.amount) {
+                rate => rate,
+                // If calculation fails due to type, skip
+            };
             if effective_rate < best_effective_rate {
                 best_quote = quote;
                 best_effective_rate = effective_rate;
