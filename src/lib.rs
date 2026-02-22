@@ -11,6 +11,9 @@ mod validation;
 #[cfg(test)]
 mod config_tests;
 
+#[cfg(test)]
+mod capability_detection_tests;
+
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
 
 pub use config::{AttestorConfig, ContractConfig, SessionConfig};
