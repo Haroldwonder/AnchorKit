@@ -15,6 +15,9 @@ mod deterministic_hash_tests;
 #[cfg(test)]
 mod session_tests;
 
+#[cfg(test)]
+mod capability_detection_tests;
+
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
 
 pub use config::{AttestorConfig, ContractConfig, SessionConfig};
