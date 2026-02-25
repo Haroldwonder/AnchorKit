@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnchorKit - Installation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 1.1rem;
+        }
+
+        .badges {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #4a5568;
+            transition: all 0.3s ease;
+        }
+
+        .badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .badge.version {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-size: 1rem;
+            padding: 10px 20px;
+        }
+
+        .install-section {
+            margin-bottom: 30px;
+        }
+
+        .install-section h2 {
+            font-size: 1.5rem;
+            color: #2d3748;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .install-section h2::before {
+            content: '📦';
+            font-size: 1.8rem;
+        }
+
+        .command-box {
+            background: #1a202c;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .command-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .command-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .command-label {
+            color: #a0aec0;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .copy-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .copy-btn:active {
+            transform: translateY(0);
+        }
+
+        .copy-btn.copied {
+            background: #48bb78;
+        }
+
+        .command-text {
+            color: #e2e8f0;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            word-break: break-all;
+            line-height: 1.6;
+        }
+
+        .command-text .command {
+            color: #81e6d9;
+            font-weight: 600;
+        }
+
+        .command-text .package {
+            color: #fbd38d;
+        }
+
+        .info-box {
+            background: #edf2f7;
+            border-left: 4px solid #667eea;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .info-box p {
+            color: #4a5568;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        .info-box p:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-box strong {
+            color: #2d3748;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 640px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .card {
+                padding: 24px;
+            }
+
+            .command-box {
+                padding: 16px;
+            }
+
+            .command-text {
+                font-size: 0.875rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>🔗 AnchorKit</h1>
+                <p>Stellar blockchain configuration and credential management toolkit</p>
+                <div class="badges">
+                    <span class="badge version">v1.0.0</span>
+                    <span class="badge">Rust</span>
+                    <span class="badge">Stellar</span>
+                    <span class="badge">Open Source</span>
+                </div>
+            </div>
+
+            <div class="install-section">
+                <h2>Installation</h2>
+                
+                <div class="command-box">
+                    <div class="command-header">
+                        <span class="command-label">NPM</span>
+                        <button class="copy-btn" onclick="copyToClipboard('npm install anchorkit', this)">
+                            <span>📋</span>
+                            <span class="btn-text">Copy</span>
+                        </button>
+                    </div>
+                    <div class="command-text">
+                        <span class="command">npm install</span> <span class="package">anchorkit</span>
+                    </div>
+                </div>
+
+                <div class="command-box">
+                    <div class="command-header">
+                        <span class="command-label">Yarn</span>
+                        <button class="copy-btn" onclick="copyToClipboard('yarn add anchorkit', this)">
+                            <span>📋</span>
+                            <span class="btn-text">Copy</span>
+                        </button>
+                    </div>
+                    <div class="command-text">
+                        <span class="command">yarn add</span> <span class="package">anchorkit</span>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <p><strong>Requirements:</strong></p>
+                    <p>• Node.js 16.x or higher</p>
+                    <p>• npm 7.x or yarn 1.22.x or higher</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function copyToClipboard(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                const btnText = button.querySelector('.btn-text');
+                const originalText = btnText.textContent;
+                
+                button.classList.add('copied');
+                btnText.textContent = 'Copied!';
+                
+                setTimeout(() => {
+                    button.classList.remove('copied');
+                    btnText.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy to clipboard');
+            });
+        }
+    </script>
+</body>
+</html>
