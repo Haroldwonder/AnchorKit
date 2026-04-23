@@ -32,6 +32,7 @@ export interface KYCField {
 export interface KYCRequirement {
   level: KYCLevel;
   fields: KYCField[];
+  documentTypes?: string[]; // e.g. ["passport", "drivers_license", "utility_bill"]
   estimatedTime?: string;
   description?: string;
 }
@@ -114,7 +115,8 @@ const fmt = (n: number, currency: string) =>
 function fmtFee(fee?: AssetFee): string {
   if (!fee) return "—";
   if (fee.type === "flat") return fmt(fee.flatAmount!, fee.currency);
-  if (fee.type === "percent") return `${fee.percent}%`;
+  if (fee.type === "percent")
+    return `${Number(fee.percent).toFixed(2)}% ${fee.currency}`;
   if (fee.type === "tiered" && fee.tiers) return "Tiered";
   return "—";
 }
@@ -434,7 +436,7 @@ function FeesPanel({
             {df.type === "percent" && (
               <DataRow
                 label="Rate"
-                value={`${df.percent}%`}
+                value={`${Number(df.percent).toFixed(2)}% ${df.currency}`}
                 mono
                 accent={accent}
               />
@@ -504,7 +506,7 @@ function FeesPanel({
             {wf.type === "percent" && (
               <DataRow
                 label="Rate"
-                value={`${wf.percent}%`}
+                value={`${Number(wf.percent).toFixed(2)}% ${wf.currency}`}
                 mono
                 accent={accent}
               />
@@ -740,6 +742,32 @@ function KYCPanel({
   const required = kyc.fields.filter((f) => f.required);
   const optional = kyc.fields.filter((f) => !f.required);
 
+  // Document type icons mapping
+  const docTypeIcons: Record<string, string> = {
+    passport: "🛂",
+    drivers_license: "🪪",
+    national_id: "🆔",
+    utility_bill: "📄",
+    bank_statement: "🏦",
+    proof_of_address: "🏠",
+    tax_document: "📋",
+    birth_certificate: "📜",
+    social_security: "🔢",
+  };
+
+  // Document type labels
+  const docTypeLabels: Record<string, string> = {
+    passport: "Passport",
+    drivers_license: "Driver's License",
+    national_id: "National ID Card",
+    utility_bill: "Utility Bill",
+    bank_statement: "Bank Statement",
+    proof_of_address: "Proof of Address",
+    tax_document: "Tax Document",
+    birth_certificate: "Birth Certificate",
+    social_security: "Social Security Card",
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Level banner */}
@@ -810,6 +838,86 @@ function KYCPanel({
           )}
         </div>
       </div>
+
+      {/* Document types required */}
+      {kyc.documentTypes && kyc.documentTypes.length > 0 && (
+        <div>
+          <SectionLabel>Required Documents</SectionLabel>
+          <div
+            role="list"
+            aria-label="Required document types"
+            style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          >
+            {kyc.documentTypes.map((docType) => (
+              <div
+                key={docType}
+                role="listitem"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: `${m.color}10`,
+                    border: `1px solid ${m.color}20`,
+                    fontSize: 18,
+                    flexShrink: 0,
+                  }}
+                >
+                  {docTypeIcons[docType] ?? "📄"}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontFamily: "'Sora', sans-serif",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#1e293b",
+                    }}
+                  >
+                    {docTypeLabels[docType] ?? docType.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "'Source Code Pro', monospace",
+                      fontSize: 10,
+                      color: "#94a3b8",
+                      marginTop: 2,
+                    }}
+                  >
+                    {docType}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 20,
+                    background: `${m.color}15`,
+                    color: m.color,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  REQUIRED
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Required fields */}
       {required.length > 0 && (
@@ -915,6 +1023,21 @@ function KYCPanel({
           >
             Transact immediately after connecting your wallet.
           </div>
+        </div>
+      )}
+
+      {/* Graceful fallback when no document types specified */}
+      {kyc.level !== "none" && (!kyc.documentTypes || kyc.documentTypes.length === 0) && required.length === 0 && (
+        <div
+          style={{
+            textAlign: "center",
+            padding: "16px 0",
+            color: "#94a3b8",
+            fontFamily: "'Sora', sans-serif",
+            fontSize: 12,
+          }}
+        >
+          Document requirements will be provided during the verification process.
         </div>
       )}
     </div>

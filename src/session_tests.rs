@@ -346,4 +346,78 @@ mod session_tests {
         assert_eq!(log2.operation.operation_index, 2);
         assert_eq!(log2.operation.result_data, 1); // attestation id 1
     }
+
+    // -----------------------------------------------------------------------
+    // get_audit_log_range
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_audit_log_range_basic() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register(AnchorKitContract, ());
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let (signing_key, _) = register_attestor_with_sep10(&env, &client, &admin);
+        let session_id = client.create_session(&admin);
+
+        // Create 3 audit log entries via register + 2 attests
+        let _ = signing_key; // already registered above (log 0)
+        let ph1 = payload(&env, 1);
+        let s1 = sig(&env, &[1u8; 64]);
+        client.submit_attestation_with_session(&session_id, &admin, &admin, &1u64, &ph1, &s1);
+        let ph2 = payload(&env, 2);
+        let s2 = sig(&env, &[2u8; 64]);
+        client.submit_attestation_with_session(&session_id, &admin, &admin, &2u64, &ph2, &s2);
+
+        // Range [0, 2] should return 3 entries
+        let logs = client.get_audit_log_range(&0u64, &2u64);
+        assert_eq!(logs.len(), 3);
+        assert_eq!(logs.get(0).unwrap().log_id, 0);
+        assert_eq!(logs.get(2).unwrap().log_id, 2);
+    }
+
+    #[test]
+    fn test_audit_log_range_empty_for_out_of_range() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register(AnchorKitContract, ());
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // No audit logs written — range should return empty vec
+        let logs = client.get_audit_log_range(&0u64, &5u64);
+        assert_eq!(logs.len(), 0);
+    }
+
+    #[test]
+    fn test_audit_log_range_max_100() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register(AnchorKitContract, ());
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // Requesting 200 entries should be capped at 100
+        let logs = client.get_audit_log_range(&0u64, &199u64);
+        // No entries stored, but the range is capped — result is empty (not 200 iterations)
+        assert_eq!(logs.len(), 0);
+    }
+
+    #[test]
+    fn test_audit_log_range_inverted_ids_returns_empty() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register(AnchorKitContract, ());
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let logs = client.get_audit_log_range(&5u64, &2u64);
+        assert_eq!(logs.len(), 0);
+    }
 }

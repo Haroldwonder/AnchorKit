@@ -116,4 +116,11 @@ describe('TransactionTimeline', () => {
     render(<TransactionTimeline {...baseProps} currentStatus="completed" />);
     expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
   });
+
+  test('renders countdown when estimatedCompletionAt is provided', () => {
+    const future = Date.now() + 120000; // 2 minutes from now
+    render(<TransactionTimeline {...baseProps} estimatedCompletionAt={future} />);
+    expect(screen.getByText(/Est. Completion/i)).toBeInTheDocument();
+    expect(screen.getByText(/2:00/)).toBeInTheDocument();
+  });
 });

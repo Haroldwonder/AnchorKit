@@ -223,8 +223,8 @@ class ConfigValidator:
         if timeout is not None:
             if not isinstance(timeout, int):
                 self._add_error("sessions.session_timeout_seconds must be an integer")
-            elif timeout < 60:
-                self._add_error(f"sessions.session_timeout_seconds must be at least 60, got {timeout}")
+            elif timeout < 1:
+                self._add_error(f"sessions.session_timeout_seconds must be at least 1, got {timeout}")
             elif timeout > 86400:
                 self._add_error(f"sessions.session_timeout_seconds cannot exceed 86400, got {timeout}")
         
@@ -522,11 +522,15 @@ class TestConfigValidation(unittest.TestCase):
     
     # Invalid session config tests
     def test_invalid_session_timeout_too_low(self):
-        """Test that session timeout too low fails validation"""
-        config = {"contract": {"name": "test", "version": "1.0.0", "network": "stellar-testnet"}, "attestors": {"registry": [{"name": "test", "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", "endpoint": "https://example.com", "role": "attestor", "enabled": True}]}, "sessions": {"session_timeout_seconds": 30}}
-        validator = ConfigValidator(config)
-        self.assertFalse(validator.validate())
-        self.assertTrue(any("timeout" in e.lower() for e in validator.get_errors()))
+        """Test that session timeout of 0 or any value below 1 fails validation"""
+        base_config = {"contract": {"name": "test", "version": "1.0.0", "network": "stellar-testnet"}, "attestors": {"registry": [{"name": "test", "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", "endpoint": "https://example.com", "role": "attestor", "enabled": True}]}}
+
+        for bad_timeout in [0, -1, -100]:
+            with self.subTest(session_timeout_seconds=bad_timeout):
+                config = {**base_config, "sessions": {"session_timeout_seconds": bad_timeout}}
+                validator = ConfigValidator(config)
+                self.assertFalse(validator.validate())
+                self.assertTrue(any("timeout" in e.lower() for e in validator.get_errors()))
     
     def test_invalid_session_timeout_too_high(self):
         """Test that session timeout too high fails validation"""

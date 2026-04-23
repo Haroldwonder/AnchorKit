@@ -199,4 +199,54 @@ mod transaction_state_tracker_tests {
         assert_eq!(record2.timestamp, initial_timestamp);
         assert!(record2.last_updated >= initial_timestamp);
     }
+
+    #[test]
+    fn test_get_transaction_count_by_state_basic() {
+        let env = Env::default();
+        let mut tracker = TransactionStateTracker::new(true);
+        let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+
+        tracker.create_transaction(1, initiator.clone(), &env).ok();
+        tracker.create_transaction(2, initiator.clone(), &env).ok();
+        tracker.create_transaction(3, initiator.clone(), &env).ok();
+
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 3);
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::InProgress), 0);
+
+        tracker.start_transaction(1, &env).ok();
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 2);
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::InProgress), 1);
+
+        tracker.complete_transaction(1, &env).ok();
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::InProgress), 0);
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Completed), 1);
+    }
+
+    #[test]
+    fn test_get_transaction_count_by_state_failed() {
+        let env = Env::default();
+        let mut tracker = TransactionStateTracker::new(true);
+        let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+
+        tracker.create_transaction(1, initiator.clone(), &env).ok();
+        tracker.create_transaction(2, initiator.clone(), &env).ok();
+        let err = String::from_str(&env, "err");
+        tracker.fail_transaction(1, err, &env).ok();
+
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 1);
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Failed), 1);
+    }
+
+    #[test]
+    fn test_get_transaction_count_by_state_after_clear() {
+        let env = Env::default();
+        let mut tracker = TransactionStateTracker::new(true);
+        let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+
+        tracker.create_transaction(1, initiator.clone(), &env).ok();
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 1);
+
+        tracker.clear_cache().ok();
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 0);
+    }
 }

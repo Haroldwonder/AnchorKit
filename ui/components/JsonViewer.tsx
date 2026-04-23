@@ -123,6 +123,34 @@ const THEMES: Record<
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Detect circular references and replace them with [Circular] markers
+ */
+function removeCircularReferences(obj: any, seen = new WeakSet()): JsonValue {
+  if (obj === null || typeof obj !== 'object') {
+    return obj as JsonValue;
+  }
+
+  if (seen.has(obj)) {
+    return '[Circular]' as any;
+  }
+
+  seen.add(obj);
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => removeCircularReferences(item, seen)) as JsonArray;
+  }
+
+  const result: JsonObject = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      result[key] = removeCircularReferences(obj[key], seen);
+    }
+  }
+
+  return result;
+}
+
 function getType(val: JsonValue): string {
   if (val === null) return "null";
   if (Array.isArray(val)) return "array";
@@ -568,13 +596,17 @@ export function JsonViewer({
   const [mode, setMode] = useState<ViewerMode>(defaultMode);
   const [search, setSearch] = useState("");
   const [copied, setCopied] = useState(false);
+  
+  // Remove circular references before processing
+  const safeData = useMemo(() => removeCircularReferences(data), [data]);
+  
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
     const acc = new Set<string>();
-    collectPaths(data, "root", 0, defaultExpandDepth, acc);
+    collectPaths(safeData, "root", 0, defaultExpandDepth, acc);
     return acc;
   });
 
-  const json = useMemo(() => JSON.stringify(data, null, 2), [data]);
+  const json = useMemo(() => JSON.stringify(safeData, null, 2), [safeData]);
   const lineRef = useRef(0);
 
   // Count search matches in raw mode
@@ -597,7 +629,7 @@ export function JsonViewer({
 
   const expandAll = () => {
     const acc = new Set<string>();
-    collectPaths(data, "root", 0, 99, acc);
+    collectPaths(safeData, "root", 0, 99, acc);
     setExpandedPaths(acc);
   };
 
@@ -866,7 +898,7 @@ export function JsonViewer({
         {mode === "tree" ? (
           <div style={{ minWidth: "100%", paddingBottom: 8, paddingTop: 4 }}>
             <TreeNode
-              value={data}
+              value={safeData}
               depth={0}
               isLast={true}
               theme={t}

@@ -1815,69 +1815,201 @@ export default function AnchorPlayground() {
                   </div>
                 )}
 
-                {/* Loading state */}
+                {/* Loading state with skeleton loaders */}
                 {loading && (
                   <div
+                    role="status"
+                    aria-busy="true"
+                    aria-label="Loading anchor data"
                     style={{
                       height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      padding: "20px",
                     }}
                   >
-                    <div style={{ textAlign: "center" }}>
+                    {/* Asset list skeleton */}
+                    <div style={{ marginBottom: 24 }}>
                       <div
                         style={{
-                          position: "relative",
-                          width: 60,
-                          height: 60,
-                          margin: "0 auto 20px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            borderRadius: "50%",
-                            border: `2px solid ${neon}18`,
-                            borderTop: `2px solid ${neon}`,
-                            animation: "spin 0.9s linear infinite",
-                            boxShadow: `0 0 24px ${neon}50`,
-                          }}
-                        />
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 10,
-                            borderRadius: "50%",
-                            border: `1px solid ${neon}10`,
-                            borderBottom: `1px solid ${neon}60`,
-                            animation: "spin 0.55s linear infinite reverse",
-                          }}
-                        />
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
+                          fontSize: 9,
+                          fontWeight: 700,
                           letterSpacing: "0.2em",
-                          color: neon,
+                          color: mutedCol,
                           textTransform: "uppercase",
+                          marginBottom: 12,
                         }}
                       >
-                        Transmitting
+                        Loading Assets...
                       </div>
+                      {[1, 2, 3].map((i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: "12px 14px",
+                            marginBottom: 8,
+                            borderRadius: 8,
+                            background: D ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: "50%",
+                              background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                              backgroundSize: "200% 100%",
+                              animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                            }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div
+                              style={{
+                                width: `${60 + Math.random() * 30}%`,
+                                height: 14,
+                                marginBottom: 6,
+                                borderRadius: 4,
+                                background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                                backgroundSize: "200% 100%",
+                                animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                              }}
+                            />
+                            <div
+                              style={{
+                                width: `${40 + Math.random() * 20}%`,
+                                height: 12,
+                                borderRadius: 4,
+                                background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                                backgroundSize: "200% 100%",
+                                animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Fee table skeleton */}
+                    <div style={{ marginBottom: 24 }}>
                       <div
                         style={{
-                          fontSize: 10,
+                          fontSize: 9,
+                          fontWeight: 700,
+                          letterSpacing: "0.2em",
                           color: mutedCol,
-                          marginTop: 8,
-                          maxWidth: 360,
-                          wordBreak: "break-all",
+                          textTransform: "uppercase",
+                          marginBottom: 12,
                         }}
                       >
-                        {buildUrl()}
+                        Loading Fees...
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {/* Header */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                          {[1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              style={{
+                                height: 16,
+                                width: "80%",
+                                borderRadius: 4,
+                                background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                                backgroundSize: "200% 100%",
+                                animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                              }}
+                            />
+                          ))}
+                        </div>
+                        {/* Rows */}
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                            {[1, 2, 3].map((j) => (
+                              <div
+                                key={j}
+                                style={{
+                                  height: 14,
+                                  width: `${50 + Math.random() * 40}%`,
+                                  borderRadius: 4,
+                                  background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                                  backgroundSize: "200% 100%",
+                                  animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                                }}
+                              />
+                            ))}
+                          </div>
+                        ))}
                       </div>
                     </div>
+
+                    {/* Limits skeleton */}
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          letterSpacing: "0.2em",
+                          color: mutedCol,
+                          textTransform: "uppercase",
+                          marginBottom: 12,
+                        }}
+                      >
+                        Loading Limits...
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        {[1, 2].map((i) => (
+                          <div key={i} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div
+                              style={{
+                                width: "40%",
+                                height: 14,
+                                borderRadius: 4,
+                                background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                                backgroundSize: "200% 100%",
+                                animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                              }}
+                            />
+                            <div
+                              style={{
+                                width: "100%",
+                                height: 8,
+                                borderRadius: 4,
+                                background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                                backgroundSize: "200% 100%",
+                                animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                              }}
+                            />
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                              <div
+                                style={{
+                                  width: "30%",
+                                  height: 12,
+                                  borderRadius: 4,
+                                  background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                                  backgroundSize: "200% 100%",
+                                  animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                                }}
+                              />
+                              <div
+                                style={{
+                                  width: "30%",
+                                  height: 12,
+                                  borderRadius: 4,
+                                  background: `linear-gradient(90deg, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 0%, ${D ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)"} 50%, ${D ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} 100%)`,
+                                  backgroundSize: "200% 100%",
+                                  animation: "skeleton-shimmer 1.5s ease-in-out infinite",
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Screen reader text */}
+                    <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}>
+                      Loading anchor data
+                    </span>
                   </div>
                 )}
 
@@ -2250,6 +2382,10 @@ export default function AnchorPlayground() {
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes skeleton-shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: ${neon}30; border-radius: 2px; }

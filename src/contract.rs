@@ -213,14 +213,31 @@ pub struct AssetInfo {
     pub withdrawal_max_amount: u64,
 }
 
+/// Represents a fiat currency supported by an anchor (e.g. USD, EUR).
+/// These are not Stellar assets and have no on-chain issuer.
+#[contracttype]
+#[derive(Clone)]
+pub struct FiatCurrency {
+    /// ISO 4217 currency code, e.g. "USD", "EUR".
+    pub code: String,
+    /// Human-readable name, e.g. "US Dollar".
+    pub name: String,
+    pub deposit_enabled: bool,
+    pub withdrawal_enabled: bool,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct StellarToml {
     pub version: String,
     pub network_passphrase: String,
     pub accounts: Vec<String>,
-    pub signing_key: String,
+    /// The SIGNING_KEY from stellar.toml, used for SEP-10 verification.
+    /// `None` when the anchor does not publish a signing key.
+    pub signing_key: Option<String>,
     pub currencies: Vec<AssetInfo>,
+    /// Fiat currencies supported by this anchor (USD, EUR, etc.).
+    pub fiat_currencies: Vec<FiatCurrency>,
     pub transfer_server: String,
     pub transfer_server_sep0024: String,
     pub kyc_server: String,
@@ -1106,6 +1123,25 @@ impl AnchorKitContract {
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound))
     }
 
+    /// Return audit log entries in [from_id, to_id], capped at 100 entries.
+    /// IDs that have no stored entry are silently skipped.
+    pub fn get_audit_log_range(env: Env, from_id: u64, to_id: u64) -> Vec<AuditLog> {
+        let mut result = Vec::new(&env);
+        if from_id > to_id {
+            return result;
+        }
+        let cap: u64 = 100;
+        let end = if to_id - from_id + 1 > cap { from_id + cap - 1 } else { to_id };
+        let mut id = from_id;
+        while id <= end {
+            if let Some(log) = env.storage().persistent().get::<_, AuditLog>(&StorageKey::AuditLog(id)) {
+                result.push_back(log);
+            }
+            id += 1;
+        }
+        result
+    }
+
     pub fn get_session_operation_count(env: Env, session_id: u64) -> u64 {
         env.storage()
             .persistent()
@@ -1182,6 +1218,19 @@ impl AnchorKitContract {
 
     pub fn cache_capabilities(env: Env, anchor: Address, toml_url: String, capabilities: String, ttl_seconds: u64) {
         Self::require_admin(&env);
+
+        // Issue #280: Validate toml_url before caching
+        let len = toml_url.len() as usize;
+        let mut buf = [0u8; 256];
+        if len > 256 {
+            panic_with_error!(&env, ErrorCode::InvalidEndpointFormat);
+        }
+        toml_url.copy_into_slice(&mut buf[..len]);
+        let url_str = core::str::from_utf8(&buf[..len]).unwrap_or("");
+        if crate::domain_validator::validate_anchor_domain(url_str).is_err() {
+            panic_with_error!(&env, ErrorCode::InvalidEndpointFormat);
+        }
+
         let now = env.ledger().timestamp();
         let entry = CapabilitiesCache { toml_url, capabilities, cached_at: now, ttl_seconds };
         let key = StorageKey::CapabilitiesCache(anchor);
@@ -1426,7 +1475,7 @@ impl AnchorKitContract {
                 }
             }
         } else if strategy_sym == balanced_sym {
-            // score = (40_000 / fee_percentage) + (30_000 / settlement_time) + (reputation * 30 / 10_000)
+            // score = (40_000 / fee_percentage) + (30_000 / settlement_time) + (reputation * 3_000 / 10_000)
             // All terms are dimensionless integers; higher score is better.
             // fee_percentage = 0 or settlement_time = 0 contribute 0 to avoid division by zero.
             let balanced_score = |env: &Env, q: &Quote| -> u64 {
@@ -1444,7 +1493,8 @@ impl AnchorKitContract {
                     });
                 let fee_term = if q.fee_percentage > 0 { 40_000 / q.fee_percentage as u64 } else { 0 };
                 let time_term = if meta.average_settlement_time > 0 { 30_000 / meta.average_settlement_time } else { 0 };
-                let rep_term = meta.reputation_score as u64 * 30 / 10_000;
+                // Scale reputation (0–10_000) to a 0–3_000 range to match the weight of other terms.
+                let rep_term = meta.reputation_score as u64 * 3_000 / 10_000;
                 fee_term + time_term + rep_term
             };
             let mut best_score = balanced_score(&env, &best);
@@ -1464,9 +1514,23 @@ impl AnchorKitContract {
     // Anchor Info Discovery
     // -----------------------------------------------------------------------
 
-    pub fn fetch_anchor_info(env: Env, anchor: Address, toml_data: StellarToml, ttl_seconds: u64) {
+    pub fn fetch_anchor_info(env: Env, anchor: Address, toml_data: StellarToml, ttl_override: Option<u64>) {
         anchor.require_auth();
+
+        // Reject non-HTTPS endpoints to prevent MITM exposure of anchor metadata.
+        let ts_len = toml_data.transfer_server.len() as usize;
+        if ts_len > 2048 {
+            return Err(ErrorCode::InvalidEndpointFormat);
+        }
+        let mut ts_buf = [0u8; 2048];
+        toml_data.transfer_server.copy_into_slice(&mut ts_buf[..ts_len]);
+        let transfer_server_str = core::str::from_utf8(&ts_buf[..ts_len]).unwrap_or("");
+        if crate::validate_anchor_domain(transfer_server_str).is_err() {
+            return Err(ErrorCode::InvalidEndpointFormat);
+        }
+
         let now = env.ledger().timestamp();
+        let ttl_seconds = ttl_override.unwrap_or(3600);
         let cached = CachedToml {
             toml: toml_data,
             cached_at: now,
@@ -1476,6 +1540,7 @@ impl AnchorKitContract {
         let ledger_ttl = if ttl_seconds as u32 > MIN_TEMP_TTL { ttl_seconds as u32 } else { MIN_TEMP_TTL };
         env.storage().temporary().set(&key, &cached);
         env.storage().temporary().extend_ttl(&key, ledger_ttl, ledger_ttl);
+        Ok(())
     }
 
     pub fn get_anchor_toml(env: Env, anchor: Address) -> StellarToml {
@@ -1489,22 +1554,56 @@ impl AnchorKitContract {
         cached.toml
     }
 
-    pub fn refresh_anchor_info(env: Env, anchor: Address) {
+    pub fn refresh_anchor_info(env: Env, anchor: Address, force: bool) {
         anchor.require_auth();
         let key = StorageKey::TomlCache(anchor);
-        env.storage().temporary().remove(&key);
+        
+        if force {
+            env.storage().temporary().remove(&key);
+        } else if let Some(cached) = env.storage().temporary().get::<_, CachedToml>(&key) {
+            let now = env.ledger().timestamp();
+            if cached.cached_at + cached.ttl_seconds <= now {
+                env.storage().temporary().remove(&key);
+            }
+        }
     }
 
-    pub fn get_anchor_assets(env: Env, anchor: Address) -> Vec<String> {
+    pub fn get_anchor_assets(env: Env, anchor: Address) -> Result<Vec<String>, ErrorCode> {
+        let key = (symbol_short!("TOMLCACHE"), anchor.clone());
+        if !env.storage().temporary().has(&key) {
+            return Err(ErrorCode::CacheNotFound);
+        }
         let toml = Self::get_anchor_toml(env.clone(), anchor);
         let mut assets = Vec::new(&env);
         for asset in toml.currencies.iter() {
             assets.push_back(asset.code.clone());
         }
-        assets
+        Ok(assets)
     }
 
+ feat/get-anchor-currencies
+    /// Return the fiat currencies supported by `anchor` from its cached stellar.toml.
+    /// Returns `Err(ErrorCode::CacheNotFound)` when no TOML has been cached for this anchor.
+    pub fn get_anchor_currencies(
+        env: Env,
+        anchor: Address,
+    ) -> Result<Vec<FiatCurrency>, ErrorCode> {
+        let key = (symbol_short!("TOMLCACHE"), anchor.clone());
+        if !env.storage().temporary().has(&key) {
+            return Err(ErrorCode::CacheNotFound);
+        }
+        let toml = Self::get_anchor_toml(env.clone(), anchor);
+        Ok(toml.fiat_currencies)
+    }
+
+    pub fn get_anchor_asset_info(
+        env: Env,
+        anchor: Address,
+        asset_code: String,
+    ) -> AssetInfo {
+
     pub fn get_anchor_asset_info(env: Env, anchor: Address, asset_code: String) -> AssetInfo {
+ main
         let toml = Self::get_anchor_toml(env.clone(), anchor);
         for asset in toml.currencies.iter() {
             if asset.code == asset_code {

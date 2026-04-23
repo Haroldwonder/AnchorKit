@@ -460,10 +460,10 @@ mod routing_tests {
         let (client, _) = setup(&env);
 
         // Anchor A: low fee (10), slow (1000s), low reputation (2000)
-        //   fee_term  = 40_000 / 10  = 4000
+        //   fee_term  = 40_000 / 10   = 4000
         //   time_term = 30_000 / 1000 = 30
-        //   rep_term  = 2000 * 30 / 10_000 = 6
-        //   score = 4036
+        //   rep_term  = 2000 * 3_000 / 10_000 = 600
+        //   score = 4630
         let anchor_a = Address::generate(&env);
         register_anchor(&env, &client, &anchor_a);
         client.set_anchor_metadata(&anchor_a, &2000u32, &1000u64, &7500u32, &9900u32, &1_000_000u64);
@@ -477,8 +477,8 @@ mod routing_tests {
         // Anchor B: high fee (50), fast (100s), high reputation (9000)
         //   fee_term  = 40_000 / 50  = 800
         //   time_term = 30_000 / 100 = 300
-        //   rep_term  = 9000 * 30 / 10_000 = 27
-        //   score = 1127
+        //   rep_term  = 9000 * 3_000 / 10_000 = 2700
+        //   score = 3800
         let anchor_b = Address::generate(&env);
         register_anchor(&env, &client, &anchor_b);
         client.set_anchor_metadata(&anchor_b, &9000u32, &100u64, &7500u32, &9900u32, &1_000_000u64);
@@ -492,8 +492,8 @@ mod routing_tests {
         // Anchor C: medium fee (20), medium speed (200s), medium reputation (6000)
         //   fee_term  = 40_000 / 20  = 2000
         //   time_term = 30_000 / 200 = 150
-        //   rep_term  = 6000 * 30 / 10_000 = 18
-        //   score = 2168
+        //   rep_term  = 6000 * 3_000 / 10_000 = 1800
+        //   score = 3950
         let anchor_c = Address::generate(&env);
         register_anchor(&env, &client, &anchor_c);
         client.set_anchor_metadata(&anchor_c, &6000u32, &200u64, &7500u32, &9900u32, &1_000_000u64);
@@ -514,7 +514,7 @@ mod routing_tests {
             require_kyc: false,
         };
 
-        // anchor_a wins: score 4036 > anchor_c 2168 > anchor_b 1127
+        // anchor_a wins: score 4630 > anchor_c 3950 > anchor_b 3800
         let best = client.route_transaction(&options);
         assert_eq!(best.anchor, anchor_a);
     }

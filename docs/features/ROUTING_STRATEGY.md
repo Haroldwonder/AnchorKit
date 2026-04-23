@@ -23,20 +23,22 @@ the `strategy` vec:
 ```
 score = (40_000 / fee_percentage)
       + (30_000 / average_settlement_time)
-      + (reputation_score * 30 / 10_000)
+      + (reputation_score * 3_000 / 10_000)
 ```
 
 All three terms are dimensionless and comparable. A zero `fee_percentage` or
 `average_settlement_time` contributes `0` to that term (no division by zero).
+The reputation term scales the 0–10_000 score into a 0–3_000 range so it
+carries meaningful weight alongside the other two terms.
 The anchor with the highest total score is selected.
 
 Example with three anchors:
 
 | Anchor | fee | time (s) | reputation | fee term | time term | rep term | score |
 |--------|-----|----------|------------|----------|-----------|----------|-------|
-| A | 10 | 1000 | 2000 | 4000 | 30 | 6 | **4036** |
-| C | 20 | 200 | 6000 | 2000 | 150 | 18 | 2168 |
-| B | 50 | 100 | 9000 | 800 | 300 | 27 | 1127 |
+| A | 10 | 1000 | 2000 | 4000 | 30 | 600 | **4630** |
+| C | 20 | 200 | 6000 | 2000 | 150 | 1800 | 3950 |
+| B | 50 | 100 | 9000 | 800 | 300 | 2700 | 3800 |
 
 Anchor A wins despite slow speed and low reputation because its very low fee
 dominates the score.

@@ -50,6 +50,9 @@ pub struct TransactionStateRecord {
 pub struct TransactionStateTracker {
     cache: alloc::vec::Vec<TransactionStateRecord>,
     is_dev_mode: bool,
+    /// Per-state counters indexed by TransactionState discriminant (1-based).
+    /// Index 0 is unused; indices 1-4 map to Pending/InProgress/Completed/Failed.
+    state_counts: [u64; 5],
 }
 
 #[allow(dead_code)]
@@ -59,6 +62,7 @@ impl TransactionStateTracker {
         TransactionStateTracker {
             cache: alloc::vec::Vec::new(),
             is_dev_mode,
+            state_counts: [0u64; 5],
         }
     }
 
@@ -82,6 +86,7 @@ impl TransactionStateTracker {
 
         if self.is_dev_mode {
             self.cache.push(record.clone());
+            self.state_counts[TransactionState::Pending as usize] += 1;
         }
 
         Ok(record)
@@ -134,9 +139,15 @@ impl TransactionStateTracker {
             // Search and update in cache
             for record in self.cache.iter_mut() {
                 if record.transaction_id == transaction_id {
+                    let old_state = record.state;
                     record.state = new_state;
                     record.last_updated = current_time;
                     record.error_message = error_message;
+                    // Update per-state counters
+                    if self.state_counts[old_state as usize] > 0 {
+                        self.state_counts[old_state as usize] -= 1;
+                    }
+                    self.state_counts[new_state as usize] += 1;
                     return Ok(record.clone());
                 }
             }
@@ -210,15 +221,22 @@ impl TransactionStateTracker {
     pub fn clear_cache(&mut self) -> Result<(), String> {
         if self.is_dev_mode {
             self.cache = alloc::vec::Vec::new();
+            self.state_counts = [0u64; 5];
             Ok(())
         } else {
             Err(String::from_str(&Env::default(), "Cannot clear cache in production mode"))
         }
     }
 
-    /// Get cache size
+    /// Get cache size — O(1)
     pub fn cache_size(&self) -> usize {
-        self.cache.len()
+        self.cache_count
+    }
+
+    /// Get the count of transactions in a given state — O(1).
+    /// More efficient than `get_transactions_by_state(...).len()`.
+    pub fn get_transaction_count_by_state(&self, state: TransactionState) -> u64 {
+        self.state_counts[state as usize]
     }
 }
 

@@ -596,3 +596,156 @@ describe('SEP10AuthFlow', () => {
     });
   });
 });
+
+describe('Token Expiry Polling', () => {
+  it('polls token expiry every 30 seconds', async () => {
+    render(<SEP10AuthFlow />);
+    const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
+    
+    await act(async () => {
+      fireEvent.click(connectButton);
+    });
+
+    await waitFor(() => {
+      const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
+      fireEvent.click(fetchButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      const signButton = screen.getByText(/Sign with Wallet/);
+      fireEvent.click(signButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      const submitButton = screen.getByText(/Submit & Get Token/);
+      fireEvent.click(submitButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      expect(screen.getByText(/AUTHENTICATED/)).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Fast-forward time by 30 seconds
+    act(() => {
+      jest.advanceTimersByTime(30000);
+    });
+
+    // Token should still be valid (24h expiry)
+    await waitFor(() => {
+      expect(screen.getByText(/AUTHENTICATED/)).toBeInTheDocument();
+    });
+  });
+
+  it('transitions badge to expired state when token expires', async () => {
+    render(<SEP10AuthFlow />);
+    const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
+    
+    await act(async () => {
+      fireEvent.click(connectButton);
+    });
+
+    await waitFor(() => {
+      const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
+      fireEvent.click(fetchButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      const signButton = screen.getByText(/Sign with Wallet/);
+      fireEvent.click(signButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      const submitButton = screen.getByText(/Submit & Get Token/);
+      fireEvent.click(submitButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      expect(screen.getByText(/AUTHENTICATED/)).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Fast-forward time by 24 hours + 1 second to expire the token
+    act(() => {
+      jest.advanceTimersByTime(86401000);
+    });
+
+    // Badge should transition to expired state
+    await waitFor(() => {
+      expect(screen.getByText(/EXPIRED/)).toBeInTheDocument();
+      expect(screen.getByText(/Token has expired · Re-authenticate required/)).toBeInTheDocument();
+    });
+  });
+
+  it('updates expiry countdown every second', async () => {
+    render(<SEP10AuthFlow />);
+    const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
+    
+    await act(async () => {
+      fireEvent.click(connectButton);
+    });
+
+    await waitFor(() => {
+      const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
+      fireEvent.click(fetchButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      const signButton = screen.getByText(/Sign with Wallet/);
+      fireEvent.click(signButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      const submitButton = screen.getByText(/Submit & Get Token/);
+      fireEvent.click(submitButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      expect(screen.getByText(/AUTHENTICATED/)).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Fast-forward time by 1 second
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    // Countdown should update
+    await waitFor(() => {
+      expect(screen.getByText(/EXPIRES IN/)).toBeInTheDocument();
+    });
+  });
+
+  it('cleans up polling intervals on unmount', async () => {
+    const { unmount } = render(<SEP10AuthFlow />);
+    const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
+    
+    await act(async () => {
+      fireEvent.click(connectButton);
+    });
+
+    await waitFor(() => {
+      const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
+      fireEvent.click(fetchButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      const signButton = screen.getByText(/Sign with Wallet/);
+      fireEvent.click(signButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      const submitButton = screen.getByText(/Submit & Get Token/);
+      fireEvent.click(submitButton);
+    }, { timeout: 3000 });
+
+    await waitFor(() => {
+      expect(screen.getByText(/AUTHENTICATED/)).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Unmount component
+    unmount();
+
+    // No errors should occur from timers after unmount
+    act(() => {
+      jest.advanceTimersByTime(60000);
+    });
+  });
+});

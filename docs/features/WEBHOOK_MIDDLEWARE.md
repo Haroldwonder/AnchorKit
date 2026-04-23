@@ -216,6 +216,207 @@ if let Some(delivery) = record {
 }
 ```
 
+## HMAC Signature Verification
+
+Signature verification is the primary mechanism for proving that an incoming webhook was sent by a trusted source and that its payload was not tampered with in transit. Without it, any party that knows your endpoint URL can send arbitrary webhook payloads.
+
+### How It Works
+
+The sender computes an HMAC over a canonical message derived from the request, then attaches the resulting digest as a request header. The receiver independently recomputes the same HMAC and compares the two values using a constant-time comparison to prevent timing attacks.
+
+**Canonical message format:**
+
+```
+message = timestamp_string + raw_payload_bytes
+```
+
+The timestamp is the Unix epoch in seconds, serialized as a decimal string and prepended to the raw payload bytes before hashing. This binds the signature to a specific point in time, which is what makes replay attack prevention effective.
+
+### Required HTTP Headers
+
+| Header | Description | Example |
+|--------|-------------|---------|
+| `X-Webhook-Signature` | Hex-encoded HMAC digest | `3d4f2a...` |
+| `X-Webhook-Timestamp` | Unix timestamp (seconds) | `1714000000` |
+| `X-Webhook-ID` | Globally unique webhook identifier | `wh_abc123` |
+
+### Sender: Generating the Signature
+
+**Node.js**
+
+```javascript
+const crypto = require('crypto');
+
+function signWebhook(payload, secret, timestamp) {
+    // payload: raw JSON string (do NOT re-serialize after signing)
+    // secret:  Buffer of the shared secret bytes
+    // timestamp: integer Unix seconds
+    const message = Buffer.concat([
+        Buffer.from(String(timestamp)),
+        Buffer.from(payload),
+    ]);
+    return crypto.createHmac('sha256', secret).update(message).digest('hex');
+}
+
+const payload   = JSON.stringify({ event: 'deposit.completed', amount: 100 });
+const secret    = Buffer.from(process.env.WEBHOOK_SECRET, 'hex');
+const timestamp = Math.floor(Date.now() / 1000);
+const signature = signWebhook(payload, secret, timestamp);
+
+await fetch('https://your-anchor.example/webhooks', {
+    method: 'POST',
+    headers: {
+        'Content-Type':        'application/json',
+        'X-Webhook-Signature': signature,
+        'X-Webhook-Timestamp': String(timestamp),
+        'X-Webhook-ID':        'wh_abc123',
+    },
+    body: payload,
+});
+```
+
+**Python**
+
+```python
+import hmac, hashlib, json, time, os
+
+def sign_webhook(payload: str, secret: bytes, timestamp: int) -> str:
+    message = str(timestamp).encode() + payload.encode()
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+payload   = json.dumps({"event": "deposit.completed", "amount": 100})
+secret    = bytes.fromhex(os.environ["WEBHOOK_SECRET"])
+timestamp = int(time.time())
+signature = sign_webhook(payload, secret, timestamp)
+
+import requests
+requests.post(
+    "https://your-anchor.example/webhooks",
+    data=payload,
+    headers={
+        "Content-Type":        "application/json",
+        "X-Webhook-Signature": signature,
+        "X-Webhook-Timestamp": str(timestamp),
+        "X-Webhook-ID":        "wh_abc123",
+    },
+)
+```
+
+**Go**
+
+```go
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "fmt"
+    "time"
+)
+
+func signWebhook(payload []byte, secret []byte, timestamp int64) string {
+    message := append([]byte(fmt.Sprintf("%d", timestamp)), payload...)
+    h := hmac.New(sha256.New, secret)
+    h.Write(message)
+    return hex.EncodeToString(h.Sum(nil))
+}
+```
+
+### Receiver: Verifying the Signature
+
+On the AnchorKit side, `WebhookMiddleware::validate_webhook` handles verification as step 3 of the validation pipeline. Internally it:
+
+1. Reads `X-Webhook-Timestamp` and `X-Webhook-Signature` from the request.
+2. Reconstructs the canonical message: `timestamp_string + raw_payload_bytes`.
+3. Computes `HMAC-SHA256(secret_key, message)`.
+4. Compares the computed digest against the received signature using **constant-time comparison** (`subtle::ConstantTimeEq` equivalent) to prevent timing side-channels.
+
+```rust
+use anchorkit::{WebhookMiddleware, WebhookSecurityConfig, WebhookRequest, SignatureAlgorithm};
+
+let config = WebhookSecurityConfig {
+    algorithm: SignatureAlgorithm::Sha256,
+    secret_key: Bytes::from_array(&env, &SECRET_KEY_BYTES),
+    timestamp_tolerance_seconds: 300,
+    max_payload_size_bytes: 10_000,
+    enable_replay_protection: true,
+};
+
+let request = WebhookRequest {
+    payload:        raw_payload_bytes,
+    signature:      hex_decoded_signature_bytes,
+    timestamp:      parsed_timestamp,
+    webhook_id:     unique_id,
+    source_address: None,
+};
+
+// verify_signature returns true only when the digest matches
+let valid = WebhookMiddleware::verify_signature(&env, &request, &config)?;
+```
+
+You can also call `validate_webhook` to run the full pipeline (size → timestamp → signature → replay) in one shot:
+
+```rust
+let result = WebhookMiddleware::validate_webhook(&env, &request, &config)?;
+
+if result.is_valid {
+    // safe to process
+}
+```
+
+### When Signature Verification Fails
+
+A failed signature check triggers `ErrorCode::WebhookSignatureInvalid` (code 56) and the webhook is rejected before any business logic runs.
+
+**What the middleware does automatically:**
+
+- Logs a `SuspiciousActivityType::InvalidSignature` event at `ActivitySeverity::Critical`.
+- Records a `WebhookDeliveryStatus::Rejected` delivery attempt.
+- Emits a `(webhook, suspicious)` event to the AnchorKit event system for real-time monitoring.
+
+**What your handler should do:**
+
+```rust
+match WebhookMiddleware::validate_webhook(&env, &request, &config) {
+    Ok(result) if result.is_valid => {
+        process_webhook(&env, &request.payload)?;
+    }
+
+    Ok(result) => {
+        // result.is_valid == false; inspect the error
+        if let Some(ref err) = result.error {
+            if err.contains("Signature") {
+                // 1. Do NOT retry with the same signature — it will fail again.
+                // 2. Alert your on-call channel; this is a Critical-severity event.
+                // 3. Verify the shared secret matches what the sender is using.
+                // 4. Check that neither side is re-encoding the payload before signing.
+                log_alert(&env, "Webhook signature invalid — possible tampering or key mismatch");
+            }
+        }
+        return Err(Error::WebhookValidationFailed);
+    }
+
+    Err(e) => {
+        // Unexpected contract error — surface it for investigation
+        return Err(e);
+    }
+}
+```
+
+**Decision table for signature failures:**
+
+| Scenario | Likely Cause | Action |
+|----------|-------------|--------|
+| All webhooks from one sender fail | Secret key mismatch | Re-exchange the shared secret |
+| Intermittent failures from one sender | Payload re-encoded after signing | Ensure raw bytes are signed, not re-serialized |
+| Failures only on large payloads | Encoding overhead changes byte length | Confirm sender signs raw body, not a transformed copy |
+| Sudden spike after working fine | Secret rotated on sender side without notifying receiver | Coordinate key rotation with a grace period |
+| Failures from unknown source IPs | Attacker probing the endpoint | Rate-limit by IP; escalate to security team |
+
+**Key rules:**
+- Never return a `200 OK` for a webhook that failed signature verification — this tells the sender the webhook was accepted.
+- Return `401 Unauthorized` or `403 Forbidden` so the sender knows to investigate.
+- Do not log the received signature value in plaintext — log only that verification failed and the webhook ID.
+
 ## Security Considerations
 
 ### 1. Secret Key Management

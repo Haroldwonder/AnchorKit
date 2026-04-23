@@ -21,6 +21,7 @@ export interface TransactionTimelineProps {
   id?: string;
   events: TxEvent[];
   currentStatus: TxStatus;
+  estimatedCompletionAt?: number; // timestamp in ms
   onRetry?: () => void;
   onClose?: () => void;
   className?: string;
@@ -164,11 +165,35 @@ function ProgressBar({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function TransactionTimeline({
-  type, amount, asset, id, events, currentStatus, onRetry, onClose,
+  type, amount, asset, id, events, currentStatus, estimatedCompletionAt, onRetry, onClose,
 }: TransactionTimelineProps) {
   const failed = isFailed(currentStatus);
   const completed = isCompleted(currentStatus);
   const currentIndex = getOrderIndex(currentStatus);
+
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!estimatedCompletionAt || completed || failed) {
+      setTimeLeft(null);
+      return;
+    }
+
+    const update = () => {
+      const now = Date.now();
+      const diff = Math.max(0, Math.floor((estimatedCompletionAt - now) / 1000));
+      setTimeLeft(diff);
+      return diff;
+    };
+
+    update();
+    const interval = setInterval(() => {
+      const diff = update();
+      if (diff === 0) clearInterval(interval);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [estimatedCompletionAt, completed, failed]);
 
   // Build display steps — always show the 4 standard steps,
   // replace "completed" with "failed" node if tx failed
@@ -245,6 +270,22 @@ export function TransactionTimeline({
             {statusMeta.label}
           </span>
         </div>
+
+        {/* Countdown */}
+        {timeLeft !== null && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            marginTop: 4, padding: "8px 12px", borderRadius: 10,
+            background: "rgba(0,0,0,0.04)", width: "fit-content",
+            border: "1px solid rgba(0,0,0,0.05)"
+          }}>
+            <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>Est. Completion</span>
+            <div style={{ width: 1, height: 12, background: "#cbd5e1" }} />
+            <span style={{ ...mono, fontSize: 12, color: timeLeft < 60 ? "#dc2626" : "#334155", fontWeight: 700 }}>
+              {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Timeline ── */}
@@ -444,6 +485,7 @@ const DEMO_SCENARIOS: Array<{
     type: "deposit", amount: "250.00", asset: "USDC",
     id: "dep_8f3c1a9e2b",
     currentStatus: "processing",
+    estimatedCompletionAt: Date.now() + 185000,
     events: [
       { status: "initiated",  timestamp: new Date(Date.now() - 18 * 60000).toISOString(), detail: "via ACH transfer" },
       { status: "pending",    timestamp: new Date(Date.now() - 12 * 60000).toISOString(), detail: "Bank rail confirmed" },
