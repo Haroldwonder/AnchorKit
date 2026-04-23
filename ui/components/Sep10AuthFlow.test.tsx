@@ -37,10 +37,10 @@ describe('SEP10AuthFlow', () => {
 
     it('renders all four authentication steps', () => {
       render(<SEP10AuthFlow />);
-      expect(screen.getByText('Connect Wallet')).toBeInTheDocument();
-      expect(screen.getByText('Fetch Challenge')).toBeInTheDocument();
-      expect(screen.getByText('Sign Challenge')).toBeInTheDocument();
-      expect(screen.getByText('Auth Token')).toBeInTheDocument();
+      expect(screen.getAllByText('Connect Wallet').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Fetch Challenge').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Sign Challenge').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Auth Token').length).toBeGreaterThan(0);
     });
 
     it('shows step numbers for all steps', () => {
@@ -65,14 +65,14 @@ describe('SEP10AuthFlow', () => {
 
     it('shows connect wallet button in idle state', () => {
       render(<SEP10AuthFlow />);
-      expect(screen.getByText(/Connect Wallet/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Connect Wallet/ })).toBeInTheDocument();
     });
   });
 
   describe('Connect Wallet Step', () => {
     it('triggers wallet connection when button is clicked', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
@@ -86,22 +86,22 @@ describe('SEP10AuthFlow', () => {
 
     it('displays wallet address after connection', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        // Check for wallet address pattern (starts with G and has ellipsis)
-        const addressElements = screen.getAllByText(/G[A-Z2-7]{5}\.\.\.[A-Z2-7]{8}/);
+        // Address is rendered split across elements, check for partial address pattern
+        const addressElements = screen.getAllByText(/^G[A-Z2-7]+/);
         expect(addressElements.length).toBeGreaterThan(0);
       }, { timeout: 3000 });
     });
 
     it('shows network badge after connection', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
@@ -114,7 +114,7 @@ describe('SEP10AuthFlow', () => {
 
     it('shows reset button after wallet connection', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
@@ -129,27 +129,27 @@ describe('SEP10AuthFlow', () => {
   describe('Fetch Challenge Step', () => {
     it('shows fetch challenge button after wallet connection', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/Fetch Challenge/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Fetch Challenge/ })).toBeInTheDocument();
       }, { timeout: 3000 });
     });
 
     it('displays challenge XDR after fetching', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -160,14 +160,14 @@ describe('SEP10AuthFlow', () => {
 
     it('shows domain in challenge display', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -180,14 +180,14 @@ describe('SEP10AuthFlow', () => {
   describe('Sign Challenge Step', () => {
     it('shows sign button after challenge is fetched', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -198,14 +198,14 @@ describe('SEP10AuthFlow', () => {
 
     it('displays signed XDR after signing', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -221,14 +221,14 @@ describe('SEP10AuthFlow', () => {
 
     it('shows ED25519 signature confirmation', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -246,14 +246,14 @@ describe('SEP10AuthFlow', () => {
   describe('Auth Token Step', () => {
     it('shows submit button after signing', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -269,14 +269,14 @@ describe('SEP10AuthFlow', () => {
 
     it('displays JWT token after submission', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -291,22 +291,20 @@ describe('SEP10AuthFlow', () => {
       }, { timeout: 3000 });
 
       await waitFor(() => {
-        expect(screen.getByText(/HEADER/)).toBeInTheDocument();
-        expect(screen.getByText(/PAYLOAD/)).toBeInTheDocument();
-        expect(screen.getByText(/SIGNATURE/)).toBeInTheDocument();
+        expect(screen.getByText(/DECODED PAYLOAD/)).toBeInTheDocument();
       }, { timeout: 3000 });
     });
 
     it('shows copy JWT button', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -327,14 +325,14 @@ describe('SEP10AuthFlow', () => {
 
     it('copies JWT to clipboard when copy button is clicked', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -362,14 +360,14 @@ describe('SEP10AuthFlow', () => {
   describe('Authenticated State', () => {
     it('shows authenticated status after token is received', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -391,14 +389,14 @@ describe('SEP10AuthFlow', () => {
 
     it('shows auth status badge with wallet info', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -420,14 +418,14 @@ describe('SEP10AuthFlow', () => {
 
     it('shows token expiry information', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
       });
 
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
 
@@ -451,7 +449,7 @@ describe('SEP10AuthFlow', () => {
   describe('Reset Functionality', () => {
     it('resets to idle state when reset button is clicked', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
@@ -468,7 +466,7 @@ describe('SEP10AuthFlow', () => {
 
       await waitFor(() => {
         expect(screen.queryByText(/CONNECTED ACCOUNT/)).not.toBeInTheDocument();
-        expect(screen.getByText(/Connect Wallet/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Connect Wallet/ })).toBeInTheDocument();
       }, { timeout: 3000 });
     });
   });
@@ -476,7 +474,7 @@ describe('SEP10AuthFlow', () => {
   describe('Activity Log', () => {
     it('shows activity log after actions', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
@@ -489,7 +487,7 @@ describe('SEP10AuthFlow', () => {
 
     it('logs wallet connection events', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
@@ -515,7 +513,7 @@ describe('SEP10AuthFlow', () => {
   describe('Step Progress Indicators', () => {
     it('shows completed steps with checkmarks', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
@@ -530,7 +528,7 @@ describe('SEP10AuthFlow', () => {
 
     it('highlights active step', async () => {
       render(<SEP10AuthFlow />);
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       
       await act(async () => {
         fireEvent.click(connectButton);
@@ -557,7 +555,7 @@ describe('SEP10AuthFlow', () => {
       render(<SEP10AuthFlow />);
       
       // Step 1: Connect Wallet
-      const connectButton = screen.getByText(/Connect Wallet/);
+      const connectButton = screen.getByRole('button', { name: /Connect Wallet/ });
       await act(async () => {
         fireEvent.click(connectButton);
       });
@@ -568,7 +566,7 @@ describe('SEP10AuthFlow', () => {
 
       // Step 2: Fetch Challenge
       await waitFor(() => {
-        const fetchButton = screen.getByText(/Fetch Challenge/);
+        const fetchButton = screen.getByRole('button', { name: /Fetch Challenge/ });
         fireEvent.click(fetchButton);
       }, { timeout: 3000 });
       

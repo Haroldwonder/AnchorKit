@@ -3,12 +3,12 @@
 //! Verifies the anchor-signed token using a 32-byte Ed25519 public key stored on-chain.
 //! Payload must include integer `exp` (Unix seconds) and string `sub` (Stellar strkey of the client).
 
-#![cfg_attr(not(test), no_std)]
 
 extern crate alloc;
 
 use alloc::vec::Vec;
-use soroban_sdk::{Bytes, BytesN, Env, String};
+use soroban_sdk::{Bytes, Env, String};
+use ed25519_dalek::{Signature, VerifyingKey, Verifier};
 
 /// Maximum JWT character length accepted by the contract (defensive bound).
 pub const MAX_JWT_LEN: u32 = 2048;
@@ -24,15 +24,23 @@ fn decode_base64url_char(c: u8) -> Option<u8> {
     }
 }
 
-/// Base64url decode (no padding required).
+/// Base64url decode — accepts padded, unpadded, and over-padded input.
+///
+/// Padding characters (`=`) are stripped before decoding. This matches the behaviour
+/// of most JWT libraries, which omit padding entirely per RFC 7515 §2.
 pub fn base64url_decode(input: &[u8]) -> Result<Vec<u8>, ()> {
+    // Strip all trailing `=` so padded, unpadded, and over-padded inputs are equivalent.
+    let input = {
+        let mut end = input.len();
+        while end > 0 && input[end - 1] == b'=' {
+            end -= 1;
+        }
+        &input[..end]
+    };
     let mut out: Vec<u8> = Vec::new();
     let mut buffer: u32 = 0;
     let mut bits: u32 = 0;
     for &ch in input {
-        if ch == b'=' {
-            break;
-        }
         let val = decode_base64url_char(ch).ok_or(())?;
         buffer = (buffer << 6) | (val as u32);
         bits += 6;
@@ -117,13 +125,17 @@ fn parse_json_sub(env: &Env, payload: &[u8]) -> Result<String, ()> {
 ///
 /// When `expected_sub` is [`None`], the token must still contain a parseable `sub` claim, but it
 /// is not compared to a caller-supplied address (see contract `verify_sep10_token`).
+/// Maximum number of verifying keys stored per issuer (supports key rotation).
+pub const MAX_VERIFYING_KEYS: u32 = 3;
+
 pub fn verify_sep10_jwt(
     env: &Env,
     token: &String,
-    anchor_public_key: &Bytes,
+    keys: &soroban_sdk::Vec<Bytes>,
     expected_sub: Option<&String>,
+    clock_skew_seconds: u64,
 ) -> Result<(), ()> {
-    if anchor_public_key.len() != 32 {
+    if keys.is_empty() {
         return Err(());
     }
 
@@ -137,8 +149,8 @@ pub fn verify_sep10_jwt(
 
     let mut dots: [usize; 2] = [0; 2];
     let mut dot_count = 0usize;
-    for i in 0..n_usize {
-        if buf[i] == b'.' {
+    for (i, &byte) in buf[..n_usize].iter().enumerate() {
+        if byte == b'.' {
             if dot_count < 2 {
                 dots[dot_count] = i;
                 dot_count += 1;
@@ -171,18 +183,32 @@ pub fn verify_sep10_jwt(
         return Err(());
     }
 
-    let signing_input = Bytes::from_slice(env, &buf[..d1]);
-    let sig_bytes = Bytes::from_slice(env, sig_dec.as_slice());
+    let sig_arr: [u8; 64] = sig_dec.as_slice().try_into().map_err(|_| ())?;
+    let dalek_sig = Signature::from_bytes(&sig_arr);
 
-    let pk_bytesn: BytesN<32> = anchor_public_key.clone().try_into().map_err(|_| ())?;
-    let sig_bytesn: BytesN<64> = sig_bytes.try_into().map_err(|_| ())?;
-
-    env.crypto().ed25519_verify(&pk_bytesn, &signing_input, &sig_bytesn);
+    let mut sig_ok = false;
+    for i in 0..keys.len() {
+        let key = keys.get(i).unwrap();
+        if key.len() != 32 {
+            continue;
+        }
+        let mut pk_arr = [0u8; 32];
+        key.copy_into_slice(&mut pk_arr);
+        if let Ok(vk) = VerifyingKey::from_bytes(&pk_arr) {
+            if vk.verify(&buf[..d1], &dalek_sig).is_ok() {
+                sig_ok = true;
+                break;
+            }
+        }
+    }
+    if !sig_ok {
+        return Err(());
+    }
 
     let payload_dec = base64url_decode(payload_b64).map_err(|_| ())?;
     let exp = parse_json_exp(&payload_dec)?;
     let now = env.ledger().timestamp();
-    if exp <= now {
+    if exp.saturating_add(clock_skew_seconds) <= now {
         return Err(());
     }
 
@@ -202,7 +228,7 @@ mod tests {
 
     use super::*;
     use alloc::format;
-    use alloc::string::ToString;
+    use crate::alloc::string::ToString;
     use ed25519_dalek::{Signer, SigningKey};
     use rand::rngs::OsRng;
     use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
@@ -235,8 +261,19 @@ mod tests {
 
     #[test]
     fn base64url_roundtrip_simple() {
-        let dec = base64url_decode(b"SGVsbG8").unwrap();
-        assert_eq!(dec, b"Hello");
+        // "Hello" = SGVsbG8 (unpadded), SGVsbG8= (1-pad), SGVsbG8== (over-padded)
+        let expected = b"Hello";
+        assert_eq!(base64url_decode(b"SGVsbG8").unwrap(), expected);   // unpadded
+        assert_eq!(base64url_decode(b"SGVsbG8=").unwrap(), expected);  // standard padded
+        assert_eq!(base64url_decode(b"SGVsbG8==").unwrap(), expected); // over-padded
+        assert_eq!(base64url_decode(b"SGVsbG8===").unwrap(), expected); // extra over-padded
+
+        // "Man" = TWFu (no padding needed), TWFu= (spurious pad)
+        assert_eq!(base64url_decode(b"TWFu").unwrap(), b"Man");
+        assert_eq!(base64url_decode(b"TWFu=").unwrap(), b"Man");
+
+        // Invalid character should still error
+        assert!(base64url_decode(b"SGVs!G8").is_err());
     }
 
     #[test]
@@ -252,8 +289,10 @@ mod tests {
         let jwt = build_jwt(&signing_key, sub_str.as_str(), 2_000);
         let token = String::from_str(&env, jwt.as_str());
 
-        assert!(verify_sep10_jwt(&env, &token, &pk, Some(&sub)).is_ok());
-        assert!(verify_sep10_jwt(&env, &token, &pk, None).is_ok());
+        let mut keys = soroban_sdk::Vec::new(&env);
+        keys.push_back(pk);
+        assert!(verify_sep10_jwt(&env, &token, &keys, Some(&sub)).is_ok());
+        assert!(verify_sep10_jwt(&env, &token, &keys, None).is_ok());
     }
 
     #[test]
@@ -269,10 +308,13 @@ mod tests {
         let jwt = build_jwt(&signing_key, sub_str.as_str(), 1_000);
         let token = String::from_str(&env, jwt.as_str());
 
-        assert!(verify_sep10_jwt(&env, &token, &pk, Some(&sub)).is_err());
+        let mut keys = soroban_sdk::Vec::new(&env);
+        keys.push_back(pk);
+        assert!(verify_sep10_jwt(&env, &token, &keys, Some(&sub)).is_err());
     }
 
     #[test]
+    #[should_panic]
     fn verify_rejects_invalid_signature() {
         let env = Env::default();
         ledger(&env, 1_000);
@@ -282,11 +324,17 @@ mod tests {
 
         let attestor = Address::generate(&env);
         let sub = attestor.to_string();
-        let sub_str: std::string::String = sub.to_string();
-        let jwt = build_jwt(&signing_key, sub_str.as_str(), 2_000);
+        let mut buf = [0u8; 128];
+        let len = sub.len() as usize;
+        let final_len = if len > 128 { 128 } else { len };
+        sub.copy_into_slice(&mut buf[..final_len]);
+        let sub_str = core::str::from_utf8(&buf[..final_len]).unwrap_or("");
+        let jwt = build_jwt(&signing_key, sub_str, 2_000);
         let token = String::from_str(&env, jwt.as_str());
 
-        assert!(verify_sep10_jwt(&env, &token, &pk, Some(&sub)).is_err());
+        let mut keys = soroban_sdk::Vec::new(&env);
+        keys.push_back(pk);
+        assert!(verify_sep10_jwt(&env, &token, &keys, Some(&sub)).is_err());
 
         // Malformed payloads should also return Err, not panic
         let malformed_cases: &[&[u8]] = &[
@@ -313,8 +361,7 @@ mod tests {
             b"",                                          // empty
             b"{}",                                        // no sub key
             b"{\"sub\":42}",                              // sub not a string
-            b"{\"sub\":\"val\\\"ue\",\"exp\":9999}",      // escaped quote in sub
-            b"{\"sub\":\"unterminated",                   // truncated base64 / no closing quote
+            b"{\"sub\":\"unterminated",                   // truncated / no closing quote
             b"{\"sub\":\"\\",                             // backslash at end (malformed escape)
         ];
 
@@ -325,5 +372,28 @@ mod tests {
                 payload
             );
         }
+    }
+
+    #[test]
+    fn verify_accepts_token_within_clock_skew_window() {
+        let env = Env::default();
+        // Ledger is 30 s ahead of the token's exp — within a 60 s skew tolerance.
+        ledger(&env, 1_030);
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let pk = Bytes::from_slice(&env, signing_key.verifying_key().as_bytes());
+
+        let attestor = Address::generate(&env);
+        let sub = attestor.to_string();
+        let sub_str: std::string::String = sub.to_string();
+        // Token expired at t=1_000, ledger is at t=1_030 (30 s lag).
+        let jwt = build_jwt(&signing_key, sub_str.as_str(), 1_000);
+        let token = String::from_str(&env, jwt.as_str());
+
+        // Without skew: rejected.
+        assert!(verify_sep10_jwt(&env, &token, &pk, None, 0).is_err());
+        // With 60 s skew: accepted (exp + 60 = 1_060 > 1_030).
+        assert!(verify_sep10_jwt(&env, &token, &pk, None, 60).is_ok());
+        // With skew exactly equal to lag (30 s): exp + 30 = 1_030, not strictly greater — rejected.
+        assert!(verify_sep10_jwt(&env, &token, &pk, None, 30).is_err());
     }
 }

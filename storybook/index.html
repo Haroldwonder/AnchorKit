@@ -439,6 +439,151 @@
         .code-string { color: #ce9178; }
         .code-function { color: #dcdcaa; }
 
+        /* SDK installation (npm / yarn) */
+        .sdk-install-section {
+            background: var(--color-surface);
+            border-radius: var(--radius-lg);
+            padding: 28px 32px;
+            margin-bottom: 48px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--color-border);
+        }
+
+        .sdk-install-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .sdk-install-title-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sdk-install-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .version-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            font-family: var(--font-mono);
+            background: linear-gradient(135deg, rgba(108, 92, 231, 0.12), rgba(0, 206, 201, 0.12));
+            color: var(--color-primary-dark);
+            border: 1px solid rgba(108, 92, 231, 0.25);
+        }
+
+        .sdk-package-name {
+            font-size: 0.9rem;
+            color: var(--color-text-muted);
+            margin: 0 0 16px;
+            font-family: var(--font-mono);
+        }
+
+        .pm-tabs {
+            display: inline-flex;
+            padding: 4px;
+            background: var(--color-bg);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--color-border);
+            margin-bottom: 12px;
+        }
+
+        .pm-tab {
+            padding: 8px 18px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            font-weight: 600;
+            font-family: var(--font-sans);
+            background: transparent;
+            color: var(--color-text-muted);
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .pm-tab:hover {
+            color: var(--color-text);
+        }
+
+        .pm-tab[aria-selected="true"] {
+            background: var(--color-surface);
+            color: var(--color-primary-dark);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .install-command-row {
+            display: flex;
+            align-items: stretch;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .install-command-box {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            padding: 14px 18px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: var(--radius-md);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            overflow-x: auto;
+            border: 1px solid #333;
+        }
+
+        .btn-copy {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 20px;
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            font-weight: 600;
+            font-family: var(--font-sans);
+            border: 1px solid var(--color-border);
+            background: var(--color-surface);
+            color: var(--color-text);
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, transform 0.15s;
+            white-space: nowrap;
+        }
+
+        .btn-copy:hover {
+            background: var(--color-bg);
+            border-color: var(--color-primary);
+        }
+
+        .btn-copy:active {
+            transform: scale(0.98);
+        }
+
+        .btn-copy.copied {
+            border-color: var(--color-success);
+            color: var(--color-success);
+            background: rgba(0, 184, 148, 0.08);
+        }
+
+        .sdk-install-hint {
+            margin-top: 12px;
+            font-size: 0.85rem;
+            color: var(--color-text-muted);
+        }
+
         /* Footer */
         .footer {
             background: #1a1a2e;
@@ -511,6 +656,10 @@
                     <span class="nav-icon">🏠</span>
                     Introduction
                 </a>
+                <a href="index.html#sdk-install" class="nav-item">
+                    <span class="nav-icon">📦</span>
+                    SDK Installation
+                </a>
             </div>
             <div class="nav-section">
                 <div class="nav-section-title">Components</div>
@@ -579,6 +728,29 @@
         </section>
 
         <div class="content">
+            <!-- SDK installation (npm / yarn + copy + version) -->
+            <section class="sdk-install-section" id="sdk-install" aria-labelledby="sdk-install-heading">
+                <div class="sdk-install-header">
+                    <div class="sdk-install-title-wrap">
+                        <h2 class="sdk-install-title" id="sdk-install-heading">Install the JavaScript SDK</h2>
+                        <span class="version-badge" title="Package version">v0.1.0</span>
+                    </div>
+                </div>
+                <p class="sdk-package-name">@anchorkit/ui-components</p>
+                <div class="pm-tabs" role="tablist" aria-label="Package manager">
+                    <button type="button" class="pm-tab" role="tab" id="tab-npm" aria-selected="true" aria-controls="panel-install-command">npm</button>
+                    <button type="button" class="pm-tab" role="tab" id="tab-yarn" aria-selected="false" aria-controls="panel-install-command">yarn</button>
+                </div>
+                <div class="install-command-row">
+                    <div class="install-command-box" id="panel-install-command" role="tabpanel" aria-labelledby="tab-npm">npm install @anchorkit/ui-components</div>
+                    <button type="button" class="btn-copy" id="btn-copy-install" aria-label="Copy install command to clipboard">
+                        <span aria-hidden="true">📋</span>
+                        <span class="btn-copy-label">Copy</span>
+                    </button>
+                </div>
+                <p class="sdk-install-hint">Use npm or yarn, then import components in your React app.</p>
+            </section>
+
             <!-- Features -->
             <div class="features-section">
                 <h2 class="section-title">✨ What's Inside</h2>
@@ -712,5 +884,68 @@
             </div>
         </footer>
     </main>
+    <script>
+        (function () {
+            var NPM_CMD = 'npm install @anchorkit/ui-components';
+            var YARN_CMD = 'yarn add @anchorkit/ui-components';
+            var tabNpm = document.getElementById('tab-npm');
+            var tabYarn = document.getElementById('tab-yarn');
+            var panel = document.getElementById('panel-install-command');
+            var btnCopy = document.getElementById('btn-copy-install');
+            var copyLabel = btnCopy ? btnCopy.querySelector('.btn-copy-label') : null;
+
+            function setManager(isNpm) {
+                if (!tabNpm || !tabYarn || !panel) return;
+                tabNpm.setAttribute('aria-selected', isNpm ? 'true' : 'false');
+                tabYarn.setAttribute('aria-selected', isNpm ? 'false' : 'true');
+                panel.textContent = isNpm ? NPM_CMD : YARN_CMD;
+                panel.setAttribute('aria-labelledby', isNpm ? 'tab-npm' : 'tab-yarn');
+            }
+
+            function currentCommand() {
+                if (!panel) return '';
+                return panel.textContent.trim();
+            }
+
+            function flashCopied() {
+                if (!btnCopy || !copyLabel) return;
+                btnCopy.classList.add('copied');
+                copyLabel.textContent = 'Copied!';
+                clearTimeout(flashCopied._t);
+                flashCopied._t = setTimeout(function () {
+                    btnCopy.classList.remove('copied');
+                    copyLabel.textContent = 'Copy';
+                }, 2000);
+            }
+
+            if (tabNpm) tabNpm.addEventListener('click', function () { setManager(true); });
+            if (tabYarn) tabYarn.addEventListener('click', function () { setManager(false); });
+
+            if (btnCopy) {
+                btnCopy.addEventListener('click', function () {
+                    var text = currentCommand();
+                    function fallbackCopy() {
+                        var ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.setAttribute('readonly', '');
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        try {
+                            document.execCommand('copy');
+                            flashCopied();
+                        } catch (e) { /* ignore */ }
+                        document.body.removeChild(ta);
+                    }
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(flashCopied).catch(fallbackCopy);
+                    } else {
+                        fallbackCopy();
+                    }
+                });
+            }
+        })();
+    </script>
 </body>
 </html>

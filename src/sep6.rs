@@ -3,10 +3,11 @@
 //! Provides normalized service functions for initiating deposits, withdrawals,
 //! and fetching transaction status across different anchors.
 
-#![cfg_attr(not(test), no_std)]
 
 extern crate alloc;
-use alloc::string::{String, ToString};
+use alloc::string::String;
+#[cfg(test)]
+use alloc::string::ToString;
 
 use crate::errors::Error;
 
@@ -28,6 +29,7 @@ pub enum TransactionStatus {
 }
 
 impl TransactionStatus {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "pending_external" => Self::PendingExternal,
@@ -85,6 +87,8 @@ pub struct WithdrawalResponse {
     pub transaction_id: String,
     /// Stellar account the user should send funds to.
     pub account_id: String,
+    /// Destination bank/wallet account for the off-chain withdrawal, if provided.
+    pub dest_account_id: Option<String>,
     /// Optional memo to attach to the Stellar payment.
     pub memo: Option<String>,
     /// Optional memo type (`text`, `id`, `hash`).
@@ -123,6 +127,7 @@ pub enum TransactionKind {
 }
 
 impl TransactionKind {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "withdrawal" | "withdraw" => Self::Withdrawal,
@@ -150,6 +155,7 @@ pub struct RawDepositResponse {
 pub struct RawWithdrawalResponse {
     pub transaction_id: String,
     pub account_id: String,
+    pub dest_account_id: Option<String>,
     pub memo: Option<String>,
     pub memo_type: Option<String>,
     pub min_amount: Option<u64>,
@@ -173,10 +179,10 @@ pub struct RawTransactionResponse {
 
 /// Normalize a raw anchor deposit response into a canonical [`DepositResponse`].
 ///
-/// Returns `Err(Error::InvalidTransactionIntent)` if required fields are missing.
+/// Returns `Err(Error::invalid_transaction_intent())` if required fields are missing.
 pub fn initiate_deposit(raw: RawDepositResponse) -> Result<DepositResponse, Error> {
     if raw.transaction_id.is_empty() || raw.how.is_empty() {
-        return Err(Error::InvalidTransactionIntent);
+        return Err(Error::invalid_transaction_intent());
     }
 
     Ok(DepositResponse {
@@ -196,15 +202,16 @@ pub fn initiate_deposit(raw: RawDepositResponse) -> Result<DepositResponse, Erro
 
 /// Normalize a raw anchor withdrawal response into a canonical [`WithdrawalResponse`].
 ///
-/// Returns `Err(Error::InvalidTransactionIntent)` if required fields are missing.
+/// Returns `Err(Error::invalid_transaction_intent())` if required fields are missing.
 pub fn initiate_withdrawal(raw: RawWithdrawalResponse) -> Result<WithdrawalResponse, Error> {
     if raw.transaction_id.is_empty() || raw.account_id.is_empty() {
-        return Err(Error::InvalidTransactionIntent);
+        return Err(Error::invalid_transaction_intent());
     }
 
     Ok(WithdrawalResponse {
         transaction_id: raw.transaction_id,
         account_id: raw.account_id,
+        dest_account_id: raw.dest_account_id,
         memo: raw.memo,
         memo_type: raw.memo_type,
         min_amount: raw.min_amount,
@@ -221,12 +228,12 @@ pub fn initiate_withdrawal(raw: RawWithdrawalResponse) -> Result<WithdrawalRespo
 /// Normalize a raw anchor transaction-status response into a canonical
 /// [`TransactionStatusResponse`].
 ///
-/// Returns `Err(Error::InvalidTransactionIntent)` if the transaction ID is missing.
+/// Returns `Err(Error::invalid_transaction_intent())` if the transaction ID is missing.
 pub fn fetch_transaction_status(
     raw: RawTransactionResponse,
 ) -> Result<TransactionStatusResponse, Error> {
     if raw.transaction_id.is_empty() {
-        return Err(Error::InvalidTransactionIntent);
+        return Err(Error::invalid_transaction_intent());
     }
 
     Ok(TransactionStatusResponse {
@@ -266,6 +273,7 @@ mod tests {
         RawWithdrawalResponse {
             transaction_id: "txn-002".to_string(),
             account_id: "GABC123".to_string(),
+            dest_account_id: Some("bank-account-9876".to_string()),
             memo: Some("12345".to_string()),
             memo_type: Some("id".to_string()),
             min_amount: Some(5),
@@ -299,7 +307,7 @@ mod tests {
     fn test_initiate_deposit_missing_fields_returns_error() {
         let mut raw = raw_deposit();
         raw.transaction_id = "".to_string();
-        assert_eq!(initiate_deposit(raw), Err(Error::InvalidTransactionIntent));
+        assert_eq!(initiate_deposit(raw), Err(Error::invalid_transaction_intent()));
     }
 
     #[test]
@@ -316,6 +324,7 @@ mod tests {
         assert_eq!(resp.transaction_id, "txn-002");
         assert_eq!(resp.status, TransactionStatus::PendingUser);
         assert_eq!(resp.memo_type, Some("id".to_string()));
+        assert_eq!(resp.dest_account_id, Some("bank-account-9876".to_string()));
     }
 
     #[test]
@@ -324,7 +333,7 @@ mod tests {
         raw.account_id = "".to_string();
         assert_eq!(
             initiate_withdrawal(raw),
-            Err(Error::InvalidTransactionIntent)
+            Err(Error::invalid_transaction_intent())
         );
     }
 
@@ -342,7 +351,7 @@ mod tests {
         raw.transaction_id = "".to_string();
         assert_eq!(
             fetch_transaction_status(raw),
-            Err(Error::InvalidTransactionIntent)
+            Err(Error::invalid_transaction_intent())
         );
     }
 

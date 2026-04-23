@@ -6,7 +6,8 @@ mod anchor_info_discovery_tests {
         Address, Env, String, Vec,
     };
 
-    use crate::contract::{AnchorKitContract, AnchorKitContractClient, AssetInfo, StellarToml};
+    use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+    use crate::types::{AssetInfo, StellarToml};
 
     fn make_env() -> Env {
         let env = Env::default();
@@ -205,6 +206,17 @@ mod anchor_info_discovery_tests {
         assert_eq!(max, 1_000_000);
     }
 
+    // Issue #274: uncached anchor must return Err(CacheNotFound), not (0, 0)
+    #[test]
+    fn test_get_deposit_limits_uncached_returns_error() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let (client, anchor) = setup(&env);
+
+        let result = client.try_get_anchor_deposit_limits(&anchor, &String::from_str(&env, "USDC"));
+        assert!(result.is_err(), "expected CacheNotFound error for uncached anchor");
+    }
+
     #[test]
     fn test_get_withdrawal_limits() {
         let env = make_env();
@@ -216,6 +228,17 @@ mod anchor_info_discovery_tests {
         let (min, max) = client.get_anchor_withdrawal_limits(&anchor, &String::from_str(&env, "USDC"));
         assert_eq!(min, 500);
         assert_eq!(max, 500_000);
+    }
+
+    // Issue #274: uncached anchor must return Err(CacheNotFound), not (0, 0)
+    #[test]
+    fn test_get_withdrawal_limits_uncached_returns_error() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let (client, anchor) = setup(&env);
+
+        let result = client.try_get_anchor_withdrawal_limits(&anchor, &String::from_str(&env, "USDC"));
+        assert!(result.is_err(), "expected CacheNotFound error for uncached anchor");
     }
 
     #[test]
@@ -392,5 +415,24 @@ mod anchor_info_discovery_tests {
         assert_eq!(dep_pct, 10);
         assert_eq!(wit_fixed, 50);
         assert_eq!(wit_pct, 5);
+    }
+
+    // Issue #277: zero-fee anchors (common on testnet) must be handled without divide-by-zero
+    #[test]
+    fn test_fee_structure_zero_fee_anchor() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let (client, anchor) = setup(&env);
+
+        client.fetch_anchor_info(&anchor, &sample_toml(&env), &3600u64);
+
+        // XLM asset has fee_fixed = 0 and fee_percent = 0 (see xlm_asset helper)
+        let (dep_fixed, dep_pct) = client.get_anchor_deposit_fees(&anchor, &String::from_str(&env, "XLM"));
+        let (wit_fixed, wit_pct) = client.get_anchor_withdrawal_fees(&anchor, &String::from_str(&env, "XLM"));
+
+        assert_eq!(dep_fixed, 0, "zero-fee anchor deposit fixed fee should be 0");
+        assert_eq!(dep_pct, 0, "zero-fee anchor deposit percent fee should be 0");
+        assert_eq!(wit_fixed, 0, "zero-fee anchor withdrawal fixed fee should be 0");
+        assert_eq!(wit_pct, 0, "zero-fee anchor withdrawal percent fee should be 0");
     }
 }

@@ -3,8 +3,11 @@
 //! This module implements per-attestor rate limiting for attestation submissions
 //! to prevent spam and abuse of the contract.
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
-use crate::errors::{AnchorKitError, ErrorCode};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
+use crate::errors::AnchorKitError;
+
+#[cfg(test)]
+use crate::errors::ErrorCode;
 
 /// Rate limit configuration stored in contract storage
 #[contracttype]
@@ -34,51 +37,6 @@ pub struct RateLimiter;
 
 #[contractimpl]
 impl RateLimiter {
-    /// Check if an attestor can submit an attestation and increment their counter.
-    ///
-    /// Uses the per-attestor config override when one exists, otherwise falls back to the
-    /// global config.
-    ///
-    /// Returns `Ok(())` if the attestor is within the rate limit.
-    /// Returns `Err(AnchorKitError::rate_limit_exceeded())` if the limit is exceeded.
-pub fn check_and_increment(
-        env: Env,
-        attestor: Address,
-    ) -> Result<(), AnchorKitError> {
-        let config = Self::get_effective_config(env, attestor);
-        let current_ledger = env.ledger().sequence();
-        let state_key = Self::get_state_key(&env, &attestor);
-        
-        // Get or initialize rate limit state
-        let mut state = env.storage().persistent().get::<_, RateLimitState>(&state_key)
-            .unwrap_or(RateLimitState {
-                submission_count: 0,
-                window_start_ledger: current_ledger,
-                total_requests: 0,
-            });
-        
-        // Check if window has expired and reset if needed
-        if Self::is_window_expired(current_ledger, state.window_start_ledger, config.window_length) {
-            state.submission_count = 0;
-            state.window_start_ledger = current_ledger;
-        }
-        
-        // Increment total_requests on every call regardless of window state
-        state.total_requests += 1;
-
-        // Check if limit is exceeded
-        if state.submission_count >= config.max_submissions {
-            env.storage().persistent().set(&state_key, &state);
-            return Err(AnchorKitError::rate_limit_exceeded());
-        }
-        
-        // Increment window counter and save state
-        state.submission_count += 1;
-        env.storage().persistent().set(&state_key, &state);
-        
-        Ok(())
-    }
-    
     /// Get the current rate limit state for an attestor
     pub fn get_state(env: Env, attestor: Address) -> RateLimitState {
         let state_key = Self::get_state_key(&env, &attestor);
@@ -88,27 +46,6 @@ pub fn check_and_increment(
                 window_start_ledger: env.ledger().sequence(),
                 total_requests: 0,
             })
-    }
-    
-    /// Update the global rate limit configuration, or set a per-attestor override when
-    /// `attestor` is `Some`.
-pub fn update_config(
-        env: Env,
-        _admin: Address,
-        config: RateLimitConfig,
-        attestor: Option<Address>,
-    ) -> Result<(), AnchorKitError> {
-        match attestor {
-            Some(addr) => {
-                let key = Self::get_attestor_config_key(env, addr);
-                env.storage().persistent().set(&key, config);
-            }
-            None => {
-                let key = Self::get_config_key(env);
-                env.storage().persistent().set(&key, config);
-            }
-        }
-        Ok(())
     }
 
     /// Get the current rate limit configuration
@@ -120,46 +57,96 @@ pub fn update_config(
                 window_length: 100,
             })
     }
+}
+
+impl RateLimiter {
+    /// Check if an attestor can submit an attestation and increment their counter.
+    pub fn check_and_increment(
+        env: Env,
+        attestor: Address,
+    ) -> Result<(), ErrorCode> {
+        let config = Self::get_effective_config(env.clone(), attestor.clone());
+        let current_ledger = env.ledger().sequence();
+        let state_key = Self::get_state_key(env, attestor);
+
+        let mut state = env.storage().persistent().get::<_, RateLimitState>(&state_key)
+            .unwrap_or(RateLimitState {
+                submission_count: 0,
+                window_start_ledger: current_ledger,
+                total_requests: 0,
+            });
+
+        if Self::is_window_expired(current_ledger, state.window_start_ledger, config.window_length) {
+            state.submission_count = 0;
+            state.window_start_ledger = current_ledger;
+        }
+
+        state.total_requests += 1;
+
+        if state.submission_count >= config.max_submissions {
+            env.storage().persistent().set(&state_key, &state);
+            return Err(ErrorCode::RateLimitExceeded);
+        }
+
+        state.submission_count += 1;
+        env.storage().persistent().set(&state_key, &state);
+
+        Ok(())
+    }
+
+    /// Update the global rate limit configuration, or set a per-attestor override when
+    /// `attestor` is `Some`.
+    pub fn update_config(
+        env: Env,
+        _admin: Address,
+        config: RateLimitConfig,
+        attestor: Option<Address>,
+    ) -> Result<(), ErrorCode> {
+        match attestor {
+            Some(addr) => {
+                let key = Self::get_attestor_config_key(&env, &addr);
+                env.storage().persistent().set(&key, &config);
+            }
+            None => {
+                let key = Self::get_config_key(&env);
+                env.storage().persistent().set(&key, &config);
+            }
+        }
+        Ok(())
+    }
 
     /// Get the effective config for an attestor: per-attestor override if set, else global.
-pub fn get_effective_config(env: Env, attestor: Address) -> RateLimitConfig {
-        let key = Self::get_attestor_config_key(env, attestor);
+    pub fn get_effective_config(env: Env, attestor: Address) -> RateLimitConfig {
+        let key = Self::get_attestor_config_key(&env, &attestor);
         env.storage().persistent().get::<_, RateLimitConfig>(&key)
-            .unwrap_or_else(|| Self::get_config(env))
+            .unwrap_or_else(|| Self::get_config(env.clone()))
     }
-    
-    /// Check if a window has expired
+
     fn is_window_expired(current_ledger: u32, window_start_ledger: u32, window_length: u32) -> bool {
         current_ledger.saturating_sub(window_start_ledger) >= window_length
     }
-    
-    /// Generate storage key for rate limit state
-fn get_state_key(env: Env, attestor: Address) -> soroban_sdk::BytesN<32> {
+
+    fn get_state_key(env: &Env, attestor: &Address) -> soroban_sdk::BytesN<32> {
         let address_str = attestor.to_string();
-        let mut address_bytes = [0u8; 128]; // Buffer for address string
+        let mut address_bytes = [0u8; 128];
         let len = address_str.len() as usize;
         let final_len = if len > 128 { 128 } else { len };
         address_str.copy_into_slice(&mut address_bytes[..final_len]);
         let bytes = soroban_sdk::Bytes::from_slice(env, &address_bytes[..final_len]);
-        let hash = env.crypto().sha256(&bytes);
-        hash.into()
+        env.crypto().sha256(&bytes).into()
     }
-    
-    /// Generate storage key for rate limit config
+
     fn get_config_key(env: &Env) -> soroban_sdk::BytesN<32> {
-        // Use a fixed key for config (32 bytes)
         let config_key = *b"rate_limit_config_______________";
         soroban_sdk::BytesN::from_array(env, &config_key)
     }
 
-    /// Generate storage key for a per-attestor config override
-fn get_attestor_config_key(env: Env, attestor: Address) -> soroban_sdk::BytesN<32> {
+    fn get_attestor_config_key(env: &Env, attestor: &Address) -> soroban_sdk::BytesN<32> {
         let address_str = attestor.to_string();
         let mut buf = [0u8; 56];
         address_str.copy_into_slice(&mut buf);
-        // Prefix with a distinct byte so it never collides with the state key
         let mut prefixed = [0u8; 57];
-        prefixed[0] = b'c'; // 'c' for config
+        prefixed[0] = b'c';
         prefixed[1..].copy_from_slice(&buf);
         let bytes = soroban_sdk::Bytes::from_slice(env, &prefixed);
         env.crypto().sha256(&bytes).into()
@@ -172,7 +159,7 @@ mod tests {
     use soroban_sdk::testutils::Address as _;
 
     fn make_contract(env: &Env) -> Address {
-        <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(env)
+        env.register_contract(None, crate::rate_limiter::RateLimiter)
     }
 
     #[test]
@@ -253,9 +240,11 @@ mod tests {
             RateLimiter::update_config(&env, &contract_address, &RateLimitConfig { max_submissions: 1, window_length: 10 }, None).unwrap();
         });
 
+        // First call succeeds, count = 1
         assert!(env.as_contract(&contract_address, &|| {
             RateLimiter::check_and_increment(&env, &attestor)
         }).is_ok());
+        // Second call hits limit, count stays at 1
         assert!(env.as_contract(&contract_address, &|| {
             RateLimiter::check_and_increment(&env, &attestor)
         }).is_err());
@@ -263,7 +252,8 @@ mod tests {
         let state = env.as_contract(&contract_address, &|| {
             RateLimiter::get_state(env.clone(), attestor.clone())
         });
-        assert_eq!(state.submission_count, 2);
+        assert_eq!(state.submission_count, 1);
+        assert_eq!(state.total_requests, 2);
     }
 
     #[test]

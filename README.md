@@ -143,6 +143,7 @@ const auditLog = await contract.get_audit_log(0);
 - **[docs/features/SEP10_AUTH.md](./docs/features/SEP10_AUTH.md)** - SEP-10 authentication
 - **[docs/features/SDK_CONFIG.md](./docs/features/SDK_CONFIG.md)** - SDK configuration
 - **[docs/features/STATUS_MONITOR.md](./docs/features/STATUS_MONITOR.md)** - Status monitoring
+- **[docs/features/ROUTING_STRATEGY.md](./docs/features/ROUTING_STRATEGY.md)** - Routing strategy selection (`route_transaction`)
 
 ### Guides
 - **[docs/guides/DOCTOR_COMMAND.md](./docs/guides/DOCTOR_COMMAND.md)** - CLI doctor command and environment diagnostics

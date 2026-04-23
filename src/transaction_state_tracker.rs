@@ -46,11 +46,13 @@ pub struct TransactionStateRecord {
 
 /// Transaction state tracker
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct TransactionStateTracker {
     cache: alloc::vec::Vec<TransactionStateRecord>,
     is_dev_mode: bool,
 }
 
+#[allow(dead_code)]
 impl TransactionStateTracker {
     /// Create a new transaction state tracker
     pub fn new(is_dev_mode: bool) -> Self {
@@ -138,15 +140,13 @@ impl TransactionStateTracker {
                     return Ok(record.clone());
                 }
             }
-            return Err(String::from_str(
+            Err(String::from_str(
                 env,
                 "Transaction not found in cache",
-            ));
+            ))
         } else {
-            // In production, data would be persisted to DB
-            // For dev mode, use a dummy address
             let dummy_address = Address::from_string(&String::from_str(env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"));
-            let mut record = TransactionStateRecord {
+            let record = TransactionStateRecord {
                 transaction_id,
                 state: new_state,
                 initiator: dummy_address,
@@ -162,7 +162,7 @@ impl TransactionStateTracker {
     pub fn get_transaction_state(
         &self,
         transaction_id: u64,
-        env: &Env,
+        _env: &Env,
     ) -> Result<Option<TransactionStateRecord>, String> {
         if self.is_dev_mode {
             for record in self.cache.iter() {

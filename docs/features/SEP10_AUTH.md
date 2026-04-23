@@ -22,12 +22,24 @@ The contract verifies **JWS compact** tokens whose header uses **EdDSA** (Ed2551
    - Requires header JSON to contain `EdDSA`.
    - Verifies Ed25519 over the ASCII signing input `header_b64 + "." + payload_b64` via `env.crypto().ed25519_verify`.
    - Decodes the payload JSON and requires:
-     - `exp` (Unix seconds) **strictly greater** than `env.ledger().timestamp()`.
+     - `exp` (Unix seconds) **strictly greater** than `env.ledger().timestamp() - clock_skew_seconds` (see [Clock skew](#clock-skew) below).
      - A parseable string `sub` claim (Stellar strkey of the authenticated account).
 
 3. **Attestor registration** — `register_attestor(env, attestor, sep10_token, sep10_issuer)`:
    - Requires admin auth (unchanged).
    - Runs the same checks as `verify_sep10_token`, and additionally requires `sub` to equal **`attestor.to_string()`** (the strkey of the address being registered).
+
+### Clock skew
+
+The Soroban ledger timestamp (`env.ledger().timestamp()`) reflects the time the last ledger was closed, which can lag wall-clock time by several seconds to a minute under normal network conditions. If a JWT is issued with a short TTL (e.g. 60 s) and the ledger lags by 30 s, the token may appear expired on-chain even though it is still valid by wall-clock time.
+
+`verify_sep10_jwt` accepts a `clock_skew_seconds: u64` parameter to accommodate this:
+
+```
+token accepted  iff  exp + clock_skew_seconds > ledger_timestamp
+```
+
+The contract entry points (`verify_sep10_token`, `register_attestor`) currently pass `clock_skew_seconds = 0` for strict enforcement. Operators who observe spurious expiry rejections should increase this value — **60 seconds** is a reasonable default for Stellar Testnet/Mainnet. Values above 300 s are not recommended as they meaningfully extend the window in which a revoked token remains accepted.
 
 Token length is capped (`MAX_JWT_LEN`, 2048 characters) to bound host work.
 
@@ -61,8 +73,10 @@ cargo test --lib sep10
 Coverage includes:
 
 - Valid token (Ed25519 JWS, future `exp`).
-- Expired token (`exp` ≤ ledger timestamp).
+- Expired token (`exp` ≤ ledger timestamp, `clock_skew_seconds = 0`).
+- Token within clock skew window (expired by wall clock but accepted with `clock_skew_seconds = 60`).
 - Invalid signature (wrong verifying key).
+- Unauthorized `set_sep10_jwt_verifying_key` call (non-admin) panics.
 - Contract integration: `verify_sep10_token`, `register_attestor` with `set_sep10_jwt_verifying_key`.
 
 ## Compliance notes
@@ -75,3 +89,4 @@ Coverage includes:
 - Ed25519 verification uses the Soroban host’s `ed25519_verify`.
 - Registration binds the JWT’s `sub` to the `attestor` address being added.
 - Admin-only setup of verification keys; registration remains admin-gated.
+- `set_sep10_jwt_verifying_key` is admin-gated: it calls `admin.require_auth()` and panics if the caller is not the stored admin. An attacker who could overwrite the verifying key would be able to forge valid SEP-10 tokens for any issuer, so this guard is critical.

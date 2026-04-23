@@ -9,7 +9,8 @@ mod routing_tests {
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
 
-    use crate::contract::{AnchorKitContract, AnchorKitContractClient, RoutingOptions, RoutingRequest};
+    use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+    use crate::types::{RoutingOptions, RoutingRequest};
     use crate::sep10_test_util::register_attestor_with_sep10;
 
     fn make_env() -> Env {
@@ -141,6 +142,7 @@ mod routing_tests {
         let anchor1 = Address::generate(&env);
         let anchor2 = Address::generate(&env);
         register_anchor(&env, &client, &anchor1);
+        // anchor1: reputation 3000 — below the threshold we will set
         client.set_anchor_metadata(&anchor1, &3000u32, &300u64, &7500u32, &9900u32, &1_000_000u64);
         client.submit_quote(
             &anchor1,
@@ -150,6 +152,7 @@ mod routing_tests {
         );
 
         register_anchor(&env, &client, &anchor2);
+        // anchor2: reputation 8000 — above the threshold
         client.set_anchor_metadata(&anchor2, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64);
         client.submit_quote(
             &anchor2,
@@ -159,18 +162,91 @@ mod routing_tests {
         );
 
         let mut strategy = Vec::new(&env);
-        strategy.push_back(Symbol::new(&env, "HighestReputation"));
+        strategy.push_back(Symbol::new(&env, "LowestFee"));
+
+        // min_reputation = 5000 excludes anchor1 (3000 < 5000); only anchor2 qualifies
         let options = RoutingOptions {
             request: make_request(&env),
             strategy,
-            min_reputation: 0,
+            min_reputation: 5000,
             max_anchors: 2,
             require_kyc: false,
         };
 
-        // anchor2 has higher reputation (8000 > 3000)
         let best = client.route_transaction(&options);
         assert_eq!(best.anchor, anchor2);
+    }
+
+    #[test]
+    fn test_filter_by_reputation_mixed_scores() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let low = Address::generate(&env);
+        let mid = Address::generate(&env);
+        let high = Address::generate(&env);
+
+        for (anchor, rep) in [(&low, 1000u32), (&mid, 5000u32), (&high, 9000u32)] {
+            register_anchor(&env, &client, anchor);
+            client.set_anchor_metadata(anchor, &rep, &300u64, &7500u32, &9900u32, &1_000_000u64);
+            client.submit_quote(
+                anchor,
+                &String::from_str(&env, "USD"),
+                &String::from_str(&env, "USDC"),
+                &10000u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+            );
+        }
+
+        let mut strategy = Vec::new(&env);
+        strategy.push_back(Symbol::new(&env, "HighestReputation"));
+
+        // threshold = 4000: excludes low (1000), keeps mid (5000) and high (9000)
+        let options = RoutingOptions {
+            request: make_request(&env),
+            strategy,
+            min_reputation: 4000,
+            max_anchors: 3,
+            require_kyc: false,
+        };
+
+        let best = client.route_transaction(&options);
+        // low must not be selected; high has the highest reputation among qualifiers
+        assert_ne!(best.anchor, low);
+        assert_eq!(best.anchor, high);
+    }
+
+    #[test]
+    fn test_min_reputation_zero_includes_all() {
+        // Default min_reputation = 0 means no anchor is filtered by reputation alone.
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        // reputation_score = 0 (minimum possible)
+        client.set_anchor_metadata(&anchor, &0u32, &300u64, &7500u32, &9900u32, &1_000_000u64);
+        client.submit_quote(
+            &anchor,
+            &String::from_str(&env, "USD"),
+            &String::from_str(&env, "USDC"),
+            &10000u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+        );
+
+        let mut strategy = Vec::new(&env);
+        strategy.push_back(Symbol::new(&env, "LowestFee"));
+        let options = RoutingOptions {
+            request: make_request(&env),
+            strategy,
+            min_reputation: 0, // no filter
+            max_anchors: 1,
+            require_kyc: false,
+        };
+
+        // anchor with reputation 0 is still routable when min_reputation = 0
+        let best = client.route_transaction(&options);
+        assert_eq!(best.anchor, anchor);
     }
 
     #[test]
@@ -375,5 +451,71 @@ mod routing_tests {
         // Anchor no longer routable
         let result = client.try_route_transaction(&options);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_balanced_strategy() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        // Anchor A: low fee (10), slow (1000s), low reputation (2000)
+        //   fee_term  = 40_000 / 10  = 4000
+        //   time_term = 30_000 / 1000 = 30
+        //   rep_term  = 2000 * 30 / 10_000 = 6
+        //   score = 4036
+        let anchor_a = Address::generate(&env);
+        register_anchor(&env, &client, &anchor_a);
+        client.set_anchor_metadata(&anchor_a, &2000u32, &1000u64, &7500u32, &9900u32, &1_000_000u64);
+        client.submit_quote(
+            &anchor_a,
+            &String::from_str(&env, "USD"),
+            &String::from_str(&env, "USDC"),
+            &10000u64, &10u32, &100u64, &100000u64, &1_003_600u64,
+        );
+
+        // Anchor B: high fee (50), fast (100s), high reputation (9000)
+        //   fee_term  = 40_000 / 50  = 800
+        //   time_term = 30_000 / 100 = 300
+        //   rep_term  = 9000 * 30 / 10_000 = 27
+        //   score = 1127
+        let anchor_b = Address::generate(&env);
+        register_anchor(&env, &client, &anchor_b);
+        client.set_anchor_metadata(&anchor_b, &9000u32, &100u64, &7500u32, &9900u32, &1_000_000u64);
+        client.submit_quote(
+            &anchor_b,
+            &String::from_str(&env, "USD"),
+            &String::from_str(&env, "USDC"),
+            &10000u64, &50u32, &100u64, &100000u64, &1_003_600u64,
+        );
+
+        // Anchor C: medium fee (20), medium speed (200s), medium reputation (6000)
+        //   fee_term  = 40_000 / 20  = 2000
+        //   time_term = 30_000 / 200 = 150
+        //   rep_term  = 6000 * 30 / 10_000 = 18
+        //   score = 2168
+        let anchor_c = Address::generate(&env);
+        register_anchor(&env, &client, &anchor_c);
+        client.set_anchor_metadata(&anchor_c, &6000u32, &200u64, &7500u32, &9900u32, &1_000_000u64);
+        client.submit_quote(
+            &anchor_c,
+            &String::from_str(&env, "USD"),
+            &String::from_str(&env, "USDC"),
+            &10000u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+        );
+
+        let mut strategy = Vec::new(&env);
+        strategy.push_back(Symbol::new(&env, "Balanced"));
+        let options = RoutingOptions {
+            request: make_request(&env),
+            strategy,
+            min_reputation: 0,
+            max_anchors: 3,
+            require_kyc: false,
+        };
+
+        // anchor_a wins: score 4036 > anchor_c 2168 > anchor_b 1127
+        let best = client.route_transaction(&options);
+        assert_eq!(best.anchor, anchor_a);
     }
 }

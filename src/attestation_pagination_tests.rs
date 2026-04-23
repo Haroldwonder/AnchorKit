@@ -181,6 +181,32 @@ mod attestation_pagination_tests {
     }
 
     #[test]
+    #[should_panic]
+    fn test_attestation_id_overflow_panics() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let subject = Address::generate(&env);
+        client.initialize(&admin);
+
+        // Seed the counter to u64::MAX so the next increment overflows
+        env.as_contract(&contract_id, &|| {
+            let ck = soroban_sdk::vec![&env, soroban_sdk::symbol_short!("COUNTER")];
+            env.storage().instance().set(&ck, &u64::MAX);
+        });
+
+        let sk = SigningKey::generate(&mut OsRng);
+        register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
+
+        // This should panic due to overflow guard
+        client.submit_attestation(&attestor, &subject, &1700000001, &payload(&env, 1), &sig(&env, 1));
+    }
+
+    #[test]
     fn test_list_attestations_offset_out_of_bounds() {
         let env = make_env();
         setup_ledger(&env);

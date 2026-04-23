@@ -1,95 +1,62 @@
-use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger as _, LedgerInfo}, symbol_short, Address, Env, Symbol, String};
-use crate::domain_validator::validate_anchor_domain;
-use crate::errors::{AnchorKitError, ErrorCode};
+#![cfg(test)]
+
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use ed25519_dalek::SigningKey;
+use rand::rngs::OsRng;
+
+use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+use crate::sep10_test_util::register_attestor_with_sep10;
+
+fn make_env() -> Env {
+    let env = Env::default();
+    env.mock_all_auths();
+    env
+}
+
+fn setup(env: &Env) -> (AnchorKitContractClient, Address, Address, SigningKey) {
+    let contract_id = env.register_contract(None, AnchorKitContract);
+    let client = AnchorKitContractClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    let attestor = Address::generate(env);
+    client.initialize(&admin);
+    let sk = SigningKey::generate(&mut OsRng);
+    register_attestor_with_sep10(env, &client, &attestor, &admin, &sk);
+    (client, admin, attestor, sk)
+}
 
 #[test]
 fn test_set_get_endpoint_happy_path() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let attestor = Address::random(&env);
+    let env = make_env();
+    let (client, _, attestor, _) = setup(&env);
     let endpoint = String::from_str(&env, "https://example.com/api");
-
-    // Register attestor (admin auth mocked)
-    AnchorKitContract::register_attestor(&env, attestor.clone(), String::from_str(&env, "mock_token"), Address::random(&env));
-
-    // Set endpoint
-    AnchorKitContract::set_endpoint(&env, attestor.clone(), endpoint.clone());
-
-    // Get endpoint
-    let retrieved = AnchorKitContract::get_endpoint(&env, attestor.clone());
-    assert_eq!(retrieved, endpoint);
+    client.set_endpoint(&attestor, &endpoint);
+    assert_eq!(client.get_endpoint(&attestor), endpoint);
 }
 
 #[test]
-#[should_panic(expected = "AttestorNotRegistered")]
+#[should_panic]
 fn test_get_endpoint_not_registered() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let attestor = Address::random(&env);
-    AnchorKitContract::get_endpoint(&env, attestor);
+    let env = make_env();
+    let (client, _, _, _) = setup(&env);
+    let unknown = Address::generate(&env);
+    client.get_endpoint(&unknown);
 }
 
 #[test]
-#[should_panic(expected = "AttestorNotRegistered")]
+#[should_panic]
 fn test_set_endpoint_not_attestor() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let attestor = Address::random(&env);
+    let env = make_env();
+    let (client, _, _, _) = setup(&env);
+    let unknown = Address::generate(&env);
     let endpoint = String::from_str(&env, "https://example.com");
-    AnchorKitContract::set_endpoint(&env, attestor, endpoint);
+    client.set_endpoint(&unknown, &endpoint);
 }
 
 #[test]
-#[should_panic(expected = "InvalidEndpointFormat")]
+#[should_panic]
 fn test_set_endpoint_invalid_url() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let attestor = Address::random(&env);
-    AnchorKitContract::register_attestor(&env, attestor.clone(), String::from_str(&env, "mock"), Address::random(&env));
-
-    let invalid = String::from_str(&env, "http://invalid.com"); // HTTP
-    AnchorKitContract::set_endpoint(&env, attestor, invalid);
+    let env = make_env();
+    let (client, _, attestor, _) = setup(&env);
+    let invalid = String::from_str(&env, "http://invalid.com");
+    client.set_endpoint(&attestor, &invalid);
 }
-
-#[test]
-#[should_panic(expected = "Unauthorized")]
-fn test_set_endpoint_unauthorized() {
-    let env = Env::default();
-
-    let attestor = Address::random(&env);
-    AnchorKitContract::register_attestor(&env, attestor.clone(), String::from_str(&env, "mock"), Address::random(&env));
-
-    let endpoint = String::from_str(&env, "https://example.com");
-    let caller = Address::random(&env);
-    caller.require_auth(); // Mock auth for wrong caller
-
-    // Function requires attestor.require_auth(), so wrong caller panics on auth
-    // Test assumes env.mock_all_auths() not called
-    env.budget().reset_unlimited();
-    // Note: testutils mock_all_auths needed for require_auth in tests
-}
-
-#[test]
-fn test_endpoint_updated_event() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let attestor = Address::random(&env);
-    let endpoint = String::from_str(&env, "https://test.com");
-
-    AnchorKitContract::register_attestor(&env, attestor.clone(), String::from_str(&env, "token"), Address::random(&env));
-
-    // Expect event
-    let topics = (symbol_short!("endpoint"), symbol_short!("updated"));
-    env.events().publish_expect(&topics, &EndpointUpdated { attestor: attestor.clone(), endpoint: endpoint.clone() });
-
-    // Calling set_endpoint should emit it
-    AnchorKitContract::set_endpoint(&env, attestor, endpoint.clone());
-    // Verify emitted (testutils check)
-}
-

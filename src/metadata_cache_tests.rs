@@ -6,7 +6,8 @@ mod metadata_cache_tests {
         Address, Env, String,
     };
 
-    use crate::contract::{AnchorKitContract, AnchorKitContractClient, AnchorMetadata};
+    use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+    use crate::types::AnchorMetadata;
 
     fn make_env() -> Env {
         let env = Env::default();
@@ -177,5 +178,48 @@ mod metadata_cache_tests {
 
         let result = client.try_get_cached_capabilities(&anchor);
         assert!(result.is_err());
+    }
+
+    // Issue #276: list_cached_anchors returns all anchors with active cache entries
+    #[test]
+    fn test_list_cached_anchors() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let anchor1 = Address::generate(&env);
+        let anchor2 = Address::generate(&env);
+        client.initialize(&admin);
+
+        // Initially empty
+        let list = client.list_cached_anchors();
+        assert_eq!(list.len(), 0);
+
+        // Cache metadata for anchor1
+        let meta1 = sample_metadata(&env, &anchor1);
+        client.cache_metadata(&anchor1, &meta1, &3600u64);
+
+        let list = client.list_cached_anchors();
+        assert_eq!(list.len(), 1);
+        assert!(list.contains(&anchor1));
+
+        // Cache metadata for anchor2
+        let meta2 = sample_metadata(&env, &anchor2);
+        client.cache_metadata(&anchor2, &meta2, &3600u64);
+
+        let list = client.list_cached_anchors();
+        assert_eq!(list.len(), 2);
+        assert!(list.contains(&anchor1));
+        assert!(list.contains(&anchor2));
+
+        // Invalidate anchor1 — it should be removed from the list
+        client.refresh_metadata_cache(&anchor1);
+
+        let list = client.list_cached_anchors();
+        assert_eq!(list.len(), 1);
+        assert!(!list.contains(&anchor1));
+        assert!(list.contains(&anchor2));
     }
 }

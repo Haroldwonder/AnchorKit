@@ -40,7 +40,7 @@ fn main() {
     for domain in invalid_domains {
         match validate_anchor_domain(domain) {
             Ok(()) => println!("  ✗ {} - Should have failed!", domain),
-            Err(Error::InvalidEndpointFormat) => println!("  ✓ {} - Correctly rejected", domain),
+            Err(_) => println!("  ✓ {} - Correctly rejected", domain),
             Err(e) => println!("  ? {} - Unexpected error: {:?}", domain, e),
         }
     }

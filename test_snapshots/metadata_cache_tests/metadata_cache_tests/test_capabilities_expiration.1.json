@@ -418,16 +418,23 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
+                "symbol": "error"
               },
               {
-                "symbol": "get_cached_capabilities"
+                "error": {
+                  "contract": 48
+                }
               }
             ],
             "data": {
-              "error": {
-                "contract": 48
-              }
+              "vec": [
+                {
+                  "string": "failing with contract error"
+                },
+                {
+                  "u32": 48
+                }
+              ]
             }
           }
         }
@@ -452,7 +459,32 @@
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "escalating error to panic"
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "contract": 48
+                }
+              }
+            ],
+            "data": {
+              "string": "caught error from function"
             }
           }
         }

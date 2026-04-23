@@ -105,7 +105,6 @@
         }
       ]
     ],
-    [],
     []
   ],
   "ledger": {
@@ -576,122 +575,23 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
+                "symbol": "error"
               },
               {
-                "symbol": "get_cached_metadata"
+                "error": {
+                  "contract": 48
+                }
               }
             ],
             "data": {
-              "map": [
+              "vec": [
                 {
-                  "key": {
-                    "symbol": "anchor"
-                  },
-                  "val": {
-                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                  }
+                  "string": "failing with contract error"
                 },
                 {
-                  "key": {
-                    "symbol": "average_settlement_time"
-                  },
-                  "val": {
-                    "u64": 300
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "is_active"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "liquidity_score"
-                  },
-                  "val": {
-                    "u32": 8500
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "reputation_score"
-                  },
-                  "val": {
-                    "u32": 9000
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "total_volume"
-                  },
-                  "val": {
-                    "u64": 1000000
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "uptime_percentage"
-                  },
-                  "val": {
-                    "u32": 9900
-                  }
+                  "u32": 48
                 }
               ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": null,
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_call"
-              },
-              {
-                "bytes": "0000000000000000000000000000000000000000000000000000000000000001"
-              },
-              {
-                "symbol": "get_cached_metadata"
-              }
-            ],
-            "data": {
-              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
-        "type_": "diagnostic",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "fn_return"
-              },
-              {
-                "symbol": "get_cached_metadata"
-              }
-            ],
-            "data": {
-              "error": {
-                "contract": 48
-              }
             }
           }
         }
@@ -716,7 +616,32 @@
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "escalating error to panic"
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "contract": 48
+                }
+              }
+            ],
+            "data": {
+              "string": "caught error from function"
             }
           }
         }

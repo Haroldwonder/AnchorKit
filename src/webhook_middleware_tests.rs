@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 mod webhook_middleware_tests {
-    use soroban_sdk::{testutils::LedgerInfo, Address, Env, String};
+    use soroban_sdk::{testutils::{Ledger, LedgerInfo}, Address, Env, String};
 
     /// Verifies that a G-address (Stellar account address) is rejected when used
     /// as a Soroban contract address source_address parameter.
