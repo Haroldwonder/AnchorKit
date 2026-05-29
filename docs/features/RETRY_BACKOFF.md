@@ -29,7 +29,6 @@ The helper `is_retryable(code)` classifies only transient, availability, and cac
 - `NoQuotesAvailable`
 - `CacheExpired`
 - `CacheNotFound`
-- `RateLimitExceeded`
 
 All other `ErrorCode` values are considered non-retryable and should stop immediately.
 
@@ -54,7 +53,7 @@ All other `ErrorCode` values are considered non-retryable and should stop immedi
 | `NoQuotesAvailable` | Yes | Transient quote availability |
 | `ServicesNotConfigured` | Yes | Anchor not ready yet |
 | `ValidationError` | No | Invalid response payload |
-| `RateLimitExceeded` | Yes | Back off and retry later |
+| `RateLimitExceeded` | No | Rate-limit failures are not retried by the default helper |
 | `NotInitialized` | No | Contract not ready |
 | `AttestationNotFound` | Yes | Data may become available soon |
 | `InvalidSep10Token` | No | Auth failure |
@@ -73,7 +72,7 @@ All other `ErrorCode` values are considered non-retryable and should stop immedi
 
 ## Retryable Errors
 
-The following errors are automatically retried:
+Common transient errors for retry policies:
 
 ### Network Failures
 - `TransportError` - General network/transport failures
@@ -81,7 +80,7 @@ The following errors are automatically retried:
 - `EndpointNotFound` - Endpoint temporarily unavailable
 
 ### Rate Limiting
-- `RateLimitExceeded` - Rate limit exceeded (429)
+- `RateLimitExceeded` - Rate limit exceeded (429); handled via custom backoff policies rather than the default helper
 - `ProtocolRateLimitExceeded` - Protocol-level rate limiting
 
 ### Transient Failures
@@ -118,7 +117,7 @@ use anchorkit::retry::RetryConfig;
 
 let config = RetryConfig::default();
 // max_attempts: 3
-// initial_delay_ms: 100
+// base_delay_ms: 100
 // max_delay_ms: 5000
 // backoff_multiplier: 2
 ```
@@ -131,7 +130,7 @@ use anchorkit::retry::RetryConfig;
 // Aggressive: many attempts, short delays
 let aggressive = RetryConfig::new(
     10,    // max_attempts
-    10,    // initial_delay_ms
+    10,    // base_delay_ms
     1000,  // max_delay_ms
     2      // backoff_multiplier
 );
@@ -139,7 +138,7 @@ let aggressive = RetryConfig::new(
 // Conservative: few attempts, long delays
 let conservative = RetryConfig::new(
     3,     // max_attempts
-    1000,  // initial_delay_ms
+    1000,  // base_delay_ms
     10000, // max_delay_ms
     3      // backoff_multiplier
 );
@@ -147,7 +146,7 @@ let conservative = RetryConfig::new(
 // Custom for rate limiting: longer delays
 let rate_limit = RetryConfig::new(
     5,     // max_attempts
-    500,   // initial_delay_ms
+    500,   // base_delay_ms
     30000, // max_delay_ms (30 seconds)
     3      // backoff_multiplier
 );
@@ -244,7 +243,7 @@ use anchorkit::retry::{RetryConfig, RetryEngine};
 // Configure longer delays for rate limiting
 let config = RetryConfig::new(
     5,     // max_attempts
-    500,   // initial_delay_ms
+    500,   // base_delay_ms
     30000, // max_delay_ms (30 seconds)
     3      // backoff_multiplier (aggressive backoff)
 );
@@ -293,10 +292,10 @@ The delay between retries follows an exponential pattern:
 
 ```
 Attempt 0: 0ms (immediate)
-Attempt 1: initial_delay_ms
-Attempt 2: initial_delay_ms * multiplier^1
-Attempt 3: initial_delay_ms * multiplier^2
-Attempt 4: initial_delay_ms * multiplier^3
+Attempt 1: base_delay_ms
+Attempt 2: base_delay_ms * multiplier^1
+Attempt 3: base_delay_ms * multiplier^2
+Attempt 4: base_delay_ms * multiplier^3
 ...
 ```
 
@@ -304,7 +303,7 @@ Attempt 4: initial_delay_ms * multiplier^3
 
 ```
 max_attempts: 3
-initial_delay_ms: 100
+base_delay_ms: 100
 backoff_multiplier: 2
 
 Attempt 0: 0ms
@@ -317,7 +316,7 @@ Total: 300ms
 
 ```
 max_attempts: 5
-initial_delay_ms: 50
+base_delay_ms: 50
 backoff_multiplier: 3
 
 Attempt 0: 0ms
@@ -332,7 +331,7 @@ Total: 2000ms
 
 ```
 max_attempts: 5
-initial_delay_ms: 500
+base_delay_ms: 500
 backoff_multiplier: 3
 max_delay_ms: 30000
 
