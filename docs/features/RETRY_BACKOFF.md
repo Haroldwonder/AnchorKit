@@ -64,7 +64,7 @@ All other `ErrorCode` values are considered non-retryable and should stop immedi
 ## Features
 
 - **Exponential Backoff**: Delays increase exponentially between retries (configurable multiplier)
-- **Configurable Strategy**: Customize max attempts, initial delay, max delay, and backoff multiplier
+- **Configurable Strategy**: Customize max attempts, base delay, max delay, and backoff multiplier
 - **Smart Error Classification**: Automatically distinguishes retryable vs non-retryable errors
 - **Network Failure Handling**: Retries on transport errors and timeouts
 - **Rate Limit Handling**: Backs off when encountering 429 rate limit responses
