@@ -29,6 +29,8 @@ Open `configs/my-anchor.json` and replace the placeholder values:
 | `attestors[0].address` | Your attestor's Stellar public key (starts with `G`) |
 | `attestors[0].endpoint` | Your attestor's HTTPS endpoint URL |
 
+Contract interactions are performed through Soroban transactions, not direct JavaScript session helpers. Use the Soroban CLI or the Stellar JavaScript SDK's contract invocation APIs when you need to call the contract.
+
 ## 3. Validate your config
 
 ```bash

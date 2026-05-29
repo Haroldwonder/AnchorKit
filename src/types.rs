@@ -1,4 +1,112 @@
 use soroban_sdk::{contracttype, Address, Bytes, String, Vec};
+extern crate alloc;
+use alloc::string::String as AllocString;
+
+// ---------------------------------------------------------------------------
+// SEP-6 Response types (canonical, merged from sep6.rs and response_validator.rs)
+// ---------------------------------------------------------------------------
+
+/// Normalized status values across all SEP-6 anchors.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TransactionStatus {
+    Pending,
+    Incomplete,
+    PendingExternal,
+    PendingAnchor,
+    PendingTrust,
+    PendingUser,
+    Completed,
+    Refunded,
+    Expired,
+    Error,
+    Unknown(AllocString),
+}
+
+impl TransactionStatus {
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "pending_external" => Self::PendingExternal,
+            "pending_anchor" => Self::PendingAnchor,
+            "pending_trust" => Self::PendingTrust,
+            "pending_user" | "pending_user_transfer_start" => Self::PendingUser,
+            "completed" => Self::Completed,
+            "refunded" => Self::Refunded,
+            "expired" => Self::Expired,
+            "incomplete" => Self::Incomplete,
+            "pending" => Self::Pending,
+            _ => Self::Unknown(AllocString::from(s)),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Pending => "pending",
+            Self::Incomplete => "incomplete",
+            Self::PendingExternal => "pending_external",
+            Self::PendingAnchor => "pending_anchor",
+            Self::PendingTrust => "pending_trust",
+            Self::PendingUser => "pending_user",
+            Self::Completed => "completed",
+            Self::Refunded => "refunded",
+            Self::Expired => "expired",
+            Self::Error => "error",
+            Self::Unknown(s) => s.as_str(),
+        }
+    }
+}
+
+/// Canonical merged DepositResponse combining fields from sep6 normalization and response validation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DepositResponse {
+    /// Unique transaction ID assigned by the anchor.
+    pub transaction_id: AllocString,
+    /// How the user should send funds (from sep6 normalization).
+    pub how: Option<AllocString>,
+    /// Optional extra instructions from the anchor (from sep6 normalization).
+    pub extra_info: Option<AllocString>,
+    /// Deposit address provided by the anchor (from response validation).
+    pub deposit_address: Option<AllocString>,
+    /// Minimum deposit amount (in asset units), if provided.
+    pub min_amount: Option<u64>,
+    /// Maximum deposit amount (in asset units), if provided.
+    pub max_amount: Option<u64>,
+    /// Fee charged for the deposit, if provided.
+    pub fee_fixed: Option<u64>,
+    /// Percentage fee charged for the deposit in basis points.
+    pub fee_percent: Option<u32>,
+    /// Expiration time of the deposit address (from response validation).
+    pub expires_at: Option<u64>,
+    /// Current status of the transaction.
+    pub status: TransactionStatus,
+}
+
+/// Canonical merged WithdrawalResponse combining fields from sep6 normalization and response validation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawalResponse {
+    /// Unique transaction ID assigned by the anchor.
+    pub transaction_id: AllocString,
+    /// Stellar account the user should send funds to.
+    pub account_id: Option<AllocString>,
+    /// Destination bank/wallet account for the off-chain withdrawal, if provided.
+    pub dest_account_id: Option<AllocString>,
+    /// Optional memo to attach to the Stellar payment.
+    pub memo: Option<AllocString>,
+    /// Optional memo type (`text`, `id`, `hash`).
+    pub memo_type: Option<AllocString>,
+    /// Minimum withdrawal amount (in asset units), if provided.
+    pub min_amount: Option<u64>,
+    /// Maximum withdrawal amount (in asset units), if provided.
+    pub max_amount: Option<u64>,
+    /// Fee charged for the withdrawal, if provided.
+    pub fee_fixed: Option<u64>,
+    /// Percentage fee charged for the withdrawal in basis points.
+    pub fee_percent: Option<u32>,
+    /// Estimated completion time (from response validation).
+    pub estimated_completion: Option<u64>,
+    /// Current status of the transaction.
+    pub status: TransactionStatus,
+}
 
 // ---------------------------------------------------------------------------
 // Service constants
@@ -157,15 +265,11 @@ pub struct RoutingRequest {
 /// # Other fields
 ///
 /// - `min_reputation` — anchors with a `reputation_score` strictly below this
-///   value are excluded before strategy selection. Set to `0` (the default) to
-///   include all active anchors regardless of reputation.
-/// - `max_anchors` — limits the number of candidate anchors considered before
-///   strategy selection. Set to `0` (the default) to consider all active anchors.
-///   When set to a positive value, only the first N anchors (in iteration order)
-///   that pass all other filters are included in the candidate pool.
-/// - `require_kyc` — when set to `true`, only anchors that support the KYC service
-///   (SERVICE_KYC) are included in the candidate pool. Set to `false` (the default)
-///   to include all active anchors regardless of KYC capability.
+///   value are excluded before strategy selection. When `min_reputation = 0`,
+///   reputation filtering is disabled and all anchors are included regardless
+///   of their reputation score.
+/// - `max_anchors` / `require_kyc` — reserved for future filtering; not yet
+///   enforced by the current implementation.
 #[contracttype]
 #[derive(Clone)]
 pub struct RoutingOptions {
@@ -241,6 +345,12 @@ pub struct FiatCurrency {
     pub name: String,
     pub deposit_enabled: bool,
     pub withdrawal_enabled: bool,
+    /// ISO 3166-1 alpha-3 country code (e.g. "USA", "GBR"). From stellar.toml / SEP-6.
+    pub country_code: Option<String>,
+    /// Human-readable description of the currency.
+    pub desc: Option<String>,
+    /// Preferred number of decimal places to display (0–7).
+    pub display_decimals: Option<u32>,
 }
 
 #[contracttype]

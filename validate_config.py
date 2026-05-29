@@ -12,6 +12,45 @@ from typing import Dict, List, Any
 class ValidationError(Exception):
     pass
 
+def validate_required_fields(config: Dict[str, Any]) -> None:
+    """Validate the required deployment configuration structure."""
+    if "contract" not in config:
+        raise ValidationError("Missing required top-level section: contract")
+
+    if "attestors" not in config:
+        raise ValidationError("Missing required top-level section: attestors")
+
+    if "sessions" not in config:
+        raise ValidationError("Missing required top-level section: sessions")
+
+    contract = config["contract"]
+    for field in ("name", "version", "network"):
+        if field not in contract:
+            raise ValidationError(f"Missing required contract field: {field}")
+
+    attestors = config["attestors"]
+    if "registry" not in attestors:
+        raise ValidationError("Missing required attestor field: registry")
+
+    registry = attestors["registry"]
+    if not registry:
+        raise ValidationError("Attestor registry cannot be empty")
+
+    for index, attestor in enumerate(registry):
+        for field in ("name", "address", "endpoint", "role", "enabled"):
+            if field not in attestor:
+                raise ValidationError(f"Attestor {index}: missing required field {field}")
+
+    sessions = config["sessions"]
+    for field in (
+        "enable_session_tracking",
+        "session_timeout_seconds",
+        "operations_per_session",
+        "audit_log_retention_days",
+    ):
+        if field not in sessions:
+            raise ValidationError(f"Missing required session field: {field}")
+
 def validate_contract_config(config: Dict[str, Any]) -> None:
     """Validate contract configuration"""
     name = config.get("name", "")
@@ -81,6 +120,8 @@ def validate_json_config(file_path: Path) -> None:
     
     with open(file_path) as f:
         config = json.load(f)
+
+    validate_required_fields(config)
     
     if "contract" in config:
         validate_contract_config(config["contract"])

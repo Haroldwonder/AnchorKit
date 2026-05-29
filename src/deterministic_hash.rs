@@ -4,6 +4,14 @@ use soroban_sdk::{xdr::ToXdr, Address, Bytes, BytesN, Env};
 ///
 /// Field ordering is fixed (canonical): subject bytes || timestamp (8-byte BE) || data bytes.
 /// This guarantees the same inputs always produce the same 32-byte hash.
+///
+/// # Off-chain callers
+///
+/// Prefer calling the contract method `compute_payload_hash_public` instead of this function
+/// directly. The contract method goes through the Soroban host environment, which ensures
+/// `Address` XDR serialisation uses the same host-side encoding as on-chain attestation
+/// submission. Calling this module function outside the host context may produce different
+/// XDR bytes for `Address` types, causing hash divergence that breaks attestation verification.
 pub fn compute_payload_hash(
     env: &Env,
     subject: &Address,

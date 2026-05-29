@@ -78,3 +78,43 @@ This architecture separates transport logic from business rules and makes Anchor
 - **Routing** selects the correct endpoint.
 - **Rate limiting** protects backend anchors.
 - **Caching** improves performance and avoids repeated discovery.
+
+## Module Reference
+
+All source modules and their responsibilities:
+
+| Module | File | Responsibility |
+|---|---|---|
+| Module declarations | `src/lib.rs` | Re-exports public APIs and declares all `mod` entries; contains no business logic |
+| Core contract | `src/contract.rs` | On-chain entry points, attestor registration, attestation submission and retrieval |
+| Storage | `src/storage.rs` | Persistent key/value storage helpers and TTL management |
+| Events | `src/events.rs` | Contract event definitions emitted on every state change |
+| Types | `src/types.rs` | Shared data structures used across modules |
+| Errors | `src/errors.rs` | `AnchorKitError`, stable `ErrorCode` values (100-120), and the `Error` alias |
+| SEP-6 | `src/sep6.rs` | Normalized deposit/withdrawal service layer; adapts anchor responses to a canonical `DepositResponse`/`WithdrawalResponse` shape |
+| Rate limiter | `src/rate_limiter.rs` | Per-attestor sliding-window rate limiting to prevent spam and abuse |
+| Retry | `src/retry.rs` | Configurable exponential-backoff retry logic for off-chain anchor requests |
+| Domain validator | `src/domain_validator.rs` | HTTPS-only URL validation for anchor domain inputs before any outbound request |
+| Response validator | `src/response_validator.rs` | Schema validation for anchor API responses; rejects responses with missing required fields |
+| Transaction state tracker | `src/transaction_state_tracker.rs` | Tracks deposit/withdrawal lifecycle states (Pending → InProgress → Completed/Failed) |
+| SEP-10 JWT | `src/sep10_jwt.rs` | Minimal Ed25519 / EdDSA JWT verification for SEP-10 anchor authentication tokens |
+| Deterministic hash | `src/deterministic_hash.rs` | Canonical payload hashing used for off-chain ↔ on-chain attestation matching |
+| Replay window | `src/replay_window.rs` (via `lib.rs`) | Nonce-based replay-attack prevention |
+
+### Module interaction summary
+
+```
+Client request
+    │
+    ▼
+contract.rs          ← on-chain entry point; calls storage, events, types, errors
+    │
+    ├── domain_validator.rs   validates anchor URL before any outbound call
+    ├── sep6.rs               normalises deposit/withdrawal responses
+    │       └── retry.rs      retries failed off-chain requests with backoff
+    ├── rate_limiter.rs       enforces per-attestor submission limits
+    ├── response_validator.rs checks that anchor API responses are well-formed
+    ├── transaction_state_tracker.rs  tracks transaction lifecycle
+    ├── sep10_jwt.rs          verifies SEP-10 Ed25519 JWT tokens
+    └── deterministic_hash.rs produces canonical hashes for attestation matching
+```

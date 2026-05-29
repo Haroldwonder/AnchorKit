@@ -69,11 +69,44 @@ pub fn validate_anchor_domain(domain: &str) -> Result<(), AnchorKitError> {
         Some(h) if !h.is_empty() => h,
         _ => return Err(AnchorKitError::invalid_endpoint_format()),
     };
-    
+
     // Remove query parameters and fragments from host
-    let host = host_with_query
+    let host_with_port = host_with_query
         .split('?').next().unwrap_or(host_with_query)
         .split('#').next().unwrap_or(host_with_query);
+
+    // Parse host and port separately — extract just the host for validation
+    let host = if let Some(colon_pos) = host_with_port.rfind(':') {
+        // Validate port number before extracting just the host
+        let port_str = &host_with_port[colon_pos + 1..];
+        if port_str.is_empty() {
+            return Err(AnchorKitError::invalid_endpoint_format());
+        }
+
+        // Check if port is numeric
+        for c in port_str.chars() {
+            if !c.is_ascii_digit() {
+                return Err(AnchorKitError::invalid_endpoint_format());
+            }
+        }
+
+        // Validate port range (1-65535); reject port 80 since this validator
+        // is HTTPS-only and port 80 is the HTTP default — not a valid HTTPS port.
+        if let Ok(port) = port_str.parse::<u32>() {
+            if port == 0 || port > 65535 {
+                return Err(AnchorKitError::invalid_endpoint_format());
+            }
+            if port == 80 {
+                return Err(AnchorKitError::invalid_endpoint_format());
+            }
+        } else {
+            return Err(AnchorKitError::invalid_endpoint_format());
+        }
+
+        &host_with_port[..colon_pos]
+    } else {
+        host_with_port
+    };
 
     // Validate host structure
     validate_host(host)?;
@@ -109,38 +142,9 @@ fn validate_host(host: &str) -> Result<(), AnchorKitError> {
         return Err(AnchorKitError::invalid_endpoint_format());
     }
 
-    // Check for port specification (optional)
-    let domain_without_port = if let Some(colon_pos) = host.rfind(':') {
-        // Validate port number
-        let port_str = &host[colon_pos + 1..];
-        if port_str.is_empty() {
-            return Err(AnchorKitError::invalid_endpoint_format());
-        }
-        
-        // Check if port is numeric
-        for c in port_str.chars() {
-            if !c.is_ascii_digit() {
-                return Err(AnchorKitError::invalid_endpoint_format());
-            }
-        }
-        
-        // Validate port range (1-65535); reject port 80 since this validator
-        // is HTTPS-only and port 80 is the HTTP default — not a valid HTTPS port.
-        if let Ok(port) = port_str.parse::<u32>() {
-            if port == 0 || port > 65535 {
-                return Err(AnchorKitError::invalid_endpoint_format());
-            }
-            if port == 80 {
-                return Err(AnchorKitError::invalid_endpoint_format());
-            }
-        } else {
-            return Err(AnchorKitError::invalid_endpoint_format());
-        }
-        
-        &host[..colon_pos]
-    } else {
-        host
-    };
+    // Port validation and separation is done in validate_anchor_domain,
+    // so host should not contain a port here.
+    let domain_without_port = host;
 
     // Check for valid domain structure
     if domain_without_port.is_empty() {

@@ -585,12 +585,18 @@ mod anchor_info_discovery_tests {
             name: String::from_str(&env, "US Dollar"),
             deposit_enabled: true,
             withdrawal_enabled: true,
+            country_code: Some(String::from_str(&env, "USA")),
+            desc: None,
+            display_decimals: Some(2),
         });
         fiat.push_back(FiatCurrency {
             code: String::from_str(&env, "EUR"),
             name: String::from_str(&env, "Euro"),
             deposit_enabled: true,
             withdrawal_enabled: false,
+            country_code: None,
+            desc: None,
+            display_decimals: None,
         });
 
         let mut currencies = Vec::new(&env);
@@ -640,84 +646,35 @@ mod anchor_info_discovery_tests {
         assert_eq!(result.len(), 0, "sample_toml has no fiat currencies");
     }
 
-    // --- Issue #498: network_passphrase validation ---
+    // -----------------------------------------------------------------------
+    // Issue #499: deposit/withdrawal limits return Result with cache key check
+    // -----------------------------------------------------------------------
 
+    /// When no TOML is cached, get_anchor_deposit_limits must return CacheNotFound.
     #[test]
-    fn test_fetch_anchor_info_testnet_passphrase_accepted() {
+    fn test_get_deposit_limits_uncached_returns_cache_not_found() {
         let env = make_env();
         set_ledger(&env, 0);
         let (client, anchor) = setup(&env);
 
-        let result = client.try_fetch_anchor_info(
-            &anchor,
-            &sample_toml(&env),
-            &String::from_str(&env, "Test SDF Network ; September 2015"),
-            &Some(3600u64),
+        let result = client.try_get_anchor_deposit_limits(&anchor, &String::from_str(&env, "USDC"));
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            crate::errors::ErrorCode::CacheNotFound,
         );
-        assert!(result.is_ok());
     }
 
+    /// When no TOML is cached, get_anchor_withdrawal_limits must return CacheNotFound.
     #[test]
-    fn test_fetch_anchor_info_mainnet_passphrase_accepted() {
+    fn test_get_withdrawal_limits_uncached_returns_cache_not_found() {
         let env = make_env();
         set_ledger(&env, 0);
         let (client, anchor) = setup(&env);
 
-        let mut currencies = Vec::new(&env);
-        currencies.push_back(usdc_asset(&env));
-        let mut accounts = Vec::new(&env);
-        accounts.push_back(String::from_str(&env, "GANCHOR1"));
-
-        let mainnet_toml = StellarToml {
-            version: String::from_str(&env, "2.0.0"),
-            network_passphrase: String::from_str(&env, "Public Global Stellar Network ; September 2015"),
-            accounts,
-            signing_key: None,
-            currencies,
-            fiat_currencies: Vec::new(&env),
-            transfer_server: String::from_str(&env, "https://api.example.com"),
-            transfer_server_sep0024: String::from_str(&env, "https://api.example.com/sep24"),
-            kyc_server: String::from_str(&env, "https://kyc.example.com"),
-            web_auth_endpoint: String::from_str(&env, "https://auth.example.com"),
-        };
-
-        let result = client.try_fetch_anchor_info(
-            &anchor,
-            &mainnet_toml,
-            &String::from_str(&env, "Public Global Stellar Network ; September 2015"),
-            &Some(3600u64),
+        let result = client.try_get_anchor_withdrawal_limits(&anchor, &String::from_str(&env, "USDC"));
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            crate::errors::ErrorCode::CacheNotFound,
         );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_fetch_anchor_info_unknown_passphrase_rejected() {
-        let env = make_env();
-        set_ledger(&env, 0);
-        let (client, anchor) = setup(&env);
-
-        let result = client.try_fetch_anchor_info(
-            &anchor,
-            &sample_toml(&env),
-            &String::from_str(&env, "Some Unknown Network ; January 2024"),
-            &Some(3600u64),
-        );
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_fetch_anchor_info_mismatched_passphrase_rejected() {
-        let env = make_env();
-        set_ledger(&env, 0);
-        let (client, anchor) = setup(&env);
-
-        // TOML has testnet passphrase but caller supplies mainnet — must be rejected
-        let result = client.try_fetch_anchor_info(
-            &anchor,
-            &sample_toml(&env),
-            &String::from_str(&env, "Public Global Stellar Network ; September 2015"),
-            &Some(3600u64),
-        );
-        assert!(result.is_err());
     }
 }

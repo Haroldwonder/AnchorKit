@@ -19,6 +19,17 @@ values, update your mappings using the table below:
 | 54       | 25       | NotPendingAdmin          |
 | 101      | 26       | NotInitialized           |
 
+## Legacy Raw Error Codes (48-54)
+
+| Code | Name                     | Description |
+|------|--------------------------|-------------|
+| 48   | CacheExpired             | Cache entry has expired |
+| 49   | CacheNotFound            | Cache entry not found |
+| 51   | AuditLogMaxSizeInvalid   | `max_audit_log_size` must be at least 1 |
+| 52   | UnauthorizedProposeAdmin | A pending admin proposal already exists |
+| 53   | NoPendingAdmin           | No pending admin transfer found |
+| 54   | NotPendingAdmin          | Caller is not the pending admin |
+
 ## On-Chain Error Codes (1-26)
 
 | Code | Name                     | Severity | Retryable |

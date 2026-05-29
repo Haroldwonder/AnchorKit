@@ -4,6 +4,11 @@
 
 The Transaction State Tracker is a comprehensive system for managing and tracking the lifecycle of transactions within the AnchorKit smart contract. It provides a robust mechanism to track transactions through four distinct states: Pending, In-Progress, Completed, and Failed.
 
+> **⚠️ Off-Chain Utility Only**
+> `TransactionStateTracker` is an **off-chain SDK utility** and is **not backed by on-chain Soroban storage**.
+> It operates entirely in memory and cannot be queried via contract methods. Use this tracker in your client SDK
+> to maintain local transaction state during its lifecycle without storing state on the blockchain.
+
 ## Features
 
 ### Core States

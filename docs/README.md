@@ -46,6 +46,7 @@ How-to guides for contributors and operators.
 | [RETRY_QUICK_REFERENCE.md](./guides/RETRY_QUICK_REFERENCE.md) | Retry quick reference |
 | [DOMAIN_VALIDATOR_QUICK_REF.md](./guides/DOMAIN_VALIDATOR_QUICK_REF.md) | Domain validator quick reference |
 | [NORMALIZATION_QUICK_REF.md](./guides/NORMALIZATION_QUICK_REF.md) | Normalization quick reference |
+| [SNAPSHOT_CONVENTIONS.md](./guides/SNAPSHOT_CONVENTIONS.md) | How Soroban snapshot paths are derived and how to keep test_snapshots/ clean |
 
 ## Internal Notes
 

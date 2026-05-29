@@ -41,6 +41,8 @@ pub enum StorageKey {
     AuditLog(u64),
     /// Maximum number of audit log entries to retain (instance storage).
     AuditLogMaxSize,
+    /// Maximum page size allowed when listing attestations (instance storage).
+    MaxPageSize,
     /// Quote record keyed by anchor + quote ID (persistent).
     Quote(Address, u64),
     /// Latest quote ID for an anchor (persistent).
