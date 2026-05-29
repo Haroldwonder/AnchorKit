@@ -87,6 +87,7 @@ pub enum ErrorCode {
     ServicesNotConfigured = 14,
     ValidationError = 15,
     RateLimitExceeded = 16,
+    NotInitialized = 26,
     AttestationNotFound = 17,
     InvalidSep10Token = 18,
     StorageCorrupted = 19,
@@ -238,32 +239,57 @@ impl core::fmt::Display for AnchorKitError {
 // no-std / WASM implementation — zero heap allocation
 // ---------------------------------------------------------------------------
 
-    pub fn cache_not_found() -> Self {
-        Self::from_code(ErrorCode::CacheNotFound)
+#[cfg(not(feature = "std"))]
+impl AnchorKitError {
+    pub fn new(code: ErrorCode, message: &'static str) -> Self {
+        AnchorKitError {
+            code,
+            message,
+            context: None,
+        }
     }
 
-    pub fn audit_log_max_size_invalid() -> Self {
-        Self::from_code(ErrorCode::AuditLogMaxSizeInvalid)
+    pub fn with_context(code: ErrorCode, message: &'static str, context: &'static str) -> Self {
+        AnchorKitError {
+            code,
+            message,
+            context: Some(context),
+        }
     }
 
-    pub fn unauthorized_propose_admin() -> Self {
-        Self::from_code(ErrorCode::UnauthorizedProposeAdmin)
+    pub fn from_code(code: ErrorCode) -> Self {
+        AnchorKitError::new(code, code.default_message())
     }
 
-    pub fn no_pending_admin() -> Self {
-        Self::from_code(ErrorCode::NoPendingAdmin)
-    }
-
-    pub fn not_pending_admin() -> Self {
-        Self::from_code(ErrorCode::NotPendingAdmin)
-    }
-
-    pub fn invalid_strategy() -> Self {
-        Self::from_code(ErrorCode::InvalidStrategy)
-    }
-
-    pub fn path_traversal_detected() -> Self {
-        Self::from_code(ErrorCode::PathTraversalDetected)
+    pub fn already_initialized() -> Self { Self::from_code(ErrorCode::AlreadyInitialized) }
+    pub fn attestor_already_registered() -> Self { Self::from_code(ErrorCode::AttestorAlreadyRegistered) }
+    pub fn attestor_not_registered() -> Self { Self::from_code(ErrorCode::AttestorNotRegistered) }
+    pub fn unauthorized_attestor() -> Self { Self::from_code(ErrorCode::UnauthorizedAttestor) }
+    pub fn invalid_timestamp() -> Self { Self::from_code(ErrorCode::InvalidTimestamp) }
+    pub fn replay_attack() -> Self { Self::from_code(ErrorCode::ReplayAttack) }
+    pub fn invalid_quote() -> Self { Self::from_code(ErrorCode::InvalidQuote) }
+    pub fn invalid_service_type() -> Self { Self::from_code(ErrorCode::InvalidServiceType) }
+    pub fn invalid_transaction_intent() -> Self { Self::from_code(ErrorCode::InvalidTransactionIntent) }
+    pub fn stale_quote() -> Self { Self::from_code(ErrorCode::StaleQuote) }
+    pub fn compliance_not_met() -> Self { Self::from_code(ErrorCode::ComplianceNotMet) }
+    pub fn invalid_endpoint_format() -> Self { Self::from_code(ErrorCode::InvalidEndpointFormat) }
+    pub fn no_quotes_available() -> Self { Self::from_code(ErrorCode::NoQuotesAvailable) }
+    pub fn services_not_configured() -> Self { Self::from_code(ErrorCode::ServicesNotConfigured) }
+    pub fn not_initialized() -> Self { Self::from_code(ErrorCode::NotInitialized) }
+    pub fn attestation_not_found() -> Self { Self::from_code(ErrorCode::AttestationNotFound) }
+    pub fn invalid_sep10_token() -> Self { Self::from_code(ErrorCode::InvalidSep10Token) }
+    pub fn rate_limit_exceeded() -> Self { Self::from_code(ErrorCode::RateLimitExceeded) }
+    pub fn storage_corrupted() -> Self { Self::from_code(ErrorCode::StorageCorrupted) }
+    pub fn cache_expired() -> Self { Self::from_code(ErrorCode::CacheExpired) }
+    pub fn cache_not_found() -> Self { Self::from_code(ErrorCode::CacheNotFound) }
+    pub fn audit_log_max_size_invalid() -> Self { Self::from_code(ErrorCode::AuditLogMaxSizeInvalid) }
+    pub fn unauthorized_propose_admin() -> Self { Self::from_code(ErrorCode::UnauthorizedProposeAdmin) }
+    pub fn no_pending_admin() -> Self { Self::from_code(ErrorCode::NoPendingAdmin) }
+    pub fn not_pending_admin() -> Self { Self::from_code(ErrorCode::NotPendingAdmin) }
+    pub fn invalid_strategy() -> Self { Self::from_code(ErrorCode::InvalidStrategy) }
+    pub fn path_traversal_detected() -> Self { Self::from_code(ErrorCode::PathTraversalDetected) }
+    pub fn validation_error(context: &'static str) -> Self {
+        Self::with_context(ErrorCode::ValidationError, ErrorCode::ValidationError.default_message(), context)
     }
 }
 
