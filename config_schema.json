@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AnchorKit Configuration Schema",
   "type": "object",
-  "required": ["contract", "attestors"],
+  "required": ["contract", "attestors", "sessions"],
   "properties": {
     "contract": {
       "type": "object",
@@ -85,6 +85,7 @@
     },
     "sessions": {
       "type": "object",
+      "required": ["enable_session_tracking", "session_timeout_seconds", "operations_per_session", "audit_log_retention_days"],
       "properties": {
         "enable_session_tracking": {
           "type": "boolean"

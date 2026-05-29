@@ -182,8 +182,7 @@ mod attestation_pagination_tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_attestation_id_overflow_panics() {
+    fn test_attestation_id_overflow_returns_limit_reached() {
         let env = make_env();
         setup_ledger(&env);
         let contract_id = env.register_contract(None, AnchorKitContract);
@@ -194,18 +193,19 @@ mod attestation_pagination_tests {
         let subject = Address::generate(&env);
         client.initialize(&admin, &100_u64, &None);
 
-        // Seed the counter to u64::MAX so the next increment overflows
+        // Seed the counter to u64::MAX - 1 so the next increment hits the limit
         env.as_contract(&contract_id, &|| {
             let ck = soroban_sdk::vec![&env, soroban_sdk::symbol_short!("COUNTER")];
-            env.storage().instance().set(&ck, &u64::MAX);
+            env.storage().instance().set(&ck, &(u64::MAX - 1));
         });
 
         let sk = SigningKey::generate(&mut OsRng);
         register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
 
-        // This should panic due to overflow guard
+        // Should return Err(AttestationLimitReached) instead of panicking
         let p = payload(&env, 1);
-        client.submit_attestation(&attestor, &subject, &1700000001, &p, &sign_payload(&env, &sk, &p));
+        let result = client.try_submit_attestation(&attestor, &subject, &1700000001, &p, &sign_payload(&env, &sk, &p));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -228,5 +228,61 @@ mod attestation_pagination_tests {
 
         let results = client.list_attestations(&subject, &5, &10);
         assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_configurable_max_page_size() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let subject = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None);
+
+        // Verify default value is 50
+        assert_eq!(client.get_max_page_size(), 50);
+
+        // Verify setting via admin works
+        client.set_max_page_size(&75);
+        assert_eq!(client.get_max_page_size(), 75);
+
+        let sk = SigningKey::generate(&mut OsRng);
+        register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
+
+        // Submit 60 attestations
+        for i in 0..60 {
+            let p = payload(&env, i as u8);
+            let s = sign_payload(&env, &sk, &p);
+            client.submit_attestation(&attestor, &subject, &(1700000000 + i as u64), &p, &s);
+        }
+
+        // Request 100 with page size 75, should return all 60
+        let results = client.list_attestations(&subject, &0, &100);
+        assert_eq!(results.len(), 60);
+
+        // Verify setting limit to 0 panics
+        let err = client.try_set_max_page_size(&0);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_set_max_page_size_unauthorized() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None);
+
+        // Try setting without admin credentials/authorization
+        client.with_authorization(&non_admin, || {
+            client.set_max_page_size(&100);
+        });
     }
 }

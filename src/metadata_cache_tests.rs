@@ -230,8 +230,7 @@ mod metadata_cache_tests {
         // The cache entry should still have cached_at == 0 (original write)
         // We verify by checking the age is >= 100 seconds
         let age = client.get_cache_age_seconds(&anchor);
-        assert!(age.is_some());
-        assert!(age.unwrap() >= 100);
+        assert!(age >= 100);
     }
 
     // Issue #260: get_cache_age_seconds returns None when no entry, Some(age) when cached
@@ -246,8 +245,8 @@ mod metadata_cache_tests {
         let anchor = Address::generate(&env);
         client.initialize(&admin, &100_u64, &None);
 
-        // No entry yet
-        assert!(client.get_cache_age_seconds(&anchor).is_none());
+        // No entry yet — must return Err(CacheNotFound), not Ok(0)
+        assert!(client.try_get_cache_age_seconds(&anchor).is_err());
 
         let meta = sample_metadata(&env, &anchor);
         client.cache_metadata(&anchor, &meta, &3600u64);
@@ -255,7 +254,7 @@ mod metadata_cache_tests {
         // Advance 50 seconds
         set_ledger(&env, 1050);
         let age = client.get_cache_age_seconds(&anchor);
-        assert_eq!(age, Some(50));
+        assert_eq!(age, 50);
     }
 
     // Issue #258: invalidate_all_caches removes all entries and emits event
@@ -331,5 +330,33 @@ mod metadata_cache_tests {
         assert_eq!(list.len(), 1);
         assert!(!list.contains(&anchor1));
         assert!(list.contains(&anchor2));
+    }
+
+    // Issue #458: cache_metadata must append anchor to CANCHORS persistent list
+    #[test]
+    fn test_cache_metadata_appends_to_canchors() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None);
+
+        // Before caching, list is empty
+        assert_eq!(client.list_cached_anchors().len(), 0);
+
+        let meta = sample_metadata(&env, &anchor);
+        client.cache_metadata(&anchor, &meta, &3600u64);
+
+        // After caching, anchor appears in list
+        let list = client.list_cached_anchors();
+        assert_eq!(list.len(), 1);
+        assert!(list.contains(&anchor));
+
+        // Calling cache_metadata again with same anchor must not duplicate it
+        client.cache_metadata(&anchor, &sample_metadata(&env, &anchor), &7200u64);
+        assert_eq!(client.list_cached_anchors().len(), 1);
     }
 }

@@ -96,7 +96,9 @@ pub enum ErrorCode {
     PendingAdminAlreadyExists = 52,
     NoPendingAdmin = 53,
     NotPendingAdmin = 54,
-    PathTraversalDetected = 55,
+    SessionNotFound = 55,
+    SessionExpired = 56,
+    MissingSigningKey = 57,
 }
 
 impl ErrorCode {
@@ -129,7 +131,9 @@ impl ErrorCode {
             ErrorCode::PendingAdminAlreadyExists => "An admin transfer is already pending",
             ErrorCode::NoPendingAdmin => "No pending admin transfer found",
             ErrorCode::NotPendingAdmin => "Caller is not the pending admin",
-            ErrorCode::PathTraversalDetected => "Path traversal sequence detected in URL",
+            ErrorCode::SessionNotFound => "Session not found",
+            ErrorCode::SessionExpired => "Session has expired",
+            ErrorCode::MissingSigningKey => "Anchor TOML does not publish a signing key",
         }
     }
 
@@ -218,6 +222,7 @@ impl AnchorKitError {
     pub fn storage_corrupted() -> Self { Self::from_code(ErrorCode::StorageCorrupted) }
     pub fn cache_expired() -> Self { Self::from_code(ErrorCode::CacheExpired) }
     pub fn cache_not_found() -> Self { Self::from_code(ErrorCode::CacheNotFound) }
+    pub fn missing_signing_key() -> Self { Self::from_code(ErrorCode::MissingSigningKey) }
 
     pub fn validation_error(context: &str) -> Self {
         Self::with_context(ErrorCode::ValidationError, ErrorCode::ValidationError.default_message(), context)
@@ -242,29 +247,29 @@ impl core::fmt::Display for AnchorKitError {
         Self::from_code(ErrorCode::CacheNotFound)
     }
 
-    pub fn audit_log_max_size_invalid() -> Self {
-        Self::from_code(ErrorCode::AuditLogMaxSizeInvalid)
-    }
-
-    pub fn unauthorized_propose_admin() -> Self {
-        Self::from_code(ErrorCode::UnauthorizedProposeAdmin)
-    }
-
-    pub fn no_pending_admin() -> Self {
-        Self::from_code(ErrorCode::NoPendingAdmin)
-    }
-
-    pub fn not_pending_admin() -> Self {
-        Self::from_code(ErrorCode::NotPendingAdmin)
-    }
-
-    pub fn invalid_strategy() -> Self {
-        Self::from_code(ErrorCode::InvalidStrategy)
-    }
-
-    pub fn path_traversal_detected() -> Self {
-        Self::from_code(ErrorCode::PathTraversalDetected)
-    }
+    pub fn already_initialized() -> Self { Self::from_code(ErrorCode::AlreadyInitialized) }
+    pub fn attestor_already_registered() -> Self { Self::from_code(ErrorCode::AttestorAlreadyRegistered) }
+    pub fn attestor_not_registered() -> Self { Self::from_code(ErrorCode::AttestorNotRegistered) }
+    pub fn unauthorized_attestor() -> Self { Self::from_code(ErrorCode::UnauthorizedAttestor) }
+    pub fn invalid_timestamp() -> Self { Self::from_code(ErrorCode::InvalidTimestamp) }
+    pub fn replay_attack() -> Self { Self::from_code(ErrorCode::ReplayAttack) }
+    pub fn invalid_quote() -> Self { Self::from_code(ErrorCode::InvalidQuote) }
+    pub fn invalid_service_type() -> Self { Self::from_code(ErrorCode::InvalidServiceType) }
+    pub fn invalid_transaction_intent() -> Self { Self::from_code(ErrorCode::InvalidTransactionIntent) }
+    pub fn stale_quote() -> Self { Self::from_code(ErrorCode::StaleQuote) }
+    pub fn compliance_not_met() -> Self { Self::from_code(ErrorCode::ComplianceNotMet) }
+    pub fn invalid_endpoint_format() -> Self { Self::from_code(ErrorCode::InvalidEndpointFormat) }
+    pub fn no_quotes_available() -> Self { Self::from_code(ErrorCode::NoQuotesAvailable) }
+    pub fn services_not_configured() -> Self { Self::from_code(ErrorCode::ServicesNotConfigured) }
+    pub fn not_initialized() -> Self { Self::from_code(ErrorCode::NotInitialized) }
+    pub fn attestation_not_found() -> Self { Self::from_code(ErrorCode::AttestationNotFound) }
+    pub fn invalid_sep10_token() -> Self { Self::from_code(ErrorCode::InvalidSep10Token) }
+    pub fn rate_limit_exceeded() -> Self { Self::from_code(ErrorCode::RateLimitExceeded) }
+    pub fn storage_corrupted() -> Self { Self::from_code(ErrorCode::StorageCorrupted) }
+    pub fn cache_expired() -> Self { Self::from_code(ErrorCode::CacheExpired) }
+    pub fn cache_not_found() -> Self { Self::from_code(ErrorCode::CacheNotFound) }
+    pub fn missing_signing_key() -> Self { Self::from_code(ErrorCode::MissingSigningKey) }
+    pub fn validation_error(_context: &str) -> Self { Self::from_code(ErrorCode::ValidationError) }
 }
 
 #[cfg(not(feature = "std"))]
@@ -380,6 +385,7 @@ let codes = [
             ErrorCode::CacheNotFound,
             ErrorCode::SessionNotFound,
             ErrorCode::SessionExpired,
+            ErrorCode::MissingSigningKey,
         ];
         for code in codes {
             assert!(!code.default_message().is_empty());

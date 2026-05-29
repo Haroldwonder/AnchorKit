@@ -20,6 +20,7 @@
   "sessions": {
     "enable_session_tracking": true,
     "session_timeout_seconds": 3600,
-    "operations_per_session": 100
+    "operations_per_session": 100,
+    "audit_log_retention_days": 30
   }
 }

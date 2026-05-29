@@ -7,23 +7,7 @@
 extern crate alloc;
 
 use crate::errors::Error;
-
-/// A validated deposit response.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DepositResponse {
-    pub transaction_id: alloc::string::String,
-    pub status: alloc::string::String,
-    pub deposit_address: alloc::string::String,
-    pub expires_at: u64,
-}
-
-/// A validated withdraw response.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WithdrawResponse {
-    pub transaction_id: alloc::string::String,
-    pub status: alloc::string::String,
-    pub estimated_completion: u64,
-}
+use crate::types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 
 /// A validated quote response.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -67,19 +51,25 @@ pub fn validate_deposit_response(
 
     Ok(DepositResponse {
         transaction_id: alloc::string::String::from(transaction_id),
-        status: alloc::string::String::from(status),
-        deposit_address: alloc::string::String::from(deposit_address),
-        expires_at,
+        how: None,
+        extra_info: None,
+        deposit_address: Some(alloc::string::String::from(deposit_address)),
+        min_amount: None,
+        max_amount: None,
+        fee_fixed: None,
+        fee_percent: None,
+        expires_at: Some(expires_at),
+        status: TransactionStatus::from_str(status),
     })
 }
 
-/// Validates a raw withdraw response, returning a typed [`WithdrawResponse`]
+/// Validates a raw withdraw response, returning a typed [`WithdrawalResponse`]
 /// or [`Error::validation_error`] if any required field is missing or empty.
 pub fn validate_withdraw_response(
     transaction_id: &str,
     status: &str,
     estimated_completion: u64,
-) -> Result<WithdrawResponse, Error> {
+) -> Result<WithdrawalResponse, Error> {
     if transaction_id.is_empty() {
         return Err(Error::validation_error("transaction_id is empty"));
     }
@@ -87,10 +77,18 @@ pub fn validate_withdraw_response(
         return Err(Error::validation_error("status is empty"));
     }
 
-    Ok(WithdrawResponse {
+    Ok(WithdrawalResponse {
         transaction_id: alloc::string::String::from(transaction_id),
-        status: alloc::string::String::from(status),
-        estimated_completion,
+        account_id: None,
+        dest_account_id: None,
+        memo: None,
+        memo_type: None,
+        min_amount: None,
+        max_amount: None,
+        fee_fixed: None,
+        fee_percent: None,
+        estimated_completion: Some(estimated_completion),
+        status: TransactionStatus::from_str(status),
     })
 }
 
@@ -157,9 +155,9 @@ mod tests {
         assert!(result.is_ok());
         let r = result.unwrap();
         assert_eq!(r.transaction_id, "dep_123");
-        assert_eq!(r.status, "pending");
-        assert_eq!(r.deposit_address, "GDEPOSIT...");
-        assert_eq!(r.expires_at, 9999);
+        assert_eq!(r.status, TransactionStatus::Pending);
+        assert_eq!(r.deposit_address, Some(alloc::string::String::from("GDEPOSIT...")));
+        assert_eq!(r.expires_at, Some(9999));
     }
 
     #[test]
@@ -227,8 +225,8 @@ mod tests {
         assert!(result.is_ok());
         let r = result.unwrap();
         assert_eq!(r.transaction_id, "wd_456");
-        assert_eq!(r.status, "processing");
-        assert_eq!(r.estimated_completion, 2000);
+        assert_eq!(r.status, TransactionStatus::Unknown(alloc::string::String::from("processing")));
+        assert_eq!(r.estimated_completion, Some(2000));
     }
 
     #[test]
