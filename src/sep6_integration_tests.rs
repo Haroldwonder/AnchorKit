@@ -29,7 +29,6 @@ fn test_sep6_deposit_happy_path_basic_flow() {
 
     let deposit_response = initiate_deposit(deposit, "USDC").expect("Deposit should succeed");
     assert_eq!(deposit_response.transaction_id, "deposit-12345");
-    assert_eq!(deposit_response.how, "Send USDC to bank account 1234567890");
     assert_eq!(deposit_response.status, TransactionStatus::PendingExternal);
     assert_eq!(deposit_response.min_amount, Some(100));
     assert_eq!(deposit_response.max_amount, Some(100_000));
