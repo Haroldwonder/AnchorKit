@@ -10,6 +10,13 @@ use alloc::vec::Vec;
 use soroban_sdk::{Bytes, Env, String};
 use ed25519_dalek::{Signature, VerifyingKey, Verifier};
 
+/// Cached JWT token with expiration time.
+#[derive(Debug, Clone)]
+pub struct CachedJwt {
+    pub token: String,
+    pub exp: u64,
+}
+
 /// Maximum JWT character length accepted by the contract (defensive bound).
 ///
 /// SEP-10 JWTs with multiple scope claims and long sub fields can exceed 2048 bytes.
@@ -359,6 +366,32 @@ pub fn extract_token_client_domain(env: &Env, token: &String) -> Result<Option<S
         Some(domain_bytes) => Ok(Some(String::from_bytes(env, &domain_bytes))),
         None => Ok(None),
     }
+}
+
+/// Check if a cached JWT is still valid based on the current time and threshold.
+///
+/// Returns `true` if the JWT is still valid (not expiring within threshold).
+/// Returns `false` if the JWT should be refreshed.
+pub fn is_cached_jwt_valid(exp: u64, now: u64, threshold_secs: u64) -> bool {
+    // Token is valid if its expiration is beyond (now + threshold)
+    exp > now.saturating_add(threshold_secs)
+}
+
+/// Get the cache key for a JWT token cached by anchor domain.
+///
+/// Takes a domain string and returns the hash to use as cache key.
+pub fn get_jwt_cache_key(env: &Env, domain: &String) -> Bytes {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    let n = domain.len();
+    if n > 0 {
+        let n_usize = n as usize;
+        let mut buf = [0u8; 2048];
+        domain.copy_into_slice(&mut buf[..n_usize]);
+        hasher.update(&buf[..n_usize]);
+    }
+    let hash = hasher.finalize();
+    Bytes::from_slice(env, &hash)
 }
 
 /// Check if a JWT token is expiring within a threshold.
@@ -1047,5 +1080,58 @@ mod tests {
 
         let malformed_token = String::from_str(&env, "not.a.valid.jwt");
         assert!(extract_token_client_domain(&env, &malformed_token).is_err());
+    }
+
+    #[test]
+    fn is_cached_jwt_valid_within_threshold() {
+        // Token expires at 2_000, now is 1_000, threshold is 500
+        // exp > now + threshold => 2_000 > 1_500 => true
+        assert!(is_cached_jwt_valid(2_000, 1_000, 500));
+    }
+
+    #[test]
+    fn is_cached_jwt_valid_at_threshold_boundary() {
+        // Token expires at 2_000, now is 1_000, threshold is 1_000
+        // exp > now + threshold => 2_000 > 2_000 => false
+        assert!(!is_cached_jwt_valid(2_000, 1_000, 1_000));
+    }
+
+    #[test]
+    fn is_cached_jwt_valid_beyond_threshold() {
+        // Token expires at 1_900, now is 1_000, threshold is 1_000
+        // exp > now + threshold => 1_900 > 2_000 => false
+        assert!(!is_cached_jwt_valid(1_900, 1_000, 1_000));
+    }
+
+    #[test]
+    fn is_cached_jwt_valid_already_expired() {
+        // Token expires at 500, now is 1_000, threshold is 0
+        // exp > now + threshold => 500 > 1_000 => false
+        assert!(!is_cached_jwt_valid(500, 1_000, 0));
+    }
+
+    #[test]
+    fn get_jwt_cache_key_consistent() {
+        let env = Env::default();
+        let domain = String::from_str(&env, "example.com");
+
+        let key1 = get_jwt_cache_key(&env, &domain);
+        let key2 = get_jwt_cache_key(&env, &domain);
+
+        // Same domain should produce same key
+        assert_eq!(key1, key2);
+    }
+
+    #[test]
+    fn get_jwt_cache_key_different_domains() {
+        let env = Env::default();
+        let domain1 = String::from_str(&env, "example.com");
+        let domain2 = String::from_str(&env, "other.com");
+
+        let key1 = get_jwt_cache_key(&env, &domain1);
+        let key2 = get_jwt_cache_key(&env, &domain2);
+
+        // Different domains should produce different keys
+        assert_ne!(key1, key2);
     }
 }
