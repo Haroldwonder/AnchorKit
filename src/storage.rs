@@ -57,6 +57,9 @@ pub enum StorageKey {
     AnchorMeta(Address),
     /// Stellar.toml cache for an anchor (temporary).
     TomlCache(Address),
+    /// SEP-10 JWT cache keyed by anchor domain (temporary).
+    /// Value is a tuple of (jwt_token: String, expiration_time: u64).
+    Sep10JwtCache(Bytes),
     /// Per-attestor rate-limit state — submission count + window start (persistent).
     RateLimitState(Address),
     /// Per-attestor rate-limit configuration override (persistent).

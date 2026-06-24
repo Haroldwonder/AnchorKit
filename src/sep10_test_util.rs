@@ -38,6 +38,52 @@ pub fn build_sep10_jwt_with_scope(
     format!("{}.{}", signing_input, sig_b64)
 }
 
+/// Build a SEP-10 JWT that includes a `memo` claim.
+///
+/// `memo` is an optional string for customer/account identification.
+pub fn build_sep10_jwt_with_memo(
+    signing_key: &SigningKey,
+    sub: &str,
+    exp: u64,
+    memo: Option<&str>,
+) -> alloc::string::String {
+    let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
+    let payload = if let Some(m) = memo {
+        format!(r#"{{"sub":"{}","exp":{},"memo":"{}"}}"#, sub, exp, m)
+    } else {
+        format!(r#"{{"sub":"{}","exp":{},"memo":null}}"#, sub, exp)
+    };
+    let header_b64 = URL_SAFE_NO_PAD.encode(header);
+    let payload_b64 = URL_SAFE_NO_PAD.encode(payload);
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+    let sig = signing_key.sign(signing_input.as_bytes());
+    let sig_b64 = URL_SAFE_NO_PAD.encode(sig.to_bytes());
+    format!("{}.{}", signing_input, sig_b64)
+}
+
+/// Build a SEP-10 JWT that includes a `client_domain` claim.
+///
+/// `client_domain` is an optional domain string for domain verification.
+pub fn build_sep10_jwt_with_client_domain(
+    signing_key: &SigningKey,
+    sub: &str,
+    exp: u64,
+    client_domain: Option<&str>,
+) -> alloc::string::String {
+    let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
+    let payload = if let Some(d) = client_domain {
+        format!(r#"{{"sub":"{}","exp":{},"client_domain":"{}"}}"#, sub, exp, d)
+    } else {
+        format!(r#"{{"sub":"{}","exp":{},"client_domain":null}}"#, sub, exp)
+    };
+    let header_b64 = URL_SAFE_NO_PAD.encode(header);
+    let payload_b64 = URL_SAFE_NO_PAD.encode(payload);
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+    let sig = signing_key.sign(signing_input.as_bytes());
+    let sig_b64 = URL_SAFE_NO_PAD.encode(sig.to_bytes());
+    format!("{}.{}", signing_input, sig_b64)
+}
+
 /// Sign a payload hash with the given signing key, returning a 64-byte signature as Bytes.
 pub fn sign_payload(env: &Env, signing_key: &SigningKey, payload_hash: &Bytes) -> Bytes {
     let mut hash_arr = [0u8; 32];
