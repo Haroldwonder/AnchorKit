@@ -208,6 +208,53 @@ fn parse_json_memo(payload: &[u8]) -> Result<Option<Vec<u8>>, ()> {
     }
 }
 
+/// Parse first `"client_domain":"..."` string value from the JWT payload (optional).
+///
+/// Returns `Ok(Some(domain_bytes))` if client_domain is present, `Ok(None)` if not present,
+/// and `Err(())` if present but malformed.
+fn parse_json_client_domain(payload: &[u8]) -> Result<Option<Vec<u8>>, ()> {
+    let key = b"\"client_domain\":";
+    match find_bytes(payload, key) {
+        None => Ok(None),
+        Some(pos) => {
+            let mut i = pos + key.len();
+            while i < payload.len() && payload[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i >= payload.len() {
+                return Err(());
+            }
+            // client_domain can be null or a string
+            if payload[i] == b'n' {
+                // Check for "null"
+                if i + 4 <= payload.len() && &payload[i..i+4] == b"null" {
+                    return Ok(None);
+                }
+                return Err(());
+            }
+            if payload[i] != b'"' {
+                return Err(());
+            }
+            i += 1;
+            let start = i;
+            while i < payload.len() {
+                if payload[i] == b'\\' {
+                    if i + 1 >= payload.len() {
+                        return Err(());
+                    }
+                    i += 2;
+                    continue;
+                }
+                if payload[i] == b'"' {
+                    return Ok(Some(payload[start..i].to_vec()));
+                }
+                i += 1;
+            }
+            Err(())
+        }
+    }
+}
+
 /// Parse first `"alg":"..."` string value from the JWT header.
 fn parse_json_alg(header: &[u8]) -> Result<Vec<u8>, ()> {
     let key = b"\"alg\":";
@@ -270,6 +317,46 @@ pub fn extract_token_memo(env: &Env, token: &String) -> Result<Option<String>, (
     let payload_dec = base64url_decode(payload_b64).map_err(|_| ())?;
     match parse_json_memo(&payload_dec)? {
         Some(memo_bytes) => Ok(Some(String::from_bytes(env, &memo_bytes))),
+        None => Ok(None),
+    }
+}
+
+/// Extract client_domain from a SEP-10 JWT token.
+///
+/// Returns `Ok(Some(domain))` if client_domain claim is present, `Ok(None)` if absent,
+/// and `Err(())` if token is malformed.
+///
+/// The client_domain claim indicates which domain the client is using.
+/// Verification of this domain against stellar.toml should be done off-chain.
+pub fn extract_token_client_domain(env: &Env, token: &String) -> Result<Option<String>, ()> {
+    let n = token.len();
+    if n == 0 || n > MAX_JWT_LEN {
+        return Err(());
+    }
+    let n_usize = n as usize;
+    let mut buf = [0u8; MAX_JWT_LEN as usize];
+    token.copy_into_slice(&mut buf[..n_usize]);
+
+    let mut dots: [usize; 2] = [0; 2];
+    let mut dot_count = 0usize;
+    for (i, &byte) in buf[..n_usize].iter().enumerate() {
+        if byte == b'.' {
+            if dot_count < 2 {
+                dots[dot_count] = i;
+                dot_count += 1;
+            } else {
+                return Err(());
+            }
+        }
+    }
+    if dot_count != 2 {
+        return Err(());
+    }
+
+    let payload_b64 = &buf[dots[0] + 1..dots[1]];
+    let payload_dec = base64url_decode(payload_b64).map_err(|_| ())?;
+    match parse_json_client_domain(&payload_dec)? {
+        Some(domain_bytes) => Ok(Some(String::from_bytes(env, &domain_bytes))),
         None => Ok(None),
     }
 }
@@ -710,6 +797,22 @@ mod tests {
         format!("{}.{}", signing_input, sig_b64)
     }
 
+    fn build_jwt_with_client_domain(signing_key: &SigningKey, sub: &str, exp: u64, client_domain: Option<&str>) -> std::string::String {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
+        let payload = if let Some(d) = client_domain {
+            format!(r#"{{"sub":"{}","exp":{},"client_domain":"{}"}}"#, sub, exp, d)
+        } else {
+            format!(r#"{{"sub":"{}","exp":{},"client_domain":null}}"#, sub, exp)
+        };
+        let header_b64 = URL_SAFE_NO_PAD.encode(header);
+        let payload_b64 = URL_SAFE_NO_PAD.encode(payload);
+        let signing_input = format!("{}.{}", header_b64, payload_b64);
+        let sig = signing_key.sign(signing_input.as_bytes());
+        let sig_b64 = URL_SAFE_NO_PAD.encode(sig.to_bytes());
+        format!("{}.{}", signing_input, sig_b64)
+    }
+
     #[test]
     fn check_token_scope_matches() {
         let env = Env::default();
@@ -892,5 +995,57 @@ mod tests {
 
         let malformed_token = String::from_str(&env, "not.a.valid.jwt");
         assert!(extract_token_memo(&env, &malformed_token).is_err());
+    }
+
+    #[test]
+    fn extract_token_client_domain_with_domain_present() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        let jwt = build_jwt_with_client_domain(&signing_key, "any", 2_000, Some("example.com"));
+        let token = String::from_str(&env, jwt.as_str());
+
+        let domain = extract_token_client_domain(&env, &token).unwrap();
+        assert!(domain.is_some());
+        let domain_str = domain.unwrap();
+        let domain_std: std::string::String = domain_str.to_string();
+        assert_eq!(domain_std, "example.com");
+    }
+
+    #[test]
+    fn extract_token_client_domain_with_null_domain() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        let jwt = build_jwt_with_client_domain(&signing_key, "any", 2_000, None);
+        let token = String::from_str(&env, jwt.as_str());
+
+        let domain = extract_token_client_domain(&env, &token).unwrap();
+        assert!(domain.is_none());
+    }
+
+    #[test]
+    fn extract_token_client_domain_no_domain_field() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        // Build JWT without client_domain field at all
+        let jwt = build_jwt(&signing_key, "any", 2_000);
+        let token = String::from_str(&env, jwt.as_str());
+
+        let domain = extract_token_client_domain(&env, &token).unwrap();
+        assert!(domain.is_none());
+    }
+
+    #[test]
+    fn extract_token_client_domain_rejects_malformed_token() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+
+        let malformed_token = String::from_str(&env, "not.a.valid.jwt");
+        assert!(extract_token_client_domain(&env, &malformed_token).is_err());
     }
 }
