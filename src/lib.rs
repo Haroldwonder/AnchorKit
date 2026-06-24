@@ -8,6 +8,12 @@ mod events;
 mod storage;
 mod types;
 mod validation;
+mod sep6;
+mod contract;
+mod rate_limiter;
+mod response_validator;
+mod retry;
+mod sep10_jwt;
 
 #[cfg(test)]
 mod config_tests;
@@ -31,7 +37,8 @@ mod transaction_state_tracker_tests;
 pub use sep6::{
     fetch_transaction_status, initiate_deposit, initiate_withdrawal,
     RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, TransactionKind,
-    TransactionStatusResponse,
+    TransactionStatusResponse, map_sep6_error_code, poll_kyc_status, submit_sep6_attestation,
+    Sep6Attestation,
 };
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
@@ -102,3 +109,6 @@ mod anchor_health_score_tests;
 
 #[cfg(test)]
 mod compute_payload_hash_tests;
+
+#[cfg(test)]
+mod sep6_integration_tests;
