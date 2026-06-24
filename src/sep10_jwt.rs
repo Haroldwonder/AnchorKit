@@ -161,6 +161,53 @@ fn parse_json_scp(payload: &[u8]) -> Result<Vec<u8>, ()> {
     Err(())
 }
 
+/// Parse first `"memo":"..."` string value from the JWT payload (optional).
+///
+/// Returns `Ok(Some(memo_bytes))` if memo is present, `Ok(None)` if not present,
+/// and `Err(())` if present but malformed.
+fn parse_json_memo(payload: &[u8]) -> Result<Option<Vec<u8>>, ()> {
+    let key = b"\"memo\":";
+    match find_bytes(payload, key) {
+        None => Ok(None),
+        Some(pos) => {
+            let mut i = pos + key.len();
+            while i < payload.len() && payload[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i >= payload.len() {
+                return Err(());
+            }
+            // memo can be null or a string
+            if payload[i] == b'n' {
+                // Check for "null"
+                if i + 4 <= payload.len() && &payload[i..i+4] == b"null" {
+                    return Ok(None);
+                }
+                return Err(());
+            }
+            if payload[i] != b'"' {
+                return Err(());
+            }
+            i += 1;
+            let start = i;
+            while i < payload.len() {
+                if payload[i] == b'\\' {
+                    if i + 1 >= payload.len() {
+                        return Err(());
+                    }
+                    i += 2;
+                    continue;
+                }
+                if payload[i] == b'"' {
+                    return Ok(Some(payload[start..i].to_vec()));
+                }
+                i += 1;
+            }
+            Err(())
+        }
+    }
+}
+
 /// Parse first `"alg":"..."` string value from the JWT header.
 fn parse_json_alg(header: &[u8]) -> Result<Vec<u8>, ()> {
     let key = b"\"alg\":";
@@ -188,6 +235,43 @@ fn parse_json_alg(header: &[u8]) -> Result<Vec<u8>, ()> {
         i += 1;
     }
     Err(())
+}
+
+/// Extract memo from a SEP-10 JWT token.
+///
+/// Returns `Ok(Some(memo))` if memo claim is present, `Ok(None)` if absent,
+/// and `Err(())` if token is malformed.
+pub fn extract_token_memo(env: &Env, token: &String) -> Result<Option<String>, ()> {
+    let n = token.len();
+    if n == 0 || n > MAX_JWT_LEN {
+        return Err(());
+    }
+    let n_usize = n as usize;
+    let mut buf = [0u8; MAX_JWT_LEN as usize];
+    token.copy_into_slice(&mut buf[..n_usize]);
+
+    let mut dots: [usize; 2] = [0; 2];
+    let mut dot_count = 0usize;
+    for (i, &byte) in buf[..n_usize].iter().enumerate() {
+        if byte == b'.' {
+            if dot_count < 2 {
+                dots[dot_count] = i;
+                dot_count += 1;
+            } else {
+                return Err(());
+            }
+        }
+    }
+    if dot_count != 2 {
+        return Err(());
+    }
+
+    let payload_b64 = &buf[dots[0] + 1..dots[1]];
+    let payload_dec = base64url_decode(payload_b64).map_err(|_| ())?;
+    match parse_json_memo(&payload_dec)? {
+        Some(memo_bytes) => Ok(Some(String::from_bytes(env, &memo_bytes))),
+        None => Ok(None),
+    }
 }
 
 /// Check if a JWT token is expiring within a threshold.
@@ -610,6 +694,22 @@ mod tests {
         format!("{}.{}", signing_input, sig_b64)
     }
 
+    fn build_jwt_with_memo(signing_key: &SigningKey, sub: &str, exp: u64, memo: Option<&str>) -> std::string::String {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
+        let payload = if let Some(m) = memo {
+            format!(r#"{{"sub":"{}","exp":{},"memo":"{}"}}"#, sub, exp, m)
+        } else {
+            format!(r#"{{"sub":"{}","exp":{},"memo":null}}"#, sub, exp)
+        };
+        let header_b64 = URL_SAFE_NO_PAD.encode(header);
+        let payload_b64 = URL_SAFE_NO_PAD.encode(payload);
+        let signing_input = format!("{}.{}", header_b64, payload_b64);
+        let sig = signing_key.sign(signing_input.as_bytes());
+        let sig_b64 = URL_SAFE_NO_PAD.encode(sig.to_bytes());
+        format!("{}.{}", signing_input, sig_b64)
+    }
+
     #[test]
     fn check_token_scope_matches() {
         let env = Env::default();
@@ -740,5 +840,57 @@ mod tests {
 
         let malformed_token = String::from_str(&env, "not.a.valid.jwt");
         assert!(refresh_if_expiring(&env, &malformed_token, 100).is_err());
+    }
+
+    #[test]
+    fn extract_token_memo_with_memo_present() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        let jwt = build_jwt_with_memo(&signing_key, "any", 2_000, Some("customer123"));
+        let token = String::from_str(&env, jwt.as_str());
+
+        let memo = extract_token_memo(&env, &token).unwrap();
+        assert!(memo.is_some());
+        let memo_str = memo.unwrap();
+        let memo_std: std::string::String = memo_str.to_string();
+        assert_eq!(memo_std, "customer123");
+    }
+
+    #[test]
+    fn extract_token_memo_with_null_memo() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        let jwt = build_jwt_with_memo(&signing_key, "any", 2_000, None);
+        let token = String::from_str(&env, jwt.as_str());
+
+        let memo = extract_token_memo(&env, &token).unwrap();
+        assert!(memo.is_none());
+    }
+
+    #[test]
+    fn extract_token_memo_no_memo_field() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        // Build JWT without memo field at all
+        let jwt = build_jwt(&signing_key, "any", 2_000);
+        let token = String::from_str(&env, jwt.as_str());
+
+        let memo = extract_token_memo(&env, &token).unwrap();
+        assert!(memo.is_none());
+    }
+
+    #[test]
+    fn extract_token_memo_rejects_malformed_token() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+
+        let malformed_token = String::from_str(&env, "not.a.valid.jwt");
+        assert!(extract_token_memo(&env, &malformed_token).is_err());
     }
 }
