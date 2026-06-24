@@ -190,6 +190,50 @@ fn parse_json_alg(header: &[u8]) -> Result<Vec<u8>, ()> {
     Err(())
 }
 
+/// Check if a JWT token is expiring within a threshold.
+///
+/// Returns `true` if the token should be refreshed (i.e., its expiration is within
+/// `threshold_secs` of the current ledger timestamp). Returns `Err(())` if the token
+/// is malformed or expired.
+pub fn refresh_if_expiring(env: &Env, token: &String, threshold_secs: u64) -> Result<bool, ()> {
+    let n = token.len();
+    if n == 0 || n > MAX_JWT_LEN {
+        return Err(());
+    }
+    let n_usize = n as usize;
+    let mut buf = [0u8; MAX_JWT_LEN as usize];
+    token.copy_into_slice(&mut buf[..n_usize]);
+
+    let mut dots: [usize; 2] = [0; 2];
+    let mut dot_count = 0usize;
+    for (i, &byte) in buf[..n_usize].iter().enumerate() {
+        if byte == b'.' {
+            if dot_count < 2 {
+                dots[dot_count] = i;
+                dot_count += 1;
+            } else {
+                return Err(());
+            }
+        }
+    }
+    if dot_count != 2 {
+        return Err(());
+    }
+
+    let payload_b64 = &buf[dots[0] + 1..dots[1]];
+    let payload_dec = base64url_decode(payload_b64).map_err(|_| ())?;
+    let exp = parse_json_exp(&payload_dec)?;
+    let now = env.ledger().timestamp();
+
+    // Token is already expired
+    if exp <= now {
+        return Err(());
+    }
+
+    // Check if within threshold
+    Ok(exp.saturating_sub(threshold_secs) <= now)
+}
+
 /// Returns the canonical scope name for a service code (matches SERVICE_* constants in contract.rs).
 pub fn service_scope_name(service_code: u32) -> Option<&'static [u8]> {
     match service_code {
@@ -646,5 +690,55 @@ mod tests {
         let jwt_no_alg = build_jwt_without_alg(&signing_key, sub_str.as_str(), 2_000);
         let token_no_alg = String::from_str(&env, jwt_no_alg.as_str());
         assert!(verify_sep10_jwt(&env, &token_no_alg, &keys, Some(&sub), 0).is_err());
+    }
+
+    #[test]
+    fn refresh_if_expiring_returns_true_within_threshold() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        let jwt = build_jwt(&signing_key, "any", 1_050);
+        let token = String::from_str(&env, jwt.as_str());
+
+        // Token expires at 1_050, threshold is 100, now is 1_000
+        // 1_050 - 100 = 950, which is <= 1_000, so should refresh
+        assert!(refresh_if_expiring(&env, &token, 100).unwrap());
+    }
+
+    #[test]
+    fn refresh_if_expiring_returns_false_outside_threshold() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        let jwt = build_jwt(&signing_key, "any", 2_000);
+        let token = String::from_str(&env, jwt.as_str());
+
+        // Token expires at 2_000, threshold is 100, now is 1_000
+        // 2_000 - 100 = 1_900, which is > 1_000, so no refresh needed
+        assert!(!refresh_if_expiring(&env, &token, 100).unwrap());
+    }
+
+    #[test]
+    fn refresh_if_expiring_rejects_expired_token() {
+        let env = Env::default();
+        ledger(&env, 2_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        let jwt = build_jwt(&signing_key, "any", 1_000);
+        let token = String::from_str(&env, jwt.as_str());
+
+        // Token is already expired
+        assert!(refresh_if_expiring(&env, &token, 100).is_err());
+    }
+
+    #[test]
+    fn refresh_if_expiring_rejects_malformed_token() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+
+        let malformed_token = String::from_str(&env, "not.a.valid.jwt");
+        assert!(refresh_if_expiring(&env, &malformed_token, 100).is_err());
     }
 }
