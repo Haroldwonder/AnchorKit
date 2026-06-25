@@ -2,6 +2,7 @@
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
+use std::io::Write as _;
 use std::process::Command;
 use std::time::Instant;
 use regex::Regex;
@@ -37,7 +38,11 @@ enum Commands {
         admin: String,
     },
     /// Run environment diagnostics
-    Doctor,
+    Doctor {
+        /// Automatically remediate detected issues
+        #[arg(long)]
+        fix: bool,
+    },
     /// Validate configuration files (JSON and TOML)
     Validate {
         /// Path to config file or directory (defaults to configs/)
@@ -137,7 +142,7 @@ fn main() {
         Commands::Build { release } => run_build(release),
         Commands::Deploy { network } => run_deploy(&network),
         Commands::Init { admin } => run_init(&admin),
-        Commands::Doctor => run_doctor(),
+        Commands::Doctor { fix } => run_doctor(fix),
         Commands::Validate { path } => run_validate(&path),
         Commands::Register { address, services, endpoint } => {
             run_register(&address, services.as_deref(), endpoint.as_deref())
@@ -422,26 +427,188 @@ fn run_test(pattern: Option<&str>, verbose: bool) {
 
 // ── doctor ──────────────────────────────────────────────────────────────────
 
-fn run_doctor() {
-    println!("🔍 Running AnchorKit diagnostics...\n");
+fn run_doctor(fix: bool) {
+    if fix {
+        println!("🔧 Running AnchorKit diagnostics with auto-remediation...\n");
+    } else {
+        println!("🔍 Running AnchorKit diagnostics...\n");
+    }
     let start = Instant::now();
     let mut all_ok = true;
+    let mut needs_shell_restart = false;
 
-    all_ok &= check_rust_version();
-    all_ok &= check_wasm_target();
-    all_ok &= check_wallet();
-    all_ok &= check_rpc();
-    all_ok &= check_configs();
-    all_ok &= check_network();
+    // For checks whose fix runs a command and takes effect immediately, re-verify after fixing.
+    macro_rules! hard_fix {
+        ($check:expr, $fixer:expr) => {{
+            let ok = $check;
+            if !ok && fix {
+                if $fixer {
+                    all_ok &= $check;
+                } else {
+                    all_ok = false;
+                }
+            } else {
+                all_ok &= ok;
+            }
+        }};
+    }
+
+    hard_fix!(check_rust_version(), fix_rust_version());
+    hard_fix!(check_wasm_target(), fix_wasm_target());
+
+    // Wallet and RPC fixes write to .env; env vars can't be injected into the
+    // running process, so we skip the re-check and tell the user to source .env.
+    let wallet_ok = check_wallet();
+    if !wallet_ok && fix {
+        if fix_wallet() {
+            needs_shell_restart = true;
+        } else {
+            all_ok = false;
+        }
+    } else {
+        all_ok &= wallet_ok;
+    }
+
+    let rpc_ok = check_rpc();
+    if !rpc_ok && fix {
+        if fix_rpc() {
+            needs_shell_restart = true;
+        } else {
+            all_ok = false;
+        }
+    } else {
+        all_ok &= rpc_ok;
+    }
+
+    hard_fix!(check_configs(), fix_configs());
+    all_ok &= check_network(); // network issues are not auto-fixable
 
     println!("\n⏱  Completed in {:.2}s\n", start.elapsed().as_secs_f64());
 
+    if needs_shell_restart {
+        println!("📝 Env vars written to .env — run `source .env` (or `. .env` on some shells) then re-run `anchorkit doctor` to verify.\n");
+    }
+
     if all_ok {
-        println!("✅ All checks passed! Your environment is ready.");
+        if needs_shell_restart {
+            println!("✅ Remediations applied. Source .env and re-run doctor to confirm.");
+        } else {
+            println!("✅ All checks passed! Your environment is ready.");
+        }
         std::process::exit(0);
     } else {
         println!("⚠️  Some checks failed. Please address the issues above.");
         std::process::exit(1);
+    }
+}
+
+fn fix_rust_version() -> bool {
+    match Command::new("rustup").args(["update", "stable"]).status() {
+        Ok(s) if s.success() => {
+            println!("  ✔ Rust toolchain updated via rustup");
+            true
+        }
+        Ok(s) => {
+            println!("  ✖ rustup update stable exited with status {}", s);
+            false
+        }
+        Err(_) => {
+            println!("  ✖ rustup not found — install from https://rustup.rs");
+            false
+        }
+    }
+}
+
+fn fix_wasm_target() -> bool {
+    println!("  → Installing wasm32-unknown-unknown target...");
+    match Command::new("rustup")
+        .args(["target", "add", "wasm32-unknown-unknown"])
+        .status()
+    {
+        Ok(s) if s.success() => {
+            println!("  ✔ WASM target installed");
+            true
+        }
+        Ok(s) => {
+            println!("  ✖ rustup target add failed with status {}", s);
+            false
+        }
+        Err(e) => {
+            println!("  ✖ Failed to run rustup: {}", e);
+            false
+        }
+    }
+}
+
+fn fix_wallet() -> bool {
+    println!("  → Writing STELLAR_SECRET_KEY placeholder to .env...");
+    append_env_line(
+        "STELLAR_SECRET_KEY",
+        "REPLACE_WITH_YOUR_STELLAR_SECRET_KEY",
+        "  ✔ Added STELLAR_SECRET_KEY placeholder to .env — replace the value with your actual key",
+    )
+}
+
+fn fix_rpc() -> bool {
+    println!("  → Writing default RPC URL to .env...");
+    append_env_line(
+        "ANCHORKIT_RPC_URL",
+        "https://soroban-testnet.stellar.org",
+        "  ✔ Added ANCHORKIT_RPC_URL (testnet) to .env",
+    )
+}
+
+/// Append `KEY=VALUE` to `.env` (creates the file if absent, skips if key already present).
+fn append_env_line(key: &str, value: &str, success_msg: &str) -> bool {
+    let env_path = ".env";
+    if let Ok(existing) = std::fs::read_to_string(env_path) {
+        if existing.lines().any(|l| l.starts_with(&format!("{}=", key))) {
+            println!("  ✔ {} already present in .env", key);
+            return true;
+        }
+    }
+    match std::fs::OpenOptions::new().create(true).append(true).open(env_path) {
+        Ok(mut f) => {
+            if let Err(e) = writeln!(f, "{}={}", key, value) {
+                println!("  ✖ Failed to write to .env: {}", e);
+                return false;
+            }
+            println!("{}", success_msg);
+            true
+        }
+        Err(e) => {
+            println!("  ✖ Cannot open .env: {}", e);
+            false
+        }
+    }
+}
+
+fn fix_configs() -> bool {
+    println!("  → Creating configs/ directory with a default config...");
+    if let Err(e) = std::fs::create_dir_all("configs") {
+        println!("  ✖ Failed to create configs/: {}", e);
+        return false;
+    }
+    let config_path = "configs/default.json";
+    if std::path::Path::new(config_path).exists() {
+        println!("  ✔ configs/default.json already exists");
+        return true;
+    }
+    let default_json = r#"{
+  "network": "testnet",
+  "rpc_url": "https://soroban-testnet.stellar.org",
+  "horizon_url": "https://horizon-testnet.stellar.org"
+}
+"#;
+    match std::fs::write(config_path, default_json) {
+        Ok(()) => {
+            println!("  ✔ Created configs/default.json");
+            true
+        }
+        Err(e) => {
+            println!("  ✖ Failed to write {}: {}", config_path, e);
+            false
+        }
     }
 }
 
