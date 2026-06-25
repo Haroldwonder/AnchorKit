@@ -95,6 +95,9 @@ mod is_initialized_tests;
 mod get_attestation_tests;
 
 #[cfg(test)]
+mod is_attestation_valid_tests;
+
+#[cfg(test)]
 mod replay_window_tests;
 
 #[cfg(test)]
