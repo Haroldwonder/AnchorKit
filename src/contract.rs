@@ -707,6 +707,20 @@ impl AnchorKitContract {
         Some(attestation)
     }
 
+    /// Returns `true` if the attestation exists and its issuer has not been revoked.
+    pub fn is_attestation_valid(env: Env, id: u64) -> bool {
+        let attestation = match env.storage()
+            .persistent()
+            .get::<_, Attestation>(&StorageKey::Attest(id))
+        {
+            Some(a) => a,
+            None => return false,
+        };
+        !env.storage()
+            .persistent()
+            .has(&StorageKey::AttestorRevoked(attestation.issuer))
+    }
+
     pub fn list_attestations(env: Env, subject: Address, offset: u64, limit: u32) -> Vec<Attestation> {
         let max_page_size = Self::get_max_page_size(env.clone());
         let actual_limit = if limit > max_page_size { max_page_size } else { limit };
