@@ -55,17 +55,10 @@ enum Commands {
         #[arg(long)]
         endpoint: Option<String>,
     },
-    /// Submit attestation
+    /// Submit or verify attestations
     Attest {
-        /// Subject address
-        #[arg(long)]
-        subject: String,
-        /// Payload hash
-        #[arg(long)]
-        payload_hash: String,
-        /// Session ID for tracking
-        #[arg(long)]
-        session: Option<String>,
+        #[command(subcommand)]
+        cmd: AttestCommands,
     },
     /// Query attestation by ID
     Query {
@@ -109,6 +102,28 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand)]
+enum AttestCommands {
+    /// Submit an attestation on-chain
+    Submit {
+        /// Subject address
+        #[arg(long)]
+        subject: String,
+        /// Payload hash (64-character hex string)
+        #[arg(long)]
+        payload_hash: String,
+        /// Session ID for tracking
+        #[arg(long)]
+        session: Option<String>,
+    },
+    /// Verify attestation validity on-chain
+    Verify {
+        /// Attestation ID to verify
+        #[arg(long)]
+        id: String,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
     match cli.command {
@@ -120,9 +135,12 @@ fn main() {
         Commands::Register { address, services, endpoint } => {
             run_register(&address, services.as_deref(), endpoint.as_deref())
         }
-        Commands::Attest { subject, payload_hash, session } => {
-            run_attest(&subject, &payload_hash, session.as_deref())
-        }
+        Commands::Attest { cmd } => match cmd {
+            AttestCommands::Submit { subject, payload_hash, session } => {
+                run_attest(&subject, &payload_hash, session.as_deref())
+            }
+            AttestCommands::Verify { id } => run_verify(&id),
+        },
         Commands::Query { transaction_id, output } => run_query(&transaction_id, &output),
         Commands::Health { attestor, watch, interval } => {
             run_health(attestor.as_deref(), watch, interval)
@@ -255,6 +273,44 @@ fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>) {
     println!("    --payload-hash {}", payload_hash);
     println!();
     println!("💡 Note: Replace <CONTRACT_ID> and <ATTESTOR_ACCOUNT> with actual values");
+}
+
+// ── attest verify ────────────────────────────────────────────────────────────
+
+fn run_verify(id: &str) {
+    println!("🔍 Verifying attestation on-chain...");
+    println!("  Attestation ID: {}", id);
+
+    if id.parse::<u64>().is_err() {
+        eprintln!("❌ Invalid attestation ID: must be a non-negative integer");
+        std::process::exit(1);
+    }
+
+    println!("📋 Step 1 — check validity:");
+    println!("  soroban contract invoke \\");
+    println!("    --id <CONTRACT_ID> \\");
+    println!("    --source <ACCOUNT> \\");
+    println!("    --network testnet \\");
+    println!("    -- \\");
+    println!("    is_attestation_valid \\");
+    println!("    --id {}", id);
+    println!();
+    println!("📋 Step 2 — retrieve details (subject, attestor, timestamp):");
+    println!("  soroban contract invoke \\");
+    println!("    --id <CONTRACT_ID> \\");
+    println!("    --source <ACCOUNT> \\");
+    println!("    --network testnet \\");
+    println!("    -- \\");
+    println!("    get_attestation \\");
+    println!("    --id {}", id);
+    println!();
+    println!("📊 Field reference:");
+    println!("  Status  : is_attestation_valid → true (valid) | false (not found or issuer revoked)");
+    println!("  Subject : attestation.subject  (Stellar address of the attested party)");
+    println!("  Attestor: attestation.issuer   (Stellar address of the issuing attestor)");
+    println!("  Expiry  : attestation.timestamp + 7776000  (Unix seconds; ~90 days after submission)");
+    println!();
+    println!("💡 Note: Replace <CONTRACT_ID> and <ACCOUNT> with actual values");
 }
 
 // ── query ───────────────────────────────────────────────────────────────────
