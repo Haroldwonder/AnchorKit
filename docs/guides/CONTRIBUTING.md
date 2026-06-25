@@ -9,6 +9,7 @@ Thank you for your interest in contributing to AnchorKit! This document provides
 - [Development Environment Setup](#development-environment-setup)
 - [Makefile Shortcuts](#makefile-shortcuts)
 - [Running Tests](#running-tests)
+- [Snapshot Tests](#snapshot-tests)
 - [Code Style Guidelines](#code-style-guidelines)
 - [Branch Naming Conventions](#branch-naming-conventions)
 - [Pull Request Process](#pull-request-process)
@@ -149,6 +150,75 @@ Validate configuration files:
 # Windows
 .\validate_all.ps1
 ```
+
+## Snapshot Tests
+
+AnchorKit uses the Soroban SDK's built-in snapshot mechanism to record full ledger state (auth traces, storage entries, ledger metadata) after each test. These JSON files live under `test_snapshots/` and are committed to the repository so CI can detect unintended contract-state changes.
+
+### Naming convention
+
+Snapshot paths are derived automatically from the Rust **module hierarchy** — never create or rename them by hand:
+
+```
+test_snapshots/<outer-module>/<inner-module>/test_name.1.json
+```
+
+The outer directory comes from the `mod foo_tests;` declaration in `lib.rs`; the inner directory comes from the `mod foo_tests { }` block inside the test file. Because both levels typically share the same name, most paths look like:
+
+```
+test_snapshots/session_tests/session_tests/test_example.1.json
+```
+
+See [docs/guides/SNAPSHOT_CONVENTIONS.md](SNAPSHOT_CONVENTIONS.md) for the full layout reference and a worked example.
+
+### How to update snapshots
+
+Soroban regenerates snapshots automatically on every test run — there is no separate update command. To refresh snapshots after changing contract logic:
+
+```bash
+# Regenerate all snapshots
+cargo test
+
+# Regenerate snapshots for a single module
+cargo test session_tests
+```
+
+After the run, `git diff test_snapshots/` shows exactly what changed. Review the diff to confirm the ledger-state changes are intentional before staging the files.
+
+### When to commit snapshots
+
+- **Always commit** new or updated snapshots alongside the code change that caused them. A PR that modifies contract logic but leaves snapshots unchanged will fail CI.
+- **Delete** the old snapshot directory when you rename a test module. Soroban writes to the new path but does not clean up the old one, leaving stale files that accumulate silently.
+- **Do not commit** snapshots that are already up-to-date (unchanged in `git diff`). Re-running tests on an unmodified codebase should produce a clean diff.
+
+### Keeping snapshot size in check
+
+The Soroban test framework records every auth invocation. High-volume tests (many contract calls in a loop) can produce snapshots of several hundred KB. If a test does not need to assert on auth traces, call `env.stop_recording_auth()` before the bulk operations and use targeted `assert_eq!` checks instead:
+
+```rust
+// Stop auth recording before the stress loop to avoid an 800 KB snapshot.
+env.stop_recording_auth();
+for _ in 0..1000 {
+    contract.submit_quote(...);
+}
+assert_eq!(contract.quote_count(), 1000);
+```
+
+This pattern was used for `test_rate_comparison_stress` after its snapshot reached 876 KB. See `SNAPSHOT_SIZE_FIX.md` for background.
+
+### Verifying snapshot integrity
+
+As a quick sanity check, the number of `.json` files in a module's snapshot directory should equal the number of `#[test]` functions in the corresponding source file:
+
+```bash
+# Count snapshots for one module
+ls test_snapshots/session_tests/session_tests/*.json | wc -l
+
+# Count test functions in the source file
+grep -c '#\[test\]' src/session_tests.rs
+```
+
+A mismatch means snapshots are either stale (module was renamed) or missing (new tests were added but not yet run).
 
 ## Code Style Guidelines
 
