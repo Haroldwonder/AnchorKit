@@ -99,6 +99,48 @@ The doctor command is completely non-destructive:
 - No credentials are stored or transmitted
 - Safe to run at any time
 
+## Shell Completions
+
+AnchorKit can generate completion scripts for bash, zsh, and fish. Run the
+`completions` subcommand once and source the output from your shell's startup
+file.
+
+### bash
+
+```bash
+# Install system-wide (requires sudo)
+anchorkit completions bash | sudo tee /etc/bash_completion.d/anchorkit > /dev/null
+
+# Or install for the current user only
+mkdir -p ~/.local/share/bash-completion/completions
+anchorkit completions bash > ~/.local/share/bash-completion/completions/anchorkit
+
+# Then reload your shell or run:
+source ~/.local/share/bash-completion/completions/anchorkit
+```
+
+### zsh
+
+```zsh
+# Pick a directory on your $fpath (create one if needed)
+mkdir -p ~/.zsh/completions
+anchorkit completions zsh > ~/.zsh/completions/_anchorkit
+
+# Add the directory to $fpath in ~/.zshrc if it isn't already:
+#   fpath=(~/.zsh/completions $fpath)
+#   autoload -Uz compinit && compinit
+
+# Then reload completions:
+autoload -Uz compinit && compinit
+```
+
+### fish
+
+```fish
+anchorkit completions fish > ~/.config/fish/completions/anchorkit.fish
+# Completions are picked up automatically on the next shell session.
+```
+
 ## Integration with CI/CD
 
 Example GitHub Actions workflow:

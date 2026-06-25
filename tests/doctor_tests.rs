@@ -94,3 +94,105 @@ fn parse_rustc_version(s: &str) -> Option<(u32, u32)> {
 fn version_meets_minimum(major: u32, minor: u32, min_major: u32, min_minor: u32) -> bool {
     major > min_major || (major == min_major && minor >= min_minor)
 }
+
+/// Test that `doctor --fix` is accepted as a valid subcommand without crashing on the flag itself.
+#[test]
+fn test_doctor_fix_flag_accepted() {
+    // We can't safely run `--fix` in CI (it would mutate the environment), so we
+    // verify the flag is accepted by the argument parser using `--help`.
+    let output = Command::new("cargo")
+        .args(["run", "--bin", "anchorkit", "--features", "std", "--", "doctor", "--help"])
+        .output()
+        .expect("Failed to execute anchorkit");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{}{}", stdout, stderr);
+
+    assert!(
+        combined.contains("--fix"),
+        "doctor --help should mention --fix flag. Output:\n{}",
+        combined
+    );
+}
+
+/// Test that `doctor --fix` creates `configs/default.json` when configs/ is absent.
+#[test]
+fn test_doctor_fix_creates_config() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config_dir = tmp.path().join("configs");
+
+    // Ensure configs/ does not exist
+    assert!(!config_dir.exists());
+
+    // Run `anchorkit doctor --fix` from within the temp dir.
+    // We only care that configs/default.json is created; other checks may fail.
+    let output = Command::new("cargo")
+        .args(["run", "--bin", "anchorkit", "--features", "std", "--", "doctor", "--fix"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("Failed to execute anchorkit");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        config_dir.exists() && config_dir.join("default.json").exists(),
+        "doctor --fix should create configs/default.json. stdout:\n{}",
+        stdout
+    );
+
+    let content = std::fs::read_to_string(config_dir.join("default.json"))
+        .expect("read default.json");
+    assert!(content.contains("testnet"), "default.json should reference testnet network");
+}
+
+/// Test that `doctor --fix` appends ANCHORKIT_RPC_URL to .env when it is absent.
+#[test]
+fn test_doctor_fix_writes_rpc_to_env() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let env_file = tmp.path().join(".env");
+
+    assert!(!env_file.exists());
+
+    let _output = Command::new("cargo")
+        .args(["run", "--bin", "anchorkit", "--features", "std", "--", "doctor", "--fix"])
+        .current_dir(tmp.path())
+        .env_remove("ANCHORKIT_RPC_URL")
+        .env_remove("SOROBAN_RPC_URL")
+        .env_remove("STELLAR_RPC_URL")
+        .output()
+        .expect("Failed to execute anchorkit");
+
+    assert!(
+        env_file.exists(),
+        "doctor --fix should create .env when RPC is missing"
+    );
+    let content = std::fs::read_to_string(&env_file).expect("read .env");
+    assert!(
+        content.contains("ANCHORKIT_RPC_URL"),
+        ".env should contain ANCHORKIT_RPC_URL. Contents:\n{}",
+        content
+    );
+}
+
+/// Test that `doctor --fix` does not duplicate an existing .env entry.
+#[test]
+fn test_doctor_fix_no_duplicate_env_entry() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let env_file = tmp.path().join(".env");
+    std::fs::write(&env_file, "ANCHORKIT_RPC_URL=https://existing.example.com\n")
+        .expect("write .env");
+
+    let _output = Command::new("cargo")
+        .args(["run", "--bin", "anchorkit", "--features", "std", "--", "doctor", "--fix"])
+        .current_dir(tmp.path())
+        .env_remove("ANCHORKIT_RPC_URL")
+        .env_remove("SOROBAN_RPC_URL")
+        .env_remove("STELLAR_RPC_URL")
+        .output()
+        .expect("Failed to execute anchorkit");
+
+    let content = std::fs::read_to_string(&env_file).expect("read .env");
+    let rpc_count = content.lines().filter(|l| l.starts_with("ANCHORKIT_RPC_URL=")).count();
+    assert_eq!(rpc_count, 1, ".env should not have duplicate ANCHORKIT_RPC_URL entries");
+}
