@@ -1,6 +1,7 @@
 #![cfg(feature = "std")]
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use std::process::Command;
 use std::time::Instant;
 use regex::Regex;
@@ -100,6 +101,12 @@ enum Commands {
         #[arg(long, short)]
         output: String,
     },
+    /// Generate shell completion script
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 #[derive(Subcommand)]
@@ -147,7 +154,16 @@ fn main() {
         }
         Commands::Test { pattern, verbose } => run_test(pattern.as_deref(), verbose),
         Commands::ExportAudit { format, output } => run_export_audit(&format, &output),
+        Commands::Completions { shell } => run_completions(shell),
     }
+}
+
+// ── completions ──────────────────────────────────────────────────────────────
+
+fn run_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    let bin_name = cmd.get_name().to_string();
+    generate(shell, &mut cmd, bin_name, &mut std::io::stdout());
 }
 
 // ── build ───────────────────────────────────────────────────────────────────

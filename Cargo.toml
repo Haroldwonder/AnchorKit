@@ -30,6 +30,7 @@ regex = { version = "1.10", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap = { version = "4.5", features = ["derive"] }
+clap_complete = "4"
 
 [dev-dependencies]
 soroban-sdk = { version = "21.7.0", features = ["testutils"] }
