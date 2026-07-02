@@ -39,7 +39,7 @@ base64 = "0.22"
 ed25519-dalek = "2"
 rand = "0.8"
 proptest = { version = "1.4", default-features = false, features = ["std"] }
-criterion = "0.5"
+criterion = "0.8"
 
 # Benchmark suite for contract hot paths (issue #738). Uses criterion with a
 # custom harness; run with `cargo bench`.
