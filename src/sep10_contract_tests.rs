@@ -284,4 +284,25 @@ mod sep10_contract_tests {
         tokens.push_back(String::from_str(&env, jwt2.as_str()));
         client.verify_sep10_token_multisig(&tokens, &issuer, &2u32);
     }
+
+    #[test]
+    #[should_panic]
+    fn add_sep10_verifying_key_rejects_duplicate() {
+        let env = make_env();
+        ledger(&env, 1000);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let issuer = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk = SigningKey::generate(&mut OsRng);
+        let pk = Bytes::from_slice(&env, sk.verifying_key().as_bytes());
+
+        // Add the key once
+        client.add_sep10_verifying_key(&issuer, &pk);
+
+        // Try to add the same key again — should panic
+        client.add_sep10_verifying_key(&issuer, &pk);
+    }
 }
