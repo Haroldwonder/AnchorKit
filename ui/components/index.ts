@@ -45,3 +45,6 @@ export { default as PrecisionFintech } from './PrecisionFintech';
 
 export { SkeletonLoader, AssetListSkeleton, FeeTableSkeleton, LimitsSkeleton } from './SkeletonLoader';
 export type { SkeletonLoaderProps } from './SkeletonLoader';
+
+export { EmptyState } from './ui/EmptyState';
+export type { EmptyStateProps } from './ui/EmptyState';

@@ -90,4 +90,34 @@ describe('AnchorHealthBadge', () => {
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     });
   });
+
+  describe('Theme-aware colors (CSS variables)', () => {
+    it('uses CSS variables for Healthy tier', () => {
+      render(<AnchorHealthBadge score={85} />);
+      const badge = screen.getByRole('status');
+      const styles = window.getComputedStyle(badge);
+
+      expect(badge).toHaveStyle('color: var(--ak-health-healthy-color)');
+      expect(badge).toHaveStyle('background: var(--ak-health-healthy-bg)');
+      expect(badge).toHaveStyle('border: 1px solid var(--ak-health-healthy-border)');
+    });
+
+    it('uses CSS variables for Fair tier', () => {
+      render(<AnchorHealthBadge score={70} />);
+      const badge = screen.getByRole('status');
+
+      expect(badge).toHaveStyle('color: var(--ak-health-fair-color)');
+      expect(badge).toHaveStyle('background: var(--ak-health-fair-bg)');
+      expect(badge).toHaveStyle('border: 1px solid var(--ak-health-fair-border)');
+    });
+
+    it('uses CSS variables for Poor tier', () => {
+      render(<AnchorHealthBadge score={45} />);
+      const badge = screen.getByRole('status');
+
+      expect(badge).toHaveStyle('color: var(--ak-health-poor-color)');
+      expect(badge).toHaveStyle('background: var(--ak-health-poor-bg)');
+      expect(badge).toHaveStyle('border: 1px solid var(--ak-health-poor-border)');
+    });
+  });
 });

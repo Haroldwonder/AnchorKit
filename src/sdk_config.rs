@@ -24,7 +24,6 @@ pub struct SdkConfig {
 // Validation constants
 const MIN_TIMEOUT: u32 = 5;
 const MAX_TIMEOUT: u32 = 300;
-const MIN_RETRY: u32 = 0;
 const MAX_RETRY: u32 = 10;
 const MIN_ANCHOR_LEN: u32 = 3;
 pub const MAX_ANCHOR_LEN: u32 = 256;

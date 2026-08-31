@@ -108,6 +108,17 @@
   /* Timeline connector */
   --ak-connector-bg: #e2e8f0;
 
+  /* Health badge tiers */
+  --ak-health-healthy-color:  #166534;
+  --ak-health-healthy-bg:     #dcfce7;
+  --ak-health-healthy-border: #86efac;
+  --ak-health-fair-color:     #92400e;
+  --ak-health-fair-bg:        #fef9c3;
+  --ak-health-fair-border:    #fde047;
+  --ak-health-poor-color:     #991b1b;
+  --ak-health-poor-bg:        #fee2e2;
+  --ak-health-poor-border:    #fca5a5;
+
   /* Shadows */
   --ak-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
   --ak-shadow-md: 0 4px 24px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.04);
@@ -202,6 +213,17 @@
 
     --ak-connector-bg: #1e2d45;
 
+    /* Health badge tiers */
+    --ak-health-healthy-color:  #4ade80;
+    --ak-health-healthy-bg:     rgba(34,197,94,0.15);
+    --ak-health-healthy-border: rgba(34,197,94,0.35);
+    --ak-health-fair-color:     #fbbf24;
+    --ak-health-fair-bg:        rgba(217,119,6,0.15);
+    --ak-health-fair-border:    rgba(217,119,6,0.35);
+    --ak-health-poor-color:     #f87171;
+    --ak-health-poor-bg:        rgba(220,38,38,0.15);
+    --ak-health-poor-border:    rgba(220,38,38,0.35);
+
     --ak-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
     --ak-shadow-md: 0 4px 24px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.2);
   }
@@ -277,6 +299,16 @@
   --ak-error-border: #7f1d1d;
   --ak-error-text:   #fca5a5;
   --ak-connector-bg: #1e2d45;
+  /* Health badge tiers */
+  --ak-health-healthy-color:  #4ade80;
+  --ak-health-healthy-bg:     rgba(34,197,94,0.15);
+  --ak-health-healthy-border: rgba(34,197,94,0.35);
+  --ak-health-fair-color:     #fbbf24;
+  --ak-health-fair-bg:        rgba(217,119,6,0.15);
+  --ak-health-fair-border:    rgba(217,119,6,0.35);
+  --ak-health-poor-color:     #f87171;
+  --ak-health-poor-bg:        rgba(220,38,38,0.15);
+  --ak-health-poor-border:    rgba(220,38,38,0.35);
   --ak-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
   --ak-shadow-md: 0 4px 24px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.2);
 }
@@ -347,6 +379,16 @@
   --ak-error-border: #fecaca;
   --ak-error-text:   #991b1b;
   --ak-connector-bg: #e2e8f0;
+  /* Health badge tiers */
+  --ak-health-healthy-color:  #166534;
+  --ak-health-healthy-bg:     #dcfce7;
+  --ak-health-healthy-border: #86efac;
+  --ak-health-fair-color:     #92400e;
+  --ak-health-fair-bg:        #fef9c3;
+  --ak-health-fair-border:    #fde047;
+  --ak-health-poor-color:     #991b1b;
+  --ak-health-poor-bg:        #fee2e2;
+  --ak-health-poor-border:    #fca5a5;
   --ak-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
   --ak-shadow-md: 0 4px 24px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.04);
 }
