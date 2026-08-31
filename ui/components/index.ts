@@ -43,3 +43,6 @@ export { default as Sep10AuthFlow } from './Sep10AuthFlow';
 
 export { SkeletonLoader, AssetListSkeleton, FeeTableSkeleton, LimitsSkeleton } from './SkeletonLoader';
 export type { SkeletonLoaderProps } from './SkeletonLoader';
+
+export { EmptyState } from './ui/EmptyState';
+export type { EmptyStateProps } from './ui/EmptyState';
