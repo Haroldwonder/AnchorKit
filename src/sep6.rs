@@ -1075,11 +1075,11 @@ mod tests {
     fn test_initiate_deposit_claimable_balance_supported_propagated() {
         let mut raw = raw_deposit();
         raw.claimable_balance_supported = true;
-        let resp = initiate_deposit(raw).unwrap();
+        let resp = initiate_deposit(raw, "USDC").unwrap();
         assert!(resp.claimable_balance_supported);
 
         let raw_false = raw_deposit(); // claimable_balance_supported = false by default
-        let resp_false = initiate_deposit(raw_false).unwrap();
+        let resp_false = initiate_deposit(raw_false, "USDC").unwrap();
         assert!(!resp_false.claimable_balance_supported);
     }
 
