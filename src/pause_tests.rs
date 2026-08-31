@@ -130,4 +130,32 @@ mod pause_tests {
         // must not panic
         client.submit_attestation(&attestor, &subject, &ts, &hash, &sig);
     }
+
+    // -----------------------------------------------------------------------
+    // submit_with_request_id blocked while paused
+    // -----------------------------------------------------------------------
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Contract, #122)")]
+    fn submit_with_request_id_rejected_when_paused() {
+        let (env, client, _admin) = setup();
+        let attestor = Address::generate(&env);
+        let mut csprng = OsRng;
+        let key = SigningKey::generate(&mut csprng);
+        register_attestor_with_sep10(&env, &client, &attestor, &attestor, &key);
+
+        client.pause_contract();
+
+        let subject = Address::generate(&env);
+        let ts = env.ledger().timestamp();
+        let hash = {
+            let mut b = Bytes::new(&env);
+            for i in 0u8..32 { b.push_back(i); }
+            b
+        };
+        let sig = sign_payload(&env, &key, &hash);
+        let request_id = Bytes::from_slice(&env, &[0u8; 32]);
+        // submit_with_request_id should respect pause like submit_attestation does
+        client.submit_with_request_id(&request_id, &attestor, &subject, &ts, &hash, &sig, &None);
+    }
 }
