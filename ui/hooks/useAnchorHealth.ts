@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 
-// ── Public types ───────────────────────────────────────────────────────────────
+// --- Public types ---
 
 /** Contract call signature for fetching the on-chain health score. */
 export type GetHealthScoreFn = (attestor: string) => Promise<number>;
 
 export interface UseAnchorHealthResult {
-  /** Latest health score (0–100), or null before the first successful poll. */
+  /** Latest health score (0-100), or null before the first successful poll. */
   score: number | null;
   /** True only during the initial fetch before any score or error has arrived. */
   isLoading: boolean;
@@ -20,7 +20,7 @@ export interface UseAnchorHealthResult {
   lastUpdated: Date | null;
 }
 
-// ── Validation ─────────────────────────────────────────────────────────────────
+// --- Validation ---
 
 /** Accepts 56-char Stellar StrKey starting with G (ed25519) or C (contract). */
 export function isValidAttestor(addr: string | null | undefined): addr is string {
@@ -28,7 +28,13 @@ export function isValidAttestor(addr: string | null | undefined): addr is string
   return /^[GC][A-Z2-7]{55}$/.test(addr);
 }
 
-// ── Hook ───────────────────────────────────────────────────────────────────────
+/**
+ * Minimum allowed polling interval (ms). Prevents accidental 0/negative values
+ * from causing a near-max-rate polling loop against the RPC/contract endpoint.
+ */
+export const MIN_POLL_INTERVAL_MS = 1000;
+
+// --- Hook ---
 
 /**
  * Polls `get_anchor_health_score` at `interval` milliseconds via the supplied
@@ -40,10 +46,13 @@ export function isValidAttestor(addr: string | null | undefined): addr is string
  * - Overlapping requests are skipped: if the previous poll is still in-flight
  *   when the interval fires, the new tick is a no-op.
  * - When `attestor` changes the timer is cancelled, all state is reset, and a
- *   fresh polling cycle begins.  When only `interval` changes the timer is
+ *   fresh polling cycle begins.  When only `interval` changes the timer is *
  *   restarted but state is NOT reset (the latest score remains visible).
  * - `loading` is only `true` during the very first fetch after mounting or
  *   after the attestor changes; background polls run silently.
+ * - The `interval` is validated: if it is not a positive finite number, or if
+ *   it is less than `MIN_POLL_INTERVAL_MS`, it is clamped to that minimum and
+ *   a dev-mode warning is emitted.
  */
 export function useAnchorHealth(
   attestor: string | null | undefined,
@@ -86,6 +95,16 @@ export function useAnchorHealth(
       setLoading(true);
     }
 
+    // Normalize the interval, enforcing a sane minimum to prevent runaway polling.
+    const normalizedInterval =
+      Number.isFinite(interval) && interval > 0
+        ? Math.max(interval, MIN_POLL_INTERVAL_MS)
+        : MIN_POLL_INTERVAL_MS;
+
+    if (normalizedInterval !== interval) {
+      console.warn('[useAnchorHealth] Invalid poll interval ' + String(interval) + 'ms. Using ' + MIN_POLL_INTERVAL_MS + 'ms instead.');
+    }
+
     let cancelled = false;
     // Per-closure in-flight flag prevents overlapping requests.
     let inFlight = false;
@@ -116,20 +135,12 @@ export function useAnchorHealth(
     };
 
     poll();
-    const timerId = setInterval(poll, interval);
+    const timerId = setInterval(poll, normalizedInterval);
 
     return () => {
       cancelled = true;
       clearInterval(timerId);
     };
-  }, [attestor, interval]); // getHealthScore intentionally excluded — kept in ref
-
-  return {
-    score,
-    isLoading: loading,
-    loading,
-    error,
-    errorMessage: error?.message ?? null,
-    lastUpdated,
-  };
+  }, [attestor, interval]); // getHealthScore intentionally excluded - kept in ref
+  return { score, loading, error, lastUpdated };
 }
