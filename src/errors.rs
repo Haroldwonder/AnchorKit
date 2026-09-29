@@ -297,10 +297,6 @@ impl AnchorKitError {
         }
     }
 
-    pub fn cache_not_found() -> Self {
-        Self::from_code(ErrorCode::CacheNotFound)
-    }
-
     pub fn already_initialized() -> Self { Self::from_code(ErrorCode::AlreadyInitialized) }
     pub fn attestor_already_registered() -> Self { Self::from_code(ErrorCode::AttestorAlreadyRegistered) }
     pub fn attestor_not_registered() -> Self { Self::from_code(ErrorCode::AttestorNotRegistered) }
