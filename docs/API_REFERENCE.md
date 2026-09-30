@@ -468,6 +468,17 @@ fn get_session_operation_count(env: Env, session_id: u64) -> Option<u64>
 
 Returns the number of operations logged in the session, or `None` if the session does not exist.
 
+### Session CLI commands
+
+The `anchorkit session create`, `get`, and `list` commands use Soroban RPC. Set
+`SOROBAN_CONTRACT_ID` (or `ANCHORKIT_CONTRACT_ID`) to the deployed contract ID.
+`SOROBAN_RPC_URL` (or `ANCHORKIT_RPC_URL`) selects the RPC endpoint and defaults
+to Stellar testnet. Creating a session also requires a signing secret in
+`STELLAR_SECRET_KEY`, `SOROBAN_SECRET_KEY`, or `ANCHORKIT_SECRET_KEY`; the
+initiator must be the account derived from that key. `get` and `list` read
+contract storage and do not require a signing key. `list` returns active
+sessions, newest first, and accepts limits up to 1,000.
+
 ---
 
 ## Quotes & Routing

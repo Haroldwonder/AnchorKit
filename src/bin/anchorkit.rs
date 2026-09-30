@@ -2234,7 +2234,6 @@ fn fetch_session_from_chain(session_id: u64) -> Result<Option<SessionRecord>, St
             session_id: session_data.session_id,
             initiator: session_data.initiator,
             created_at: session_data.created_at,
-            nonce: session_data.nonce,
             operation_count: session_data.operation_count,
             expires_at: session_data.expires_at,
         })),
@@ -2251,7 +2250,6 @@ fn fetch_sessions_from_chain(limit: u64) -> Result<Vec<SessionRecord>, String> {
                 session_id: s.session_id,
                 initiator: s.initiator,
                 created_at: s.created_at,
-                nonce: s.nonce,
                 operation_count: s.operation_count,
                 expires_at: s.expires_at,
             })
