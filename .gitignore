@@ -4,5 +4,9 @@ Cargo.lock
 .env
 **/*.rs.bk
 ui/node_modules/
+test_snapshots/
+coverage/
+dist/
+*.log
 AGENTS.md
 pr_description.md
