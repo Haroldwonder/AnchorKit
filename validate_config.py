@@ -9,6 +9,16 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any
 
+# tomllib is in the standard library from Python 3.11+.
+# For older Pythons install the backport: pip install tomli
+try:
+    import tomllib  # type: ignore[import]
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib  # type: ignore[import,no-redef]
+    except ModuleNotFoundError:
+        tomllib = None  # type: ignore[assignment]
+
 class ValidationError(Exception):
     pass
 
@@ -144,6 +154,34 @@ def validate_json_config(file_path: Path) -> None:
     
     print(f"✓ {file_path.name} is valid")
 
+
+def validate_toml_config(file_path: Path) -> None:
+    """Validate TOML configuration file (same rules as JSON)."""
+    if tomllib is None:
+        raise ValidationError(
+            "TOML support requires Python 3.11+ (tomllib) or the 'tomli' package. "
+            "Install it with: pip install tomli"
+        )
+
+    print(f"Validating {file_path}...")
+
+    with open(file_path, "rb") as f:
+        config = tomllib.load(f)
+
+    validate_required_fields(config)
+
+    if "contract" in config:
+        validate_contract_config(config["contract"])
+
+    if "attestors" in config and "registry" in config["attestors"]:
+        validate_attestors(config["attestors"]["registry"])
+
+    if "sessions" in config:
+        validate_session_config(config["sessions"])
+
+    print(f"✓ {file_path.name} is valid")
+
+
 def main():
     # Allow the caller (e.g. `anchorkit config validate <path>`) to override
     # the default configs/ directory via an environment variable.
@@ -162,18 +200,25 @@ def main():
 
     if target.is_file():
         # Single file mode
-        json_files = [target] if target.suffix == ".json" else []
-        if not json_files:
-            print(f"Error: {target} is not a JSON file")
+        if target.suffix == ".json":
+            json_files = [target]
+            toml_files: List[Path] = []
+        elif target.suffix == ".toml":
+            json_files = []
+            toml_files = [target]
+        else:
+            print(f"Error: {target} is not a JSON or TOML file")
             sys.exit(1)
     elif target.is_dir():
         json_files = list(target.glob("*.json"))
+        toml_files = list(target.glob("*.toml"))
     else:
         print(f"Error: path not found: {target}")
         sys.exit(1)
 
-    if not json_files:
-        print("No JSON config files found")
+    all_files = json_files + toml_files
+    if not all_files:
+        print("No JSON or TOML config files found")
         sys.exit(1)
 
     errors = []
@@ -186,13 +231,21 @@ def main():
         except Exception as e:
             errors.append(f"{config_file.name}: Unexpected error - {e}")
 
+    for config_file in toml_files:
+        try:
+            validate_toml_config(config_file)
+        except ValidationError as e:
+            errors.append(f"{config_file.name}: {e}")
+        except Exception as e:
+            errors.append(f"{config_file.name}: Unexpected error - {e}")
+
     if errors:
         print("\n❌ Validation failed:\n")
         for error in errors:
             print(f"  • {error}")
         sys.exit(1)
 
-    print(f"\n✅ All {len(json_files)} configuration file(s) are valid")
+    print(f"\n✅ All {len(all_files)} configuration file(s) are valid")
 
 if __name__ == "__main__":
     main()
