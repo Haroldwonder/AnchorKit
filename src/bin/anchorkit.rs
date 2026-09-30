@@ -940,10 +940,8 @@ fn validate_config_schema(path: &std::path::Path, config: &serde_json::Value) ->
         validate_sessions_section(sessions, &mut errors, &mut warnings);
     }
 
-    // Validate deployment section (required as of config init v2)
-    if !obj.contains_key("deployment") {
-        errors.push("field 'deployment' is missing — run `anchorkit config init` to generate a valid config".to_string());
-    } else if let Some(deployment) = obj.get("deployment") {
+    // Validate deployment section when present (optional — added after `anchorkit config init`)
+    if let Some(deployment) = obj.get("deployment") {
         validate_deployment_section(deployment, &mut errors, &mut warnings);
     }
 
