@@ -1,5 +1,5 @@
 /**
- * Tests for sanitizeWebhookPayload — allowlist-based field filtering.
+ * Tests for sanitizeWebhookPayload and WebhookMonitorWebSocket.
  *
  * Run with: node --test webhook_integration_example.test.js
  * (Node.js 18+ built-in test runner, no extra deps required)
@@ -8,42 +8,13 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 
-// ---------------------------------------------------------------------------
-// Inline the allowlist + function under test so this file is self-contained.
-// If the project adds a module.exports to webhook_integration_example.js,
-// replace the block below with:
-//   const { sanitizeWebhookPayload, WEBHOOK_PAYLOAD_ALLOWLIST } =
-//       require('./webhook_integration_example');
-// ---------------------------------------------------------------------------
-
-const WEBHOOK_PAYLOAD_ALLOWLIST = new Set([
-    'id', 'type', 'timestamp', 'status', 'amount', 'asset',
-    'user', 'email', 'memo', 'transaction_id', 'account',
-    'network', 'fee', 'message',
-]);
-
-function sanitizeWebhookPayload(payload) {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        return {};
-    }
-    const sanitized = {};
-    for (const key of Object.keys(payload)) {
-        if (!WEBHOOK_PAYLOAD_ALLOWLIST.has(key)) {
-            console.warn(`WARN: Unknown field detected in webhook payload: "${key}"`);
-            continue;
-        }
-        let value = payload[key];
-        if (key === 'email' && typeof value === 'string' && value.includes('@')) {
-            const [local, domain] = value.split('@');
-            value = `${local.substring(0, 2)}***@${domain}`;
-        }
-        if (key === 'user' && typeof value === 'string' && value.length > 11) {
-            value = `${value.substring(0, 8)}...${value.substring(value.length - 3)}`;
-        }
-        sanitized[key] = value;
-    }
-    return sanitized;
-}
+// Import from the real module — changes to the source are immediately reflected
+// in these tests. No more hand-copied reimplementations.
+const {
+    sanitizeWebhookPayload,
+    WEBHOOK_PAYLOAD_ALLOWLIST,
+    WebhookMonitorWebSocket,
+} = require('./webhook_integration_example');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,7 +30,7 @@ function captureWarnings() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Tests — sanitizeWebhookPayload
 // ---------------------------------------------------------------------------
 
 describe('sanitizeWebhookPayload', () => {
@@ -163,7 +134,9 @@ describe('sanitizeWebhookPayload', () => {
 // WebhookMonitorWebSocket — reconnect limit tests
 // ---------------------------------------------------------------------------
 
-// Minimal WebSocket stub — records calls, exposes onclose/onopen triggers
+// Minimal WebSocket stub — records instances, exposes onclose/onopen triggers.
+// Injected via global.WebSocket so the real WebhookMonitorWebSocket.connect()
+// picks it up (it calls `new WebSocket(this.wsUrl)` at module scope).
 class FakeWebSocket {
     constructor() {
         FakeWebSocket.instances.push(this);
@@ -176,42 +149,6 @@ class FakeWebSocket {
     static reset() { FakeWebSocket.instances = []; }
 }
 FakeWebSocket.instances = [];
-
-// Inline the updated class under test (mirrors webhook_integration_example.js)
-class WebhookMonitorWebSocket {
-    constructor(wsUrl, options = {}) {
-        this.wsUrl = wsUrl;
-        this.ws = null;
-        this.reconnectCount = 0;
-        this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
-        this._listeners = {};
-    }
-    on(event, listener) {
-        if (!this._listeners[event]) this._listeners[event] = [];
-        this._listeners[event].push(listener);
-        return this;
-    }
-    emit(event, ...args) {
-        (this._listeners[event] || []).forEach(fn => fn(...args));
-    }
-    connect() {
-        this.ws = new FakeWebSocket();
-        this.ws.onopen = () => { this.reconnectCount = 0; };
-        this.ws.onclose = () => { this.attemptReconnect(); };
-        this.ws.onerror = () => {};
-    }
-    attemptReconnect() {
-        if (this.reconnectCount >= this.maxReconnectAttempts) {
-            if (this.reconnectCount === this.maxReconnectAttempts) {
-                this.emit('max_reconnects_exceeded', { attempts: this.reconnectCount });
-                this.reconnectCount++; // sentinel: silence further onclose calls
-            }
-            return;
-        }
-        this.reconnectCount++;
-        this._reconnectTimer = setTimeout(() => this.connect(), 0);
-    }
-}
 
 // Fake clock helpers — replace setTimeout with synchronous flush
 let pendingTimers = [];
@@ -237,9 +174,12 @@ describe('WebhookMonitorWebSocket — reconnect limit', () => {
     beforeEach(() => {
         FakeWebSocket.reset();
         installFakeClock();
+        // Inject stub so the real class's connect() uses FakeWebSocket
+        global.WebSocket = FakeWebSocket;
     });
     afterEach(() => {
         uninstallFakeClock();
+        delete global.WebSocket;
     });
 
     it('stops reconnecting after hitting maxReconnectAttempts (default 10)', () => {
