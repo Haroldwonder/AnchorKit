@@ -1,24 +1,310 @@
-/* AnchorPlayground Responsive Styles
- * Handles layout adaptation for tablets and mobile devices
- * Uses CSS Grid for flexible panel management
+/* AnchorPlayground Styles
+ *
+ * ── Why layout lives here instead of in the component ──────────────────────
+ * These declarations used to be inline `style={{...}}` objects in
+ * AnchorPlayground.tsx. Inline styles outrank every external stylesheet, so
+ * each responsive override below had to carry `!important` just to take effect
+ * — a trap where any new tweak needs another `!important` and no consumer can
+ * override these rules without reaching for one too.
+ *
+ * The static layout is therefore declared here in the base section, and the
+ * component keeps only genuinely dynamic values inline (theme colors,
+ * per-item computed values). The media queries now win by ordinary cascade
+ * order, so none of them need `!important`.
  */
+
+/* ─── Base Layout (moved out of AnchorPlayground.tsx inline styles) ───────── */
+[data-playground-container] {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+[data-playground-header] {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  flex-shrink: 0;
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--ak-border-2);
+}
+
+[data-playground-header-left] {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+[data-playground-header-right] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+[data-playground-sidebar] {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  border-right: 1px solid var(--ak-border-2);
+}
+
+[data-playground-sidebar-toggle] {
+  display: none;
+  padding: 6px 8px;
+  margin-right: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ak-border-2);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.2s;
+}
+
+[data-playground-main] {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+[data-url-bar] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--ak-border-2);
+}
+
+[data-scrollable] {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+[data-tabs] {
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--ak-border-2);
+}
+
+[data-tab-button] {
+  position: relative;
+  padding: 11px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+
+[data-response-area] {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+[data-code-block] {
+  margin: 0;
+  padding: 18px 20px;
+  overflow-x: auto;
+  max-height: 60vh;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+[data-sep-grid] {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+[data-sep-button] {
+  position: relative;
+  padding: 8px 4px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+
+[data-send-button] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  gap: 8px;
+  width: 100%;
+  padding: 13px 0;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transition: all 0.25s;
+}
+
+[data-sidebar-section] {
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--ak-border-2);
+}
+
+[data-sidebar-label] {
+  margin-bottom: 8px;
+  color: var(--ak-text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+[data-endpoint-button] {
+  position: relative;
+  padding: 9px 10px 9px 14px;
+  border-radius: 6px;
+  text-align: left;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+[data-params-container] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-param-input] {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 10px;
+  outline: none;
+  border-radius: 5px;
+  border: 1px solid var(--ak-border);
+  background: var(--ak-surface);
+  color: var(--ak-text);
+  font-family: inherit;
+  font-size: 11px;
+  transition: border-color 0.2s;
+}
+
+[data-domain-prefix] {
+  padding: 9px 10px;
+  white-space: nowrap;
+  border-right: 1px solid var(--ak-border);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+[data-logo-icon] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  transition: all 0.4s;
+}
+
+[data-logo-text] {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition: all 0.4s;
+}
+
+[data-logo-subtext] {
+  color: var(--ak-text-muted);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+[data-status-domain] {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-playground-status-pill] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--ak-border-2);
+  font-size: 10px;
+}
+
+[data-history-list] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+[data-history-item] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 7px;
+  transition: all 0.15s;
+}
+
+[data-copy-button] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: all 0.15s;
+}
+
+[data-decorative-fixed] {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-size: 48px 48px;
+}
 
 /* ─── Tablet & Small Desktop (768px - 1024px) ─────────────────────────────── */
 @media (max-width: 1024px) {
   /* Slightly reduce sidebar width */
   [data-playground-sidebar] {
-    width: 280px !important;
+    width: 280px;
   }
 
   /* Reduce padding for better space usage */
   [data-playground-sidebar] > div {
-    padding-left: 12px !important;
-    padding-right: 12px !important;
-  }
-
-  /* Reduce font sizes slightly */
-  [data-playground-body] {
-    font-size: 10px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
 }
 
@@ -26,163 +312,159 @@
 @media (max-width: 768px) {
   /* Switch to column layout with collapsible sidebar */
   [data-playground-container] {
-    flex-direction: column !important;
+    flex-direction: column;
   }
 
   /* Sidebar becomes horizontal panel */
   [data-playground-sidebar] {
-    width: 100% !important;
-    height: auto !important;
-    flex-shrink: 0 !important;
-    max-height: 0 !important;
-    overflow: hidden !important;
-    border-right: none !important;
-    border-bottom: 1px solid var(--ak-border-2) !important;
-    transition: max-height 0.3s ease-in-out !important;
-    z-index: 9 !important;
+    width: 100%;
+    height: auto;
+    flex-shrink: 0;
+    max-height: 0;
+    overflow: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--ak-border-2);
+    transition: max-height 0.3s ease-in-out;
+    z-index: 9;
   }
 
   /* Sidebar open state */
   [data-playground-sidebar][data-open="true"] {
-    max-height: 600px !important;
+    max-height: 600px;
   }
 
   /* Main content takes full width */
   [data-playground-main] {
-    flex: 1 !important;
-    min-width: 0 !important;
-    width: 100% !important;
+    flex: 1;
+    min-width: 0;
+    width: 100%;
   }
 
   /* Adjust header for mobile */
   [data-playground-header] {
-    flex-wrap: wrap !important;
-    gap: 8px !important;
-    padding: 8px 12px !important;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
   }
 
   /* Right header items on new row */
   [data-playground-header-right] {
-    width: 100% !important;
-    justify-content: space-between !important;
+    width: 100%;
+    justify-content: space-between;
   }
 
   /* Reduce button sizes */
   [data-playground-header] button {
-    padding: 6px 10px !important;
-    font-size: 9px !important;
+    padding: 6px 10px;
+    font-size: 9px;
   }
 
   /* Status pill smaller */
   [data-playground-status-pill] {
-    padding: 4px 8px !important;
-    font-size: 8px !important;
+    padding: 4px 8px;
+    font-size: 8px;
   }
 
   /* SEP selector: 3 columns instead of 4 */
   [data-sep-grid] {
-    grid-template-columns: repeat(3, 1fr) !important;
-  }
-
-  /* Reduce gaps */
-  [data-sep-grid] {
-    gap: 4px !important;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
   }
 
   /* Toggle sidebar button */
   [data-playground-sidebar-toggle] {
-    display: flex !important;
+    display: flex;
   }
 
   /* Sidebar sections: scrollable containers */
   [data-sidebar-section] {
-    padding: 10px 12px 12px !important;
-    border-bottom: 1px solid var(--ak-border-2) !important;
+    padding: 10px 12px 12px;
+    border-bottom: 1px solid var(--ak-border-2);
   }
 
   [data-sidebar-section]:last-child {
-    border-bottom: none !important;
+    border-bottom: none;
   }
 
   /* Reduce font sizes in sidebar */
   [data-sidebar-label] {
-    font-size: 8px !important;
+    font-size: 8px;
   }
 
   /* Make input fields more touch-friendly */
   input[type="text"],
   textarea {
-    min-height: 40px !important;
-    padding: 10px 12px !important;
+    min-height: 40px;
+    padding: 10px 12px;
   }
 
   /* Endpoint list: make rows taller for touch */
   [data-endpoint-button] {
-    padding: 12px 10px 12px 14px !important;
-    min-height: 40px !important;
+    padding: 12px 10px 12px 14px;
+    min-height: 40px;
   }
 
   /* Parameters section: grid instead of flex */
   [data-params-container] {
-    display: grid !important;
-    grid-template-columns: 1fr !important;
-    gap: 8px !important;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   /* Parameter inputs full width */
   [data-param-input] {
-    width: 100% !important;
-    min-height: 40px !important;
+    width: 100%;
+    min-height: 40px;
   }
 
   /* Send button: full width, larger touch target */
   [data-send-button] {
-    width: 100% !important;
-    padding: 14px 16px !important;
-    font-size: 11px !important;
-    margin-top: 12px !important;
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 11px;
+    margin-top: 12px;
   }
 
   /* Response area: adjust for smaller viewport */
   [data-response-area] {
-    padding: 12px !important;
+    padding: 12px;
   }
 
   /* URL bar: wrap on small screens */
   [data-url-bar] {
-    flex-wrap: wrap !important;
-    gap: 8px !important;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   /* Tabs: stack better */
   [data-tabs] {
-    border-bottom: 1px solid var(--ak-border-2) !important;
-    display: flex !important;
-    gap: 8px !important;
-    padding: 0 8px !important;
+    border-bottom: 1px solid var(--ak-border-2);
+    display: flex;
+    gap: 8px;
+    padding: 0 8px;
   }
 
   /* Tab buttons */
   [data-tab-button] {
-    padding: 10px 12px !important;
-    font-size: 10px !important;
+    padding: 10px 12px;
+    font-size: 10px;
   }
 
   /* Code block scrollable */
   [data-code-block] {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    font-size: 10px !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 10px;
   }
 
   /* History list: compact view */
   [data-history-list] {
-    gap: 8px !important;
+    gap: 8px;
   }
 
   [data-history-item] {
-    padding: 8px 10px !important;
-    font-size: 9px !important;
+    padding: 8px 10px;
+    font-size: 9px;
   }
 }
 
@@ -190,84 +472,72 @@
 @media (max-width: 600px) {
   /* Header: stack items vertically */
   [data-playground-header] {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 4px !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
   }
 
   [data-playground-header-left] {
-    order: 1 !important;
+    order: 1;
   }
 
   [data-playground-header-right] {
-    order: 2 !important;
-    width: 100% !important;
-    flex-direction: row !important;
+    order: 2;
+    width: 100%;
+    flex-direction: row;
   }
 
   /* Logo area: smaller */
   [data-logo-icon] {
-    width: 28px !important;
-    height: 28px !important;
+    width: 28px;
+    height: 28px;
   }
 
   [data-logo-text] {
-    font-size: 11px !important;
+    font-size: 11px;
   }
 
   [data-logo-subtext] {
-    font-size: 8px !important;
+    font-size: 8px;
   }
 
   /* Sidebar sections more compact */
   [data-sidebar-section] {
-    padding: 8px 10px 10px !important;
-  }
-
-  /* SEP selector: 2 columns on very small screens */
-  @media (max-width: 480px) {
-    [data-sep-grid] {
-      grid-template-columns: repeat(2, 1fr) !important;
-    }
+    padding: 8px 10px 10px;
   }
 
   /* Input styling: larger for mobile */
   input,
   textarea {
-    font-size: 16px !important; /* Prevents zoom on iOS */
-    min-height: 44px !important; /* iOS minimum touch target */
+    font-size: 16px; /* Prevents zoom on iOS */
+    min-height: 44px; /* iOS minimum touch target */
   }
 
   /* Buttons: larger touch targets */
   button {
-    min-height: 44px !important;
-    min-width: 44px !important;
+    min-height: 44px;
+    min-width: 44px;
   }
 
   /* Response tabs: full width */
   [data-tabs] {
-    width: 100% !important;
+    width: 100%;
   }
 
   [data-tab-button] {
-    flex: 1 !important;
-    text-align: center !important;
+    flex: 1;
+    text-align: center;
   }
 
   /* Copy button in response */
   [data-copy-button] {
-    min-height: 40px !important;
-    min-width: 40px !important;
+    min-height: 40px;
+    min-width: 40px;
   }
 
   /* Reduce overall padding */
   [data-playground-main] {
-    padding: 8px !important;
-  }
-
-  /* Scrollable containers: enable momentum scrolling */
-  [data-scrollable] {
-    -webkit-overflow-scrolling: touch !important;
+    padding: 8px;
   }
 }
 
@@ -275,40 +545,40 @@
 @media (max-width: 480px) {
   /* Hide decorative elements on very small screens */
   [data-decorative-fixed] {
-    display: none !important;
-  }
-
-  /* Maximize content area */
-  [data-playground-body] {
-    flex: 1 !important;
+    display: none;
   }
 
   /* Sidebar: minimal padding */
   [data-sidebar-section] {
-    padding: 6px 8px 8px !important;
+    padding: 6px 8px 8px;
+  }
+
+  /* SEP selector: 2 columns on very small screens */
+  [data-sep-grid] {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   /* SEP protocol buttons: smaller */
   [data-sep-button] {
-    padding: 6px 3px !important;
-    font-size: 8px !important;
+    padding: 6px 3px;
+    font-size: 8px;
   }
 
   /* Domain input: smaller prefix */
   [data-domain-prefix] {
-    padding: 8px 8px !important;
-    font-size: 8px !important;
+    padding: 8px 8px;
+    font-size: 8px;
+  }
+}
+
+/* ─── Extra Small Mobile (< 374px) ─────────────────────────────────────── */
+@media (max-width: 374px) {
+  [data-logo-subtext] {
+    display: none;
   }
 
-  /* Hide secondary UI elements if needed */
-  @media (max-width: 374px) {
-    [data-logo-subtext] {
-      display: none !important;
-    }
-
-    [data-status-domain] {
-      display: none !important;
-    }
+  [data-status-domain] {
+    display: none;
   }
 }
 
@@ -319,29 +589,23 @@
   [role="button"],
   input,
   textarea {
-    min-height: 44px !important;
-    min-width: 44px !important;
+    min-height: 44px;
+    min-width: 44px;
   }
 
   /* Increase padding for touch */
   [data-endpoint-button] {
-    padding: 14px 12px 14px 14px !important;
+    padding: 14px 12px 14px 14px;
   }
 
   /* Remove hover effects that don't apply to touch */
   button:hover {
-    filter: none !important;
+    filter: none;
   }
 
   /* Add active state instead */
   button:active {
-    opacity: 0.8 !important;
-  }
-
-  /* Scrollable areas: ensure smooth scrolling */
-  [data-scrollable] {
-    -webkit-overflow-scrolling: touch !important;
-    scroll-behavior: smooth !important;
+    opacity: 0.8;
   }
 }
 
@@ -349,17 +613,17 @@
 @media (orientation: landscape) and (max-height: 500px) {
   /* Hide some elements in landscape with limited height */
   [data-logo-text] {
-    display: none !important;
+    display: none;
   }
 
   /* Reduce header height */
   [data-playground-header] {
-    padding: 6px 8px !important;
+    padding: 6px 8px;
   }
 
   /* Compact sidebar in landscape */
   [data-sidebar-section] {
-    padding: 6px 8px !important;
+    padding: 6px 8px;
   }
 }
 
@@ -368,13 +632,13 @@
   /* Slightly thicker borders on high DPI */
   [data-playground-sidebar],
   [data-playground-main] {
-    border-width: 1px !important;
+    border-width: 1px;
   }
 
   /* Adjust font rendering */
   body {
-    -webkit-font-smoothing: antialiased !important;
-    -moz-osx-font-smoothing: grayscale !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
@@ -383,12 +647,12 @@
   [data-decorative-fixed],
   [data-playground-header],
   [data-send-button] {
-    display: none !important;
+    display: none;
   }
 
   [data-playground-sidebar],
   [data-playground-main] {
-    width: 100% !important;
-    border: none !important;
+    width: 100%;
+    border: none;
   }
 }

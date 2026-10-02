@@ -187,6 +187,8 @@ mod transaction_state_tracker_tests {
     #[test]
     fn test_clear_cache_dev_mode() {
         with_contract(|env| {
+        let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+        AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
         let mut tracker = TransactionStateTracker::new();
         let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
 
@@ -194,22 +196,21 @@ mod transaction_state_tracker_tests {
         tracker.create_transaction(2, initiator.clone(), &env).ok();
         assert_eq!(tracker.cache_size(), 2);
 
-        let clear_result = tracker.clear_cache(&initiator, &env);
+        let clear_result = tracker.clear_cache(&admin, &env);
         assert!(clear_result.is_ok());
         assert_eq!(tracker.cache_size(), 0);
         });
     }
 
     #[test]
-    #[should_panic]
-    fn test_clear_cache_requires_admin() {
+    fn test_clear_cache_without_initialized_admin_fails_closed() {
         let env = Env::default();
-        let mut tracker = TransactionStateTracker::new();
+        let contract_id = env.register_contract(None, AnchorKitContract);
         let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+        let mut tracker = TransactionStateTracker::new();
 
-        // In production mode, clear_cache requires admin auth.
-        // Calling without mock auth should panic (require_auth panics when not authorized).
-        tracker.clear_cache(&admin, &env);
+        let result = env.as_contract(&contract_id, || tracker.clear_cache(&admin, &env));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -270,9 +271,10 @@ mod transaction_state_tracker_tests {
     #[test]
     fn test_get_transaction_count_by_state_after_clear() {
         with_contract(|env| {
-        let mut tracker = TransactionStateTracker::new();
         let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
         let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+        AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
+        let mut tracker = TransactionStateTracker::new();
 
         tracker.create_transaction(1, initiator.clone(), &env).ok();
         assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 1);

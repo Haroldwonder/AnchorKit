@@ -48,3 +48,6 @@ export type { SkeletonLoaderProps } from './SkeletonLoader';
 
 export { EmptyState } from './ui/EmptyState';
 export type { EmptyStateProps } from './ui/EmptyState';
+
+export { AttestationPanel } from './playground/AttestationPanel';
+export type { AttestationPanelProps, AttestationEntry } from './playground/AttestationPanel';

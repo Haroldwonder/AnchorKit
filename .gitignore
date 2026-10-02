@@ -1,8 +1,13 @@
+# Rust
 /target
-Cargo.lock
-.DS_Store
-.env
 **/*.rs.bk
+*.pdb
+*.rlib
+*.rmeta
+
+# Cargo.lock is intentionally not tracked (library crate)
+
+# Node / UI
 ui/node_modules/
 test_snapshots/
 coverage/
@@ -10,3 +15,5 @@ dist/
 *.log
 AGENTS.md
 pr_description.md
+scratch/
+tmp/

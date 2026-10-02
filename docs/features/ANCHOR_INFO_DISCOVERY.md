@@ -1,13 +1,15 @@
 # Anchor Info Discovery Service
 
-The Anchor Info Discovery Service provides functionality to fetch, parse, and cache Stellar anchor metadata from `.well-known/stellar.toml` files.
+The Anchor Info Discovery Service provides on-chain caching and validation of Stellar anchor metadata derived from `.well-known/stellar.toml` files.
+
+> **Architecture Note**: AnchorKit runs inside Soroban WASM and does not perform outbound HTTP calls directly (as noted in [SEP24_INTERACTIVE.md](./SEP24_INTERACTIVE.md)). Off-chain callers fetch and parse the `stellar.toml` file, then submit the pre-parsed `StellarToml` struct to `fetch_anchor_info` to cache and validate it on-chain.
 
 ## Features
 
-- **Fetch stellar.toml**: Retrieve anchor metadata from standard Stellar TOML endpoints
-- **Parse metadata**: Extract supported assets, fees, limits, and service endpoints
-- **Cache with TTL**: Store parsed data with configurable time-to-live
-- **Query capabilities**: Check asset support, fees, and limits programmatically
+- **Validate and Cache stellar.toml**: Validate network passphrase, HTTPS transfer endpoints, and asset decimals, caching anchor metadata on-chain
+- **Parse metadata**: Extract supported assets, fees, limits, and service endpoints off-chain
+- **Cache with TTL**: Store parsed data in Soroban temporary storage with configurable time-to-live
+- **Query capabilities**: Check asset support, fees, and limits programmatically on-chain
 
 ## Data Structures
 
@@ -65,25 +67,32 @@ pub struct AssetInfo {
 pub fn fetch_anchor_info(
     env: Env,
     anchor: Address,
-    domain: String,
-    ttl_seconds: Option<u64>,
-) -> Result<StellarToml, Error>
+    toml_data: StellarToml,
+    network_passphrase: String,
+    ttl_override: Option<u64>,
+)
 ```
 
-Fetches stellar.toml from the specified domain and caches it. Requires admin authorization.
+Stores and caches pre-parsed `stellar.toml` metadata on-chain for the anchor after validating the network passphrase, HTTPS transfer server domain, and currency decimals. Requires anchor authorization (`anchor.require_auth()`).
 
 **Parameters:**
-- `anchor`: Address of the anchor
-- `domain`: Domain to fetch from (e.g., "example.com")
-- `ttl_seconds`: Optional cache TTL (default: 3600 seconds)
+- `anchor`: Address of the anchor (must authorize the transaction)
+- `toml_data`: Pre-parsed `StellarToml` structure containing anchor metadata
+- `network_passphrase`: Stellar network passphrase (must match the active network and `toml_data.network_passphrase`)
+- `ttl_override`: Optional cache TTL in seconds (defaults to 3600 seconds if `None`, capped at `MAX_TTL_SECONDS`)
+
+**Returns:**
+- Returns `()` on success. Panics with `ErrorCode` on validation failure (e.g. `ErrorCode::ValidationError`, `ErrorCode::InvalidEndpointFormat`).
 
 **Example:**
 ```rust
-let toml = contract.fetch_anchor_info(
+// Caller fetches/parses stellar.toml off-chain, then submits to contract:
+contract.fetch_anchor_info(
     &anchor_addr,
-    String::from_str(&env, "anchor.example.com"),
-    Some(7200)
-)?;
+    &toml_data,
+    &String::from_str(&env, "Test SDF Network ; September 2015"),
+    &Some(7200),
+);
 ```
 
 ### Get Cached TOML
@@ -91,11 +100,16 @@ let toml = contract.fetch_anchor_info(
 ```rust
 pub fn get_anchor_toml(
     env: Env,
-    anchor: Address
-) -> Result<StellarToml, Error>
+    anchor: Address,
+) -> Result<StellarToml, ErrorCode>
 ```
 
-Retrieves cached stellar.toml for an anchor.
+Retrieves cached `StellarToml` for an anchor.
+
+**Returns:**
+- `Ok(StellarToml)` if found and unexpired
+- `Err(ErrorCode::CacheNotFound)` if no TOML has been cached for this anchor
+- `Err(ErrorCode::CacheExpired)` if the cached entry has expired
 
 **Example:**
 ```rust
@@ -109,19 +123,29 @@ println!("Version: {}", toml.version);
 pub fn refresh_anchor_info(
     env: Env,
     anchor: Address,
-    domain: String
-) -> Result<StellarToml, Error>
+    force: bool,
+)
 ```
 
-Manually refreshes cached data. Requires admin authorization.
+Refreshes or clears cached metadata for an anchor. Requires anchor authorization (`anchor.require_auth()`).
+
+**Parameters:**
+- `anchor`: Address of the anchor (must authorize the transaction)
+- `force`: If `true`, removes the cached TOML immediately; if `false`, removes it only if expired.
+
+**Example:**
+```rust
+// Evict expired cache or force invalidation
+contract.refresh_anchor_info(&anchor_addr, &true);
+```
 
 ### Query Supported Assets
 
 ```rust
 pub fn get_anchor_assets(
     env: Env,
-    anchor: Address
-) -> Result<Vec<String>, Error>
+    anchor: Address,
+) -> Result<Vec<String>, ErrorCode>
 ```
 
 Returns list of asset codes supported by the anchor.
@@ -132,14 +156,25 @@ let assets = contract.get_anchor_assets(&anchor_addr)?;
 // Returns: ["USDC", "XLM", "BTC"]
 ```
 
+### Query Supported Fiat Currencies
+
+```rust
+pub fn get_anchor_currencies(
+    env: Env,
+    anchor: Address,
+) -> Result<Vec<FiatCurrency>, ErrorCode>
+```
+
+Returns list of fiat currencies supported by the anchor.
+
 ### Get Asset Details
 
 ```rust
 pub fn get_anchor_asset_info(
     env: Env,
     anchor: Address,
-    asset_code: String
-) -> Result<AssetInfo, Error>
+    asset_code: String,
+) -> Result<AssetInfo, ErrorCode>
 ```
 
 Retrieves complete information about a specific asset.
@@ -147,7 +182,7 @@ Retrieves complete information about a specific asset.
 **Example:**
 ```rust
 let usdc = String::from_str(&env, "USDC");
-let info = contract.get_anchor_asset_info(&anchor_addr, usdc)?;
+let info = contract.get_anchor_asset_info(&anchor_addr, &usdc)?;
 println!("Issuer: {}", info.issuer);
 println!("Deposit enabled: {}", info.deposit_enabled);
 ```
@@ -159,23 +194,23 @@ println!("Deposit enabled: {}", info.deposit_enabled);
 pub fn get_anchor_deposit_limits(
     env: Env,
     anchor: Address,
-    asset_code: String
-) -> Result<(u64, u64), Error>
+    asset_code: String,
+) -> Result<(u64, u64), ErrorCode>
 
 // Withdrawal limits
 pub fn get_anchor_withdrawal_limits(
     env: Env,
     anchor: Address,
-    asset_code: String
-) -> Result<(u64, u64), Error>
+    asset_code: String,
+) -> Result<(u64, u64), ErrorCode>
 ```
 
-Returns (min, max) limits for deposits or withdrawals.
+Returns `(min, max)` limits for deposits or withdrawals.
 
 **Example:**
 ```rust
 let usdc = String::from_str(&env, "USDC");
-let (min, max) = contract.get_anchor_deposit_limits(&anchor_addr, usdc)?;
+let (min, max) = contract.get_anchor_deposit_limits(&anchor_addr, &usdc)?;
 println!("Deposit range: {} - {}", min, max);
 ```
 
@@ -186,23 +221,23 @@ println!("Deposit range: {} - {}", min, max);
 pub fn get_anchor_deposit_fees(
     env: Env,
     anchor: Address,
-    asset_code: String
-) -> Result<(u64, u32), Error>
+    asset_code: String,
+) -> Result<(u64, u32), ErrorCode>
 
 // Withdrawal fees
 pub fn get_anchor_withdrawal_fees(
     env: Env,
     anchor: Address,
-    asset_code: String
-) -> Result<(u64, u32), Error>
+    asset_code: String,
+) -> Result<(u64, u32), ErrorCode>
 ```
 
-Returns (fixed_fee, percent_fee) for deposits or withdrawals.
+Returns `(fixed_fee, percent_fee)` for deposits or withdrawals.
 
 **Example:**
 ```rust
 let usdc = String::from_str(&env, "USDC");
-let (fixed, percent) = contract.get_anchor_deposit_fees(&anchor_addr, usdc)?;
+let (fixed, percent) = contract.get_anchor_deposit_fees(&anchor_addr, &usdc)?;
 println!("Fee: {} + {}%", fixed, percent);
 ```
 
@@ -213,21 +248,21 @@ println!("Fee: {} + {}%", fixed, percent);
 pub fn anchor_supports_deposits(
     env: Env,
     anchor: Address,
-    asset_code: String
-) -> Result<bool, Error>
+    asset_code: String,
+) -> Result<bool, ErrorCode>
 
 // Check withdrawal support
 pub fn anchor_supports_withdrawals(
     env: Env,
     anchor: Address,
-    asset_code: String
-) -> Result<bool, Error>
+    asset_code: String,
+) -> Result<bool, ErrorCode>
 ```
 
 **Example:**
 ```rust
 let usdc = String::from_str(&env, "USDC");
-if contract.anchor_supports_deposits(&anchor_addr, usdc.clone())? {
+if contract.anchor_supports_deposits(&anchor_addr, &usdc)? {
     println!("Deposits supported for USDC");
 }
 ```
@@ -237,11 +272,11 @@ if contract.anchor_supports_deposits(&anchor_addr, usdc.clone())? {
 ### Complete Workflow
 
 ```rust
-use soroban_sdk::{Env, String};
+use soroban_sdk::{Env, String, Address};
 
-// 1. Fetch and cache anchor info
-let domain = String::from_str(&env, "anchor.example.com");
-let toml = contract.fetch_anchor_info(&anchor, domain, None)?;
+// 1. Fetch & parse stellar.toml off-chain, then cache on-chain
+let network_passphrase = String::from_str(&env, "Test SDF Network ; September 2015");
+contract.fetch_anchor_info(&anchor, &toml_data, &network_passphrase, &None);
 
 // 2. List supported assets
 let assets = contract.get_anchor_assets(&anchor)?;
@@ -251,34 +286,18 @@ for asset in assets.iter() {
 
 // 3. Check specific asset details
 let usdc = String::from_str(&env, "USDC");
-let info = contract.get_anchor_asset_info(&anchor, usdc.clone())?;
+let info = contract.get_anchor_asset_info(&anchor, &usdc)?;
 
 // 4. Validate transaction parameters
-let (min, max) = contract.get_anchor_deposit_limits(&anchor, usdc.clone())?;
+let (min, max) = contract.get_anchor_deposit_limits(&anchor, &usdc)?;
 let amount = 5000;
 if amount >= min && amount <= max {
     // Proceed with deposit
 }
 
 // 5. Calculate fees
-let (fixed, percent) = contract.get_anchor_deposit_fees(&anchor, usdc)?;
-let total_fee = fixed + (amount * percent / 10000);
-```
-
-### Integration with Existing Features
-
-```rust
-// Combine with service configuration
-let services = contract.get_supported_services(&anchor)?;
-if services.contains(&ServiceType::Deposits) {
-    let assets = contract.get_anchor_assets(&anchor)?;
-    // Process deposits for supported assets
-}
-
-// Use with rate comparison
-let usdc = String::from_str(&env, "USDC");
-let (fee_fixed, fee_percent) = contract.get_anchor_deposit_fees(&anchor, usdc)?;
-// Compare fees across multiple anchors
+let (fixed, percent) = contract.get_anchor_deposit_fees(&anchor, &usdc)?;
+let total_fee = fixed + (amount * percent as u64 / 10000);
 ```
 
 ## Cache Management
@@ -289,34 +308,32 @@ The default cache TTL is 3600 seconds (1 hour). This can be customized per fetch
 
 ```rust
 // Cache for 2 hours
-contract.fetch_anchor_info(&anchor, domain, Some(7200))?;
+contract.fetch_anchor_info(&anchor, &toml_data, &network_passphrase, &Some(7200));
 
 // Cache for 30 minutes
-contract.fetch_anchor_info(&anchor, domain, Some(1800))?;
+contract.fetch_anchor_info(&anchor, &toml_data, &network_passphrase, &Some(1800));
 ```
 
-### Manual Refresh
+### Manual Refresh / Invalidation
 
-Force a cache refresh when anchor metadata changes:
+Force cache eviction when anchor metadata changes:
 
 ```rust
-let domain = String::from_str(&env, "anchor.example.com");
-contract.refresh_anchor_info(&anchor, domain)?;
+contract.refresh_anchor_info(&anchor, &true);
 ```
 
-### Cache Expiration
+### Cache Expiration Handling
 
-When cache expires, queries return `Error::CacheExpired`. Handle this by refreshing:
+When cache expires, queries return `ErrorCode::CacheExpired`. Handle this by re-submitting fresh metadata:
 
 ```rust
 match contract.get_anchor_toml(&anchor) {
     Ok(toml) => {
         // Use cached data
     }
-    Err(Error::CacheExpired) => {
-        // Refresh cache
-        let domain = String::from_str(&env, "anchor.example.com");
-        let toml = contract.refresh_anchor_info(&anchor, domain)?;
+    Err(ErrorCode::CacheExpired) => {
+        // Re-fetch off-chain and update contract cache
+        contract.fetch_anchor_info(&anchor, &fresh_toml, &network_passphrase, &None);
     }
     Err(e) => return Err(e),
 }
@@ -324,192 +341,48 @@ match contract.get_anchor_toml(&anchor) {
 
 ## Error Handling
 
-### Common Errors
+### Common Error Codes
 
-- `Error::CacheNotFound`: No cached data for anchor (call `fetch_anchor_info` first)
-- `Error::CacheExpired`: Cached data expired (call `refresh_anchor_info`)
-- `Error::UnsupportedAsset`: Asset not found in anchor's supported list
-- `Error::NotInitialized`: Contract not initialized
-- `Error::UnauthorizedAttestor`: Caller not authorized (for admin-only methods)
+- `ErrorCode::CacheNotFound`: No cached data for anchor (call `fetch_anchor_info` first)
+- `ErrorCode::CacheExpired`: Cached data expired (call `fetch_anchor_info` with refreshed metadata)
+- `ErrorCode::ValidationError`: Network passphrase mismatch, invalid passphrase length, or currency decimals > 18
+- `ErrorCode::InvalidEndpointFormat`: Transfer server URL is invalid or not HTTPS
 
-### Error Handling Pattern
+## Off-Chain Integration Architecture
 
-```rust
-use crate::errors::Error;
+AnchorKit runs inside Soroban WASM and cannot make outbound HTTP requests. Discovery operates in two stages:
 
-fn process_anchor_asset(
-    contract: &AnchorKitContract,
-    anchor: &Address,
-    asset_code: String,
-) -> Result<(), Error> {
-    // Try to get asset info
-    let info = match contract.get_anchor_asset_info(anchor, asset_code.clone()) {
-        Ok(info) => info,
-        Err(Error::CacheNotFound) => {
-            // Fetch and cache
-            let domain = String::from_str(&env, "anchor.example.com");
-            contract.fetch_anchor_info(anchor, domain, None)?;
-            contract.get_anchor_asset_info(anchor, asset_code)?
-        }
-        Err(Error::CacheExpired) => {
-            // Refresh cache
-            let domain = String::from_str(&env, "anchor.example.com");
-            contract.refresh_anchor_info(anchor, domain)?;
-            contract.get_anchor_asset_info(anchor, asset_code)?
-        }
-        Err(e) => return Err(e),
-    };
-
-    // Process asset info
-    Ok(())
-}
-```
-
-## Testing
-
-The service includes comprehensive tests covering:
-
-- ✅ Fetch and cache operations
-- ✅ Cache retrieval and expiration
-- ✅ Asset queries and filtering
-- ✅ Limit and fee queries
-- ✅ Service support checks
-- ✅ Multiple anchor support
-- ✅ Custom TTL handling
-- ✅ Error conditions
-
-Run tests:
-
-```bash
-cargo test anchor_info_discovery
-```
-
-## Production Considerations
-
-### HTTP Integration
-
-The current implementation uses mock data for testing. In production, replace `mock_fetch_toml` with actual HTTP client:
-
-```rust
-fn fetch_toml(env: &Env, domain: &String) -> Result<StellarToml, Error> {
-    let url = format!("https://{}/.well-known/stellar.toml", domain);
-    // Use HTTP client to fetch and parse TOML
-    // Parse TOML content into StellarToml struct
-}
-```
-
-### TOML Parsing
-
-Integrate a TOML parser compatible with Soroban:
-
-```rust
-use toml_parser::parse;
-
-fn parse_stellar_toml(content: &str) -> Result<StellarToml, Error> {
-    let parsed = parse(content)?;
-    // Map TOML fields to StellarToml struct
-}
-```
-
-### Rate Limiting
-
-Consider rate limiting TOML fetches to avoid overwhelming anchor servers:
-
-```rust
-// Check last fetch time
-if last_fetch_time + MIN_FETCH_INTERVAL > current_time {
-    return Err(Error::RateLimitExceeded);
-}
-```
-
-### Validation
-
-Add validation for fetched data:
-
-```rust
-fn validate_toml(toml: &StellarToml) -> Result<(), Error> {
-    // Validate version
-    if toml.version.is_empty() {
-        return Err(Error::InvalidAnchorMetadata);
-    }
-    
-    // Validate URLs
-    for url in [&toml.transfer_server, &toml.kyc_server] {
-        if !is_valid_url(url) {
-            return Err(Error::InvalidEndpointFormat);
-        }
-    }
-    
-    Ok(())
-}
-```
-
-## Integration with Other Features
-
-### With Health Monitoring
-
-```rust
-// Check if anchor is healthy before fetching
-let health = contract.get_health_status(&anchor)?;
-if health.is_active {
-    let toml = contract.fetch_anchor_info(&anchor, domain, None)?;
-}
-```
-
-### With Asset Validator
-
-```rust
-// Sync supported assets with asset validator
-let assets = contract.get_anchor_assets(&anchor)?;
-contract.set_supported_assets(&anchor, assets)?;
-```
-
-### With Rate Comparison
-
-```rust
-// Use fee data for rate comparison
-let usdc = String::from_str(&env, "USDC");
-let (fixed, percent) = contract.get_anchor_deposit_fees(&anchor, usdc)?;
-// Factor fees into rate comparison logic
-```
+1. **Off-Chain Client/SDK**:
+   - Queries `https://<domain>/.well-known/stellar.toml` via HTTP
+   - Parses the TOML content into the `StellarToml` struct
+2. **On-Chain AnchorKit Contract**:
+   - Accepts pre-parsed `StellarToml` in `fetch_anchor_info`
+   - Verifies caller authority (`anchor.require_auth()`)
+   - Validates that `network_passphrase` matches the known Stellar network (Mainnet or Testnet) and matches `toml_data.network_passphrase`
+   - Verifies `transfer_server` endpoint via domain validation
+   - Validates decimals for all assets
+   - Stores metadata in Soroban temporary storage with TTL
 
 ## API Summary
 
 | Method | Auth Required | Returns | Purpose |
 |--------|---------------|---------|---------|
-| `fetch_anchor_info` | Admin | `StellarToml` | Fetch and cache TOML |
-| `get_anchor_toml` | None | `StellarToml` | Get cached TOML |
-| `refresh_anchor_info` | Admin | `StellarToml` | Refresh cache |
-| `get_anchor_assets` | None | `Vec<String>` | List assets |
-| `get_anchor_asset_info` | None | `AssetInfo` | Asset details |
-| `get_anchor_deposit_limits` | None | `(u64, u64)` | Deposit min/max |
-| `get_anchor_withdrawal_limits` | None | `(u64, u64)` | Withdrawal min/max |
-| `get_anchor_deposit_fees` | None | `(u64, u32)` | Deposit fees |
-| `get_anchor_withdrawal_fees` | None | `(u64, u32)` | Withdrawal fees |
-| `anchor_supports_deposits` | None | `bool` | Check deposit support |
-| `anchor_supports_withdrawals` | None | `bool` | Check withdrawal support |
-
-## Performance
-
-- **Cache storage**: Uses Soroban temporary storage with TTL
-- **Query complexity**: O(1) for cache lookups, O(n) for asset searches
-- **Memory usage**: Proportional to number of supported assets
-- **Network calls**: Only on initial fetch and manual refresh
+| `fetch_anchor_info` | Anchor | `()` | Validate and cache pre-parsed TOML on-chain |
+| `get_anchor_toml` | None | `Result<StellarToml, ErrorCode>` | Get cached TOML |
+| `refresh_anchor_info` | Anchor | `()` | Refresh or invalidate cached TOML |
+| `get_anchor_assets` | None | `Result<Vec<String>, ErrorCode>` | List supported asset codes |
+| `get_anchor_currencies` | None | `Result<Vec<FiatCurrency>, ErrorCode>` | List supported fiat currencies |
+| `get_anchor_asset_info` | None | `Result<AssetInfo, ErrorCode>` | Asset details |
+| `get_anchor_deposit_limits` | None | `Result<(u64, u64), ErrorCode>` | Deposit min/max |
+| `get_anchor_withdrawal_limits` | None | `Result<(u64, u64), ErrorCode>` | Withdrawal min/max |
+| `get_anchor_deposit_fees` | None | `Result<(u64, u32), ErrorCode>` | Deposit fees |
+| `get_anchor_withdrawal_fees` | None | `Result<(u64, u32), ErrorCode>` | Withdrawal fees |
+| `anchor_supports_deposits` | None | `Result<bool, ErrorCode>` | Check deposit support |
+| `anchor_supports_withdrawals` | None | `Result<bool, ErrorCode>` | Check withdrawal support |
 
 ## Security
 
-- **Admin-only operations**: Fetch and refresh require admin authorization
-- **Input validation**: Domain and asset codes validated
-- **Cache isolation**: Each anchor has separate cache entry
-- **TTL enforcement**: Automatic expiration prevents stale data
-
-## Future Enhancements
-
-- [ ] Real HTTP client integration
-- [ ] TOML parser integration
-- [ ] Signature verification for TOML files
-- [ ] Multi-domain fallback support
-- [ ] Automatic cache refresh on expiration
-- [ ] Event emission for cache updates
-- [ ] Batch asset queries
-- [ ] Asset search and filtering
+- **Anchor Authorization**: `fetch_anchor_info` and `refresh_anchor_info` require `anchor.require_auth()`
+- **Network Passphrase Validation**: Ensures the TOML belongs to the correct Stellar network before caching
+- **HTTPS Enforcement**: Transfer server endpoint is validated to ensure HTTPS-only communication
+- **Asset Decimal Bounds**: Enforces that asset decimals do not exceed 18

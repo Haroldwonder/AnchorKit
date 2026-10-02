@@ -71,6 +71,10 @@ pub enum StorageKey {
     AttestationRevoked(u64),
     /// Contract pause state (instance storage).
     IsPaused,
+    /// Credential policy for an attestor (persistent).
+    CredentialPolicy(Address),
+    /// Stored credential for an attestor (persistent).
+    StoredCredential(Address),
     // --- Instance-storage counters (stored as Vec<Symbol> keys) ---
     // These are kept as plain symbol_short! vecs because instance storage
     // requires a Vec<Symbol> key; they are defined as named constants below.

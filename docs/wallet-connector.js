@@ -178,6 +178,10 @@ class WalletConnector {
 }
 
 // Export for different module systems
+// ES module export (enables `import WalletConnector from './wallet-connector.js'`)
+export default WalletConnector;
+
+// CommonJS export (kept for existing consumers)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = WalletConnector;
 }

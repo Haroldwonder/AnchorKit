@@ -20,8 +20,8 @@ use crate::storage::{
 
 pub use crate::types::{
     AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CapabilitiesCache,
-    CachedToml, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
-    RoutingOptions, RoutingRequest, Session, StellarToml, TracingSpan,
+    CachedToml, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
+    RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
     SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES, ServiceType,
 };
 
@@ -853,6 +853,11 @@ impl AnchorKitContract {
         let mut ids = Vec::new(&env);
         for i in 0..inputs.len() {
             let input = inputs.get(i).unwrap();
+            // Enforce per-issuer rate limit for each item in the batch, keeping
+            // parity with submit_attestation and submit_with_request_id.
+            if let Err(e) = crate::rate_limiter::RateLimiter::check_and_increment(&env, &issuer) {
+                panic_with_error!(&env, e);
+            }
             Self::check_timestamp(&env, input.timestamp);
 
             let used_key = StorageKey::Used(input.payload_hash.clone());
@@ -1108,10 +1113,6 @@ impl AnchorKitContract {
     // Deterministic hash utilities
     // -----------------------------------------------------------------------
 
-    pub fn compute_payload_hash(env: Env, subject: Address, timestamp: u64, data: Bytes) -> BytesN<32> {
-        compute_payload_hash(&env, &subject, timestamp, &data)
-    }
-
     /// Compute the canonical payload hash via the contract method.
     ///
     /// Off-chain callers should prefer this method over calling
@@ -1298,6 +1299,11 @@ impl AnchorKitContract {
         }
         issuer.require_auth();
         Self::check_attestor(&env, &issuer);
+        // Enforce per-issuer rate limit, keeping parity with submit_attestation
+        // and submit_with_request_id.
+        if let Err(e) = crate::rate_limiter::RateLimiter::check_and_increment(&env, &issuer) {
+            panic_with_error!(&env, e);
+        }
         Self::check_timestamp(&env, timestamp);
         Self::verify_attestation_signature(&env, &issuer, &payload_hash, &signature);
 
@@ -2992,6 +2998,122 @@ fn verify_attestation_signature(
             return Err(ErrorCode::UnauthorizedAttestor);
         }
         crate::rate_limiter::RateLimiter::reset_rate_limit(&env, &admin, &attestor)
+    }
+
+    /// Set a credential rotation and encryption policy for an attestor.
+    pub fn set_credential_policy(
+        env: Env,
+        attestor: Address,
+        rotation_interval_seconds: u64,
+        require_encryption: bool,
+    ) {
+        if Self::is_initialized(env.clone()) {
+            let admin = Self::get_admin(env.clone());
+            admin.require_auth();
+        }
+        let now = env.ledger().timestamp();
+        let policy = CredentialPolicy {
+            attestor: attestor.clone(),
+            rotation_interval_seconds,
+            require_encryption,
+            last_rotated: now,
+        };
+        env.storage()
+            .persistent()
+            .set(&StorageKey::CredentialPolicy(attestor), &policy);
+    }
+
+    /// Get the credential policy for an attestor.
+    pub fn get_credential_policy(env: Env, attestor: Address) -> Option<CredentialPolicy> {
+        env.storage()
+            .persistent()
+            .get(&StorageKey::CredentialPolicy(attestor))
+    }
+
+    /// Store an encrypted credential for an attestor.
+    pub fn store_encrypted_credential(
+        env: Env,
+        attestor: Address,
+        credential_type: Symbol,
+        encrypted_value: String,
+        expires_at: u64,
+    ) {
+        if Self::is_initialized(env.clone()) {
+            let admin = Self::get_admin(env.clone());
+            admin.require_auth();
+        }
+        let now = env.ledger().timestamp();
+        let cred = StoredCredential {
+            attestor: attestor.clone(),
+            credential_type,
+            encrypted_value,
+            expires_at,
+            updated_at: now,
+        };
+        env.storage()
+            .persistent()
+            .set(&StorageKey::StoredCredential(attestor), &cred);
+    }
+
+    /// Check whether an attestor's credential needs rotation according to its policy or expiration.
+    pub fn check_credential_rotation(env: Env, attestor: Address) -> bool {
+        let now = env.ledger().timestamp();
+        if let Some(cred) = env
+            .storage()
+            .persistent()
+            .get::<_, StoredCredential>(&StorageKey::StoredCredential(attestor.clone()))
+        {
+            if cred.expires_at > 0 && now >= cred.expires_at {
+                return true;
+            }
+        }
+        if let Some(policy) = env
+            .storage()
+            .persistent()
+            .get::<_, CredentialPolicy>(&StorageKey::CredentialPolicy(attestor))
+        {
+            if policy.rotation_interval_seconds > 0
+                && now.saturating_sub(policy.last_rotated) >= policy.rotation_interval_seconds
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Rotate a credential for an attestor, updating its encrypted value and expiration.
+    pub fn rotate_credential(
+        env: Env,
+        attestor: Address,
+        credential_type: Symbol,
+        new_encrypted_value: String,
+        expires_at: u64,
+    ) {
+        if Self::is_initialized(env.clone()) {
+            let admin = Self::get_admin(env.clone());
+            admin.require_auth();
+        }
+        let now = env.ledger().timestamp();
+        let cred = StoredCredential {
+            attestor: attestor.clone(),
+            credential_type,
+            encrypted_value: new_encrypted_value,
+            expires_at,
+            updated_at: now,
+        };
+        env.storage()
+            .persistent()
+            .set(&StorageKey::StoredCredential(attestor.clone()), &cred);
+        if let Some(mut policy) = env
+            .storage()
+            .persistent()
+            .get::<_, CredentialPolicy>(&StorageKey::CredentialPolicy(attestor.clone()))
+        {
+            policy.last_rotated = now;
+            env.storage()
+                .persistent()
+                .set(&StorageKey::CredentialPolicy(attestor), &policy);
+        }
     }
 }
 

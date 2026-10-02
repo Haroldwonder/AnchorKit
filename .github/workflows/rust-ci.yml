@@ -33,7 +33,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --verbose --examples
 
       - name: Check test compilation
         run: cargo check --tests
@@ -46,7 +46,7 @@ jobs:
         run: cargo test --verbose
 
       - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
   audit:
     runs-on: ubuntu-latest
@@ -100,3 +100,67 @@ jobs:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}/
           if-no-files-found: ignore
+
+  proptest-tests:
+    name: Proptest Tests (replay window)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-proptest-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-proptest-
+
+      - name: Check proptest test compilation
+        run: cargo check --tests --features proptest-tests
+
+      - name: Run proptest tests
+        run: cargo test --features proptest-tests --verbose
+
+      - name: Clippy (proptest-tests)
+        run: cargo clippy --features proptest-tests -- -D warnings
+
+  testnet-integration:
+    name: Testnet Integration Tests (SEP-6)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-testnet-integration-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-testnet-integration-
+
+      - name: Check testnet-integration test compilation
+        run: cargo check --tests --features testnet-integration
+
+      - name: Run testnet-integration tests
+        run: cargo test --features testnet-integration --verbose
+
+      - name: Clippy (testnet-integration)
+        run: cargo clippy --features testnet-integration -- -D warnings

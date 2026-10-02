@@ -14,7 +14,20 @@ cat > "$TMPDIR/valid.toml" << 'EOF'
 [contract]
 name = "test-anchor"
 version = "1.0.0"
-network = "testnet"
+network = "stellar-testnet"
+
+[attestors]
+threshold = 1
+
+[[attestors.members]]
+name = "attestor-1"
+public_key = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+
+[sessions]
+timeout_seconds = 3600
+
+[deployment]
+environment = "testnet"
 EOF
 
 echo "Test 1: Valid TOML file"
@@ -35,7 +48,28 @@ echo ""
 
 # Test 3: Valid JSON file (existing behavior preserved)
 cat > "$TMPDIR/valid.json" << 'EOF'
-{"name": "test", "version": "1.0.0"}
+{
+  "contract": {
+    "name": "test-anchor",
+    "version": "1.0.0",
+    "network": "stellar-testnet"
+  },
+  "attestors": {
+    "threshold": 1,
+    "members": [
+      {
+        "name": "attestor-1",
+        "public_key": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+      }
+    ]
+  },
+  "sessions": {
+    "timeout_seconds": 3600
+  },
+  "deployment": {
+    "environment": "testnet"
+  }
+}
 EOF
 
 echo "Test 3: Valid JSON file"

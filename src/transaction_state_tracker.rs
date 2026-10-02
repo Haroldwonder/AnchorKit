@@ -280,8 +280,18 @@ impl TransactionStateTracker {
     }
 
     /// Clear all cached transactions.
-    /// Requires admin authorization.
-    pub fn clear_cache(&mut self, admin: &Address, _env: &Env) -> Result<(), String> {
+    /// Requires authorization from the initialized contract admin.
+    pub fn clear_cache(&mut self, admin: &Address, env: &Env) -> Result<(), String> {
+        let Some(expected_admin) = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&crate::storage::key_admin(env))
+        else {
+            return Err(String::from_str(env, "Contract admin is not configured"));
+        };
+        if admin != &expected_admin {
+            return Err(String::from_str(env, "Only the contract admin can clear the cache"));
+        }
         admin.require_auth();
         self.cache = alloc::vec::Vec::new();
         self.state_counts = [0u64; 6];
@@ -438,11 +448,13 @@ mod tests {
     #[test]
     fn test_clear_cache() {
         with_contract(|env| {
+        let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+        AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
         let mut tracker = TransactionStateTracker::new();
         let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
 
         tracker.create_transaction(1, initiator.clone(), &env).ok();
-        let clear_result = tracker.clear_cache(&initiator, &env);
+        let clear_result = tracker.clear_cache(&admin, &env);
 
         assert!(clear_result.is_ok());
         assert_eq!(tracker.cache_size(), 0);
@@ -485,36 +497,32 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_clear_cache_requires_admin_auth() {
+    fn test_clear_cache_fails_closed_without_stored_admin() {
         let env = Env::default();
         let contract_id = env.register_contract(None, crate::contract::AnchorKitContract);
+        let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
         let mut tracker = TransactionStateTracker::new();
-        let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
-        let different_admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
 
-        tracker.create_transaction(1, initiator, &env).ok();
-        assert_eq!(tracker.cache_size(), 1);
-
-        // This should panic because different_admin has not authorized this call
-        env.as_contract(&contract_id, || {
-            tracker.clear_cache(&different_admin, &env).ok();
-        });
+        let result = env.as_contract(&contract_id, || tracker.clear_cache(&admin, &env));
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_clear_cache_allows_self_authorization_vulnerability() {
+    fn test_clear_cache_rejects_self_authorized_non_admin() {
         with_contract(|env| {
-            let mut tracker = TransactionStateTracker::new();
             let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
             let unprivileged_user = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            AnchorKitContract::initialize(env.clone(), initiator.clone(), 100, None, None).unwrap();
+            let mut tracker = TransactionStateTracker::new();
 
             tracker.create_transaction(1, initiator.clone(), &env).ok();
             assert_eq!(tracker.cache_size(), 1);
 
-            // Vulnerability: unprivileged user can clear cache by self-authorizing when mock_all_auths is enabled
             let clear_result = tracker.clear_cache(&unprivileged_user, &env);
-            assert!(clear_result.is_ok());
+            assert!(clear_result.is_err());
+            assert_eq!(tracker.cache_size(), 1);
+
+            assert!(tracker.clear_cache(&initiator, &env).is_ok());
             assert_eq!(tracker.cache_size(), 0);
         });
     }

@@ -35,7 +35,7 @@ jobs:
             ${{ runner.os }}-cargo-wasm-
 
       - name: Build WASM (release)
-        run: cargo build --target wasm32-unknown-unknown --release --no-default-features --features wasm
+        run: cargo build --lib --target wasm32-unknown-unknown --release --no-default-features --features wasm
 
       - name: Check WASM binary size
         run: |

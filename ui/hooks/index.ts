@@ -20,7 +20,14 @@ export {
   type UseRateLimitStatusResult,
   type UseRateLimitStatusOptions,
 } from './useRateLimitStatus';
-export { getRateLimitStatus, type RateLimitStatusRaw, ContractError } from './contractClient';
+export {
+  getRateLimitStatus,
+  setRateLimitClient,
+  resetRateLimitClient,
+  type RateLimitStatusFetcher,
+  type RateLimitStatusRaw,
+  ContractError,
+} from './contractClient';
 export { useSep10Auth } from './useSep10Auth';
 export type { Sep10AuthAdapters, UseSep10AuthResult } from './useSep10Auth';
 export { useAnchorHealth, isValidAttestor } from './useAnchorHealth';

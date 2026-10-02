@@ -34,7 +34,11 @@ export function useTheme(override?: boolean): boolean {
     }
 
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    setSysDark(mq.matches);
+    // Do NOT call setSysDark(mq.matches) here unconditionally — doing so would
+    // overwrite a localStorage-derived initial value on every mount.  The live
+    // OS preference is only applied in response to a real change event so that a
+    // user-saved "light" preference is never silently clobbered on the next page
+    // load when the OS is in dark mode.
     const handler = (e: MediaQueryListEvent) => setSysDark(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);

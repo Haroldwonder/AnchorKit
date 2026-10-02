@@ -1,12 +1,14 @@
 /* Central Google Fonts imports - loaded once for all components */
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700;800&family=Source+Code+Pro:wght@400;500;600&family=Fira+Code:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap');
 
-/* Applied by storybook-dark-mode to <html> in the preview iframe */
-html.dark body {
-  background-color: #0f172a;
-}
-
-html.light body,
+/* Base preview background.
+ *
+ * Note: this file previously carried `html.dark` / `html.light` rules for the
+ * `storybook-dark-mode` addon, but that addon is not registered in main.ts nor
+ * installed in package.json, so those selectors never matched anything. The
+ * class is only applied here if a dark-mode addon is added back; keep the two
+ * in sync if you do.
+ */
 body {
   background-color: #ffffff;
 }

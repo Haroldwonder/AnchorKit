@@ -63,9 +63,9 @@
               },
               "endpoint": {
                 "type": "string",
-                "minLength": 8,
+                "minLength": 10,
                 "maxLength": 256,
-                "pattern": "^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"
+                "pattern": "^https://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"
               },
               "role": {
                 "type": "string",

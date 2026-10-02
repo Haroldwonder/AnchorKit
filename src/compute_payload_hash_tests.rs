@@ -18,16 +18,21 @@ fn test_compute_payload_hash_public_matches_internal() {
 
 #[test]
 fn test_compute_payload_hash_public_backward_compat() {
+    // There is now only one contract entry point (compute_payload_hash_public).
+    // Verify it remains deterministic across identical calls so that any
+    // off-chain tooling that previously relied on the old compute_payload_hash
+    // name produces the same digest after migrating to compute_payload_hash_public.
     let env = Env::default();
     let subject = Address::generate(&env);
     let data = Bytes::from_slice(&env, b"payment_confirmed");
     let timestamp: u64 = 1_700_000_001u64;
 
-    let public_hash =
+    let hash1 =
         AnchorKitContract::compute_payload_hash_public(env.clone(), subject.clone(), timestamp, data.clone());
-    let compat_hash = AnchorKitContract::compute_payload_hash(env, subject, timestamp, data);
+    let hash2 =
+        AnchorKitContract::compute_payload_hash_public(env, subject, timestamp, data);
 
-    assert_eq!(public_hash, compat_hash);
+    assert_eq!(hash1, hash2);
 }
 
 #[test]

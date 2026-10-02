@@ -5,10 +5,13 @@
     "outDir": "dist",
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": false
+    "sourceMap": false,
+    "moduleResolution": "node"
   },
   "include": [
+    "index.ts",
     "components/**/*",
+    "hooks/**/*",
     "src/**/*"
   ],
   "exclude": [

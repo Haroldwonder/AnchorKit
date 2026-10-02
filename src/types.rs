@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Bytes, String, Vec};
+use soroban_sdk::{contracttype, Address, Bytes, String, Symbol, Vec};
 extern crate alloc;
 use alloc::string::String as AllocString;
 
@@ -370,6 +370,50 @@ mod transaction_status_tests {
 }
 
 #[cfg(test)]
+mod merged_response_type_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_response_types_include_merged_fields() {
+        let deposit = DepositResponse {
+            transaction_id: alloc::string::String::from("txn-123"),
+            how: Some(alloc::string::String::from("bank_transfer")),
+            extra_info: Some(alloc::string::String::from("follow instructions")),
+            deposit_address: Some(alloc::string::String::from("GDEPOSIT...")),
+            min_amount: Some(10),
+            max_amount: Some(1000),
+            fee_fixed: Some(2),
+            fee_percent: Some(150),
+            expires_at: Some(42),
+            status: TransactionStatus::Pending,
+            claimable_balance_supported: true,
+        };
+
+        assert_eq!(deposit.how, Some(alloc::string::String::from("bank_transfer")));
+        assert_eq!(deposit.deposit_address, Some(alloc::string::String::from("GDEPOSIT...")));
+        assert_eq!(deposit.expires_at, Some(42));
+        assert!(deposit.claimable_balance_supported);
+
+        let withdrawal = WithdrawalResponse {
+            transaction_id: alloc::string::String::from("txn-456"),
+            account_id: Some(alloc::string::String::from("GDEST...")),
+            dest_account_id: Some(alloc::string::String::from("bank-account-99")),
+            memo: Some(alloc::string::String::from("memo-1")),
+            memo_type: Some(alloc::string::String::from("id")),
+            min_amount: Some(5),
+            max_amount: Some(500),
+            fee_fixed: Some(1),
+            fee_percent: Some(50),
+            estimated_completion: Some(99),
+            status: TransactionStatus::Completed,
+        };
+
+        assert_eq!(withdrawal.account_id, Some(alloc::string::String::from("GDEST...")));
+        assert_eq!(withdrawal.estimated_completion, Some(99));
+    }
+}
+
+#[cfg(test)]
 mod jurisdiction_filter_tests {
     use super::*;
     use soroban_sdk::String;
@@ -535,4 +579,27 @@ pub struct HealthStatus {
     pub latency_ms: u64,
     pub failure_count: u32,
     pub availability_percent: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Credential management types
+// ---------------------------------------------------------------------------
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CredentialPolicy {
+    pub attestor: Address,
+    pub rotation_interval_seconds: u64,
+    pub require_encryption: bool,
+    pub last_rotated: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredCredential {
+    pub attestor: Address,
+    pub credential_type: Symbol,
+    pub encrypted_value: String,
+    pub expires_at: u64,
+    pub updated_at: u64,
 }

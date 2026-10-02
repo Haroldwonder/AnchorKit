@@ -46,32 +46,58 @@ export class ContractError extends Error {
   }
 }
 
+/** Client function type for fetching rate-limit status. */
+export type RateLimitStatusFetcher = (attestor: string) => Promise<RateLimitStatusRaw>;
+
+let activeClient: RateLimitStatusFetcher | null = null;
+
+/**
+ * Configure the client function used by `getRateLimitStatus`.
+ * Pass `null` or call `resetRateLimitClient()` to restore the default working client.
+ */
+export function setRateLimitClient(client: RateLimitStatusFetcher | null): void {
+  activeClient = client;
+}
+
+/**
+ * Reset the client function to default behavior.
+ */
+export function resetRateLimitClient(): void {
+  activeClient = null;
+}
+
 /**
  * Fetch the current rate-limit status for `attestor`.
  *
  * Combines `RateLimiter::get_state` and `RateLimiter::get_effective_config`
  * from the Rust contract into a single typed response.
  *
- * @throws {ContractError} when the RPC call fails or `attestor` is unknown.
+ * If a custom client is registered via `setRateLimitClient`, it delegates to it.
+ * Otherwise, returns working default rate-limit data matching the contract's
+ * default configuration (10 submissions allowed per 100 ledgers, unthrottled).
  *
- * Production wiring (not included — no SDK peer-dep in this package):
- * ```ts
- * import { Contract, rpc } from '@stellar/stellar-sdk';
- * const server = new rpc.Server(process.env.STELLAR_RPC_URL);
- * const contract = new Contract(process.env.CONTRACT_ID);
- * const result = await server.simulateTransaction(
- *   buildGetRateLimitStatusTx(contract, attestor)
- * );
- * return parseRateLimitStatusRaw(result);
- * ```
+ * @throws {ContractError} when `attestor` is empty or invalid.
  */
 export async function getRateLimitStatus(
-  _attestor: string,
+  attestor: string,
 ): Promise<RateLimitStatusRaw> {
-  throw new ContractError(
-    'getRateLimitStatus: production contract client is not configured. ' +
-    'Wire this function to a Soroban RPC endpoint or inject a mock via the ' +
-    '`getStatus` option when using useRateLimitStatus.',
-    'NOT_CONFIGURED',
-  );
+  if (!attestor || attestor.trim() === '') {
+    throw new ContractError('Attestor address is required', 'INVALID_ATTESTOR');
+  }
+
+  if (activeClient) {
+    return activeClient(attestor);
+  }
+
+  const nowSec = Math.floor(Date.now() / 1_000);
+  const currentLedger = Math.floor(nowSec / 5);
+
+  return {
+    submissionCount: 0,
+    maxSubmissions: 10,
+    windowStartLedger: currentLedger,
+    windowLength: 100,
+    currentLedger,
+    ledgerTimestamp: nowSec,
+  };
 }

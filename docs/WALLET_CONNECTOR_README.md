@@ -21,9 +21,14 @@ Open `wallet-connector.html` in your browser for a ready-to-use UI component.
 
 ### Option 2: JavaScript Module
 
+`wallet-connector.js` is a CommonJS module — it exposes `WalletConnector` via
+`module.exports` and does not provide an ES-module `export`. Import it with
+`require()` (or load it with a `<script>` tag, as shown in the Integration
+Example below):
+
 ```javascript
-// Import the module
-import WalletConnector from './wallet-connector.js';
+// Import the module (CommonJS)
+const WalletConnector = require('./wallet-connector.js');
 
 // Create instance
 const wallet = new WalletConnector();

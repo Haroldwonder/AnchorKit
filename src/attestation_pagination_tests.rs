@@ -69,7 +69,7 @@ mod attestation_pagination_tests {
         for i in 0..5 {
             let p = payload(&env, i);
             let s = sign_payload(&env, &sk, &p);
-            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s, &None);
+            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s);
         }
 
         let results = client.list_attestations(&subject, &0, &10);
@@ -97,7 +97,7 @@ mod attestation_pagination_tests {
         for i in 0..10 {
             let p = payload(&env, i);
             let s = sign_payload(&env, &sk, &p);
-            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s, &None);
+            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s);
         }
 
         // Page 1: offset 0, limit 3
@@ -138,11 +138,11 @@ mod attestation_pagination_tests {
         let p1 = payload(&env, 1);
         let p2 = payload(&env, 2);
         let p3 = payload(&env, 3);
-        client.submit_attestation(&attestor, &subj1, &env.ledger().timestamp(), &p1, &sign_payload(&env, &sk, &p1), &None);
-        client.submit_attestation(&attestor, &subj1, &env.ledger().timestamp(), &p2, &sign_payload(&env, &sk, &p2), &None);
+        client.submit_attestation(&attestor, &subj1, &env.ledger().timestamp(), &p1, &sign_payload(&env, &sk, &p1));
+        client.submit_attestation(&attestor, &subj1, &env.ledger().timestamp(), &p2, &sign_payload(&env, &sk, &p2));
 
         // Subj2: 1 attestation
-        client.submit_attestation(&attestor, &subj2, &env.ledger().timestamp(), &p3, &sign_payload(&env, &sk, &p3), &None);
+        client.submit_attestation(&attestor, &subj2, &env.ledger().timestamp(), &p3, &sign_payload(&env, &sk, &p3));
 
         let res1 = client.list_attestations(&subj1, &0, &10);
         assert_eq!(res1.len(), 2);
@@ -173,7 +173,7 @@ mod attestation_pagination_tests {
         for i in 0..51 {
             let p = payload(&env, i as u8);
             let s = sign_payload(&env, &sk, &p);
-            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s, &None);
+            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s);
         }
 
         // Request 100, should get only 50 (capped)
@@ -204,7 +204,7 @@ mod attestation_pagination_tests {
 
         // Should return Err(AttestationLimitReached) instead of panicking
         let p = payload(&env, 1);
-        let result = client.try_submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &sign_payload(&env, &sk, &p), &None);
+        let result = client.try_submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &sign_payload(&env, &sk, &p));
         assert!(result.is_err());
     }
 
@@ -224,7 +224,7 @@ mod attestation_pagination_tests {
         register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
 
         let p1 = payload(&env, 1);
-        client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p1, &sign_payload(&env, &sk, &p1), &None);
+        client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p1, &sign_payload(&env, &sk, &p1));
 
         let results = client.list_attestations(&subject, &5, &10);
         assert_eq!(results.len(), 0);
@@ -256,7 +256,7 @@ mod attestation_pagination_tests {
         for i in 0..60 {
             let p = payload(&env, i as u8);
             let s = sign_payload(&env, &sk, &p);
-            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s, &None);
+            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s);
         }
 
         // Request 100 with page size 75, should return all 60
@@ -320,10 +320,10 @@ mod attestation_pagination_tests {
 
         // Submit 2 attestations
         let p1 = payload(&env, 0xAA);
-        let id1 = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p1, &sign_payload(&env, &sk, &p1), &None);
+        let id1 = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p1, &sign_payload(&env, &sk, &p1));
 
         let p2 = payload(&env, 0xBB);
-        let id2 = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p2, &sign_payload(&env, &sk, &p2), &None);
+        let id2 = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p2, &sign_payload(&env, &sk, &p2));
 
         // Revoke the first attestation by ID
         client.revoke_attestation(&attestor, &id1);
@@ -351,7 +351,7 @@ mod attestation_pagination_tests {
 
         // Submit an attestation with expires_at in the past
         let p = payload(&env, 0xCC);
-        let id = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &sign_payload(&env, &sk, &p), &None);
+        let id = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &sign_payload(&env, &sk, &p));
 
         // Directly update the stored attestation to have a past expires_at
         let main_key = crate::storage::StorageKey::Attest(id);

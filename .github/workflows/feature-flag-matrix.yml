@@ -22,6 +22,10 @@ jobs:
             flags: "--no-default-features --features wasm"
           - feature-set: "mock-only"
             flags: "--no-default-features --features mock-only"
+          - feature-set: "proptest-tests"
+            flags: "--features proptest-tests"
+          - feature-set: "testnet-integration"
+            flags: "--features testnet-integration"
 
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +66,10 @@ jobs:
             flags: "--no-default-features"
           - feature-set: "mock-only"
             flags: "--no-default-features --features mock-only"
+          - feature-set: "proptest-tests"
+            flags: "--features proptest-tests"
+          - feature-set: "testnet-integration"
+            flags: "--features testnet-integration"
 
     steps:
       - uses: actions/checkout@v4

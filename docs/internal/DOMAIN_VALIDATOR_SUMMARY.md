@@ -8,7 +8,7 @@ Created a comprehensive utility function to validate anchor domain input before 
 ### 1. `src/domain_validator.rs` (Main Implementation)
 - Core validation function: `validate_anchor_domain()`
 - Helper functions: `validate_host()`, `validate_url_characters()`
-- 8 comprehensive test suites with 50+ test cases
+- 33 test functions organized into 8 comprehensive categories
 - `no_std` compatible for embedded environments
 
 ### 2. `src/errors.rs` (Error Types)
@@ -62,17 +62,42 @@ Created a comprehensive utility function to validate anchor domain input before 
 ## Test Results
 
 ```
-running 8 tests
+running 33 tests
+test domain_validator::tests::test_clean_paths_still_pass ... ok
 test domain_validator::tests::test_control_characters ... ok
+test domain_validator::tests::test_domain_label_edge_cases ... ok
 test domain_validator::tests::test_double_slashes ... ok
 test domain_validator::tests::test_edge_cases ... ok
 test domain_validator::tests::test_https_only ... ok
+test domain_validator::tests::test_https_port_semantics ... ok
+test domain_validator::tests::test_ip_address_inputs ... ok
+test domain_validator::tests::test_length_boundaries ... ok
 test domain_validator::tests::test_length_limits ... ok
+test domain_validator::tests::test_loopback_addresses_rejected ... ok
 test domain_validator::tests::test_malformed_domains ... ok
+test domain_validator::tests::test_path_traversal_encoded_slashes ... ok
+test domain_validator::tests::test_path_traversal_literal_sequences ... ok
+test domain_validator::tests::test_path_traversal_percent_encoded ... ok
+test domain_validator::tests::test_percent_decode_simple_ascii_only ... ok
+test domain_validator::tests::test_percent_decode_simple_incomplete_sequence ... ok
+test domain_validator::tests::test_percent_decode_simple_invalid_encoding ... ok
+test domain_validator::tests::test_percent_decode_simple_mixed_content ... ok
+test domain_validator::tests::test_percent_decode_simple_non_ascii_bytes ... ok
+test domain_validator::tests::test_percent_decode_simple_path_traversal_utf8 ... ok
+test domain_validator::tests::test_percent_decode_simple_utf8_multibyte ... ok
+test domain_validator::tests::test_port_edge_cases ... ok
 test domain_validator::tests::test_port_validation ... ok
+test domain_validator::tests::test_protocol_variations ... ok
+test domain_validator::tests::test_punycode_homograph_rejected ... ok
+test domain_validator::tests::test_query_parameters_and_fragments ... ok
+test domain_validator::tests::test_special_characters_in_path ... ok
+test domain_validator::tests::test_trailing_slashes ... ok
+test domain_validator::tests::test_unicode_idn_domains ... ok
 test domain_validator::tests::test_valid_domains ... ok
+test domain_validator::tests::test_validate_anchor_domain_batch ... ok
+test domain_validator::tests::test_whitespace_variations ... ok
 
-test result: ok. 8 passed; 0 failed
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
 ## Usage Example

@@ -1,265 +1,207 @@
-# AnchorKit Structured Logging
+# AnchorKit Observability
 
-This document describes the structured logging implementation in AnchorKit, including request/response logging with sensitive data redaction.
+AnchorKit's contract emits its operational record through two on-chain mechanisms — **tracing spans** for per-request correlation and an **audit log** for per-operation history — plus standard **Soroban events** for every state change.
 
-## Features
+There is no host-side logging framework inside the contract. The contract is `#![no_std]`, so it does not write to stdout, does not use the `log` or `tracing` crates, and has no `Logger` type. Everything observable is either written to contract storage and read back through a contract method, or published as an event for an indexer to consume.
 
-### ✅ Structured Logs
-- **Multiple log levels**: ERROR, WARN, INFO, DEBUG, TRACE
-- **Structured data**: JSON-formatted metadata and context
-- **Request correlation**: Request IDs for distributed tracing
-- **Timestamp tracking**: Automatic timestamping of all log entries
-- **Actor tracking**: Log which address performed each operation
+> **Historical note:** earlier revisions of this document described a `Logger` / `LoggingConfig` / `configure_logging` API and a `RequestId::generate` associated function. None of those exist. The API below is the one that is actually implemented in `src/contract.rs`.
 
-### ✅ Request/Response Logging
-- **HTTP request logging**: Method, endpoint, payload, timing
-- **HTTP response logging**: Status, duration, response payload
-- **Timing information**: Automatic duration calculation
-- **Payload size tracking**: Monitor request/response sizes
-- **Correlation**: Link requests and responses via request IDs
+## What the contract actually provides
 
-### ✅ Sensitive Data Redaction
-- **Pattern-based redaction**: Automatically detect sensitive fields
-- **Configurable**: Enable/disable redaction per environment
-- **Security-first**: Redaction enabled by default
-- **Truncation**: Limit log size to prevent memory issues
+| Mechanism | Where it lives | How to read it |
+|---|---|---|
+| Tracing spans | `TracingSpan` in temporary storage | `get_tracing_span(request_id_bytes)` |
+| Audit log | `AuditLog` in persistent storage | `get_audit_log`, `get_audit_log_range`, `get_audit_log_offset` |
+| Events | `env.events().publish(...)` | Off-chain indexer / `soroban events` |
 
-## Usage
+### Request correlation with `RequestId`
 
-### Contract Integration
+`RequestId` is a real public type, but it is produced by a **contract method**, not by an associated function:
 
 ```rust
-use anchorkit::{Logger, LoggingConfig, RequestId};
-
-// Configure logging
-let config = LoggingConfig {
-    log_requests: true,
-    log_responses: true,
-    redact_sensitive: true,
-    max_log_size: 2048,
-};
-AnchorKitContract::configure_logging(env, config)?;
-
-// Log operations
-let request_id = RequestId::generate(&env);
-Logger::info(&env, String::from_str(&env, "Operation started"), Some(request_id));
-Logger::error(&env, String::from_str(&env, "Operation failed"), Some(request_id), Some(error));
-```
-
-### Operation Logging
-
-```rust
-// Automatic operation tracking
-Logger::operation_start(&env, operation_name, actor, request_id, params);
-// ... perform operation ...
-Logger::operation_complete(&env, operation_name, actor, request_id, duration_ms, success);
-```
-
-### Request/Response Logging
-
-```rust
-// Log HTTP requests
-Logger::log_request(&env, request_id, method, endpoint, payload);
-
-// Log HTTP responses  
-Logger::log_response(&env, request_id, status, duration_ms, response_payload);
-```
-
-## Configuration
-
-### LoggingConfig Structure
-
-```rust
-pub struct LoggingConfig {
-    pub log_requests: bool,      // Log HTTP requests
-    pub log_responses: bool,     // Log HTTP responses
-    pub redact_sensitive: bool,  // Redact sensitive data
-    pub max_log_size: u32,      // Maximum log entry size
+#[contracttype]
+#[derive(Clone)]
+pub struct RequestId {
+    pub id: Bytes,       // deterministic 16-byte ID
+    pub created_at: u64, // ledger timestamp at creation
 }
 ```
 
-### Default Configuration
+```rust
+// Correct: generate via the contract method
+let req_id = client.generate_request_id();
+```
+
+`RequestId::generate(&env)` does not exist — `RequestId` is a plain `contracttype` struct with no inherent methods.
+
+Request IDs are accepted by two operations, which write a `TracingSpan` as a side effect:
+
+| Method | Span `operation` | Precondition |
+|---|---|---|
+| `submit_with_request_id` | `submit_attestation` | issuer is a registered attestor |
+| `quote_with_request_id` | `submit_quote` | anchor has the Quotes service configured |
 
 ```rust
-LoggingConfig {
-    log_requests: true,          // Monitor network activity
-    log_responses: true,         // Monitor network activity
-    redact_sensitive: true,      // Security-first approach
-    max_log_size: 1024,         // Reasonable size limit
+let req_id = client.generate_request_id();
+
+let attestation_id = client.submit_with_request_id(
+    &req_id,
+    &issuer,
+    &subject,
+    &env.ledger().timestamp(),
+    &payload_hash,
+    &signature,
+);
+
+let span = client.get_tracing_span(&req_id.id);
+```
+
+### TracingSpan
+
+```rust
+#[contracttype]
+#[derive(Clone)]
+pub struct TracingSpan {
+    pub request_id: RequestId,
+    pub operation: String,  // "submit_attestation" | "submit_quote"
+    pub actor: Address,     // attestor or anchor that performed the operation
+    pub started_at: u64,
+    pub completed_at: u64,
+    pub status: String,     // "success" | "failure"
 }
 ```
 
-## Log Levels
+`get_tracing_span` returns `Option<TracingSpan>` — `None` when the request ID was never used, or when the span's temporary entry has expired.
 
-| Level | Description | When to Use |
-|-------|-------------|-------------|
-| **ERROR** | System errors, failures | Always logged, triggers alerts |
-| **WARN** | Warnings, degraded performance | Always logged, monitoring |
-| **INFO** | Normal operations, state changes | Always logged, audit trail |
-| **DEBUG** | Detailed debugging information | Development and troubleshooting |
-| **TRACE** | Very detailed execution flow | Development and troubleshooting |
+Spans are stored in **temporary storage** with a TTL of 17,280 ledgers (~24 hours at 5 s/ledger). A failed transaction rolls back the span write, so a span only ever exists for a successful operation.
 
-## Sensitive Data Patterns
+See [REQUEST_ID_PROPAGATION.md](REQUEST_ID_PROPAGATION.md) for the full propagation guide.
 
-The following patterns are automatically redacted when `redact_sensitive: true`:
+### Audit log
 
-- `password`
-- `secret`
-- `key`
-- `token`
-- `auth`
-- `credential`
-- `private`
-- `seed`
-- `mnemonic`
-
-## Event Integration
-
-All logs are published as Soroban events for external consumption:
+Every audited operation appends an `AuditLog` entry to persistent storage and publishes an `audit/logged` event.
 
 ```rust
-// Log entries
-env.events().publish(("log", "entry"), LogEntry { ... });
+#[contracttype]
+#[derive(Clone)]
+pub struct AuditLog {
+    pub log_id: u64,
+    pub session_id: u64,
+    pub actor: Address,
+    pub operation: OperationContext,
+}
 
-// HTTP requests
-env.events().publish(("http", "request"), RequestLog { ... });
-
-// HTTP responses
-env.events().publish(("http", "response"), RequestLog { ... });
-```
-
-## Performance Considerations
-
-### Log Size Limits
-- Configurable maximum log size prevents memory issues
-- Large payloads are truncated with `[TRUNCATED]` indicator
-- Payload size is always tracked regardless of truncation
-
-### Request Correlation
-- Request IDs enable distributed tracing
-- Minimal overhead for ID generation
-- Optional correlation - can be omitted for performance
-
-## Security Best Practices
-
-### Production Configuration
-```rust
-LoggingConfig {
-    log_requests: true,         // Monitor for security
-    log_responses: true,        // Monitor for security  
-    redact_sensitive: true,     // Always redact in production
-    max_log_size: 1024,        // Limit log size
+#[contracttype]
+#[derive(Clone)]
+pub struct OperationContext {
+    pub session_id: u64,
+    pub operation_index: u64,
+    pub operation_type: String,   // "attest" | "register" | "revoke"
+    pub timestamp: u64,
+    pub status: String,           // "success" | "failure"
+    pub result_summary: String,   // e.g. "attestation_id=42"
+    pub error_code: Option<u32>,  // populated on failure
+    pub attempt_number: u32,      // retry attempts before success
 }
 ```
 
-### Development Configuration
-```rust
-LoggingConfig {
-    log_requests: true,         // Full request logging
-    log_responses: true,        // Full response logging
-    redact_sensitive: false,    // Optional: disable for debugging
-    max_log_size: 4096,        // Larger logs for debugging
-}
-```
-
-## Integration Examples
-
-### Monitoring System Integration
-
-```bash
-# Capture Soroban events for monitoring
-soroban events --start-ledger 1000 --filter "log" | jq '.[] | select(.type == "contract")'
-```
-
-### Log Aggregation
-
-```bash
-# Stream logs to external system
-soroban events --start-ledger 1000 --filter "log" | \
-  while read event; do
-    curl -X POST https://logs.example.com/ingest \
-      -H "Content-Type: application/json" \
-      -d "$event"
-  done
-```
-
-### Alerting
-
-```bash
-# Alert on ERROR level logs
-soroban events --start-ledger 1000 --filter "log" | \
-  jq -r '.[] | select(.data.level == "Error") | .data.message' | \
-  while read error; do
-    echo "ALERT: $error" | mail -s "AnchorKit Error" admin@example.com
-  done
-```
-
-## Testing
-
-### Run Logging Tests
-```bash
-cargo test logging_tests
-```
-
-### Run Logging Example
-```bash
-cargo run --example logging_example
-```
-
-## Migration Guide
-
-### Existing Code
-If you have existing logging code, you can migrate gradually:
+Read side:
 
 ```rust
-// Old approach
-println!("Operation completed");
-
-// New approach
-Logger::info(&env, String::from_str(&env, "Operation completed"), Some(request_id));
+let entry = client.get_audit_log(&log_id);          // panics if the ID is unknown
+let page  = client.get_audit_log_range(&from, &to); // capped at 100 entries per call
+let floor = client.get_audit_log_offset();          // first live ID; lower IDs were pruned
 ```
 
-### Event Listeners
-Update your event listeners to capture the new log events:
+`get_audit_log_range` returns an empty `Vec` when `from_id > to_id` and silently skips IDs with no stored entry, so a gap in the returned page is not by itself an error. Use `get_audit_log_offset()` to distinguish "pruned" from "never written".
 
-```rust
-// Listen for log entries
-env.events().subscribe(("log", "entry"), |event| {
-    // Process structured log entry
-});
+Audit log entries live in **persistent storage** (`PERSISTENT_TTL = 1,555,200` ledgers), not temporary storage.
 
-// Listen for HTTP logs
-env.events().subscribe(("http", "request"), |event| {
-    // Process HTTP request log
-});
+### Events
+
+AnchorKit publishes events with `symbol_short!` topic pairs. These are the topic pairs present in `src/contract.rs`:
+
+| Topics | Payload type | Emitted when |
+|---|---|---|
+| `admin/proposed`, `admin/transf` | — | Admin handoff |
+| `attestor/reg`, `attestor/revoked` | — | Attestor registry changes |
+| `attestor/added`, `attestor/removed` | — | Attestor list membership changes |
+| `attest/recorded` | `AttestEvent` | An attestation is stored |
+| `attest/revoked` | — | An attestation is revoked |
+| `audit/logged` | `AuditLogEvent` | An audit log entry is appended |
+| `audit/pruned` | `AuditLogPruned` | Old audit entries are pruned |
+| `session/created`, `session/expired` | `SessionCreatedEvent` | Session lifecycle |
+| `quote/submit`, `quote/received`, `quote` | `QuoteSubmitEvent`, `QuoteReceivedEvent` | Quote lifecycle |
+| `services/config` | `AnchorServices` | Anchor service capability changes |
+| `endpoint/updated` | `EndpointUpdated` | Attestor endpoint changes |
+| `cache/invall` | — | Metadata cache invalidated |
+| `pagesize/updated` | — | Attestation page size changes |
+| `anchor/deactiv` | `AnchorDeactivated` | Health-failure threshold reached |
+| `routing` | `RoutingDecisionEvent` | Routing strategy picks an anchor |
+| `contract/paused`, `contract/unpaused` | `ContractPaused`, `ContractUnpaused` | Pause state changes |
+| `migr/compl` | — | Migration completed |
+
+There are no `("log", "entry")`, `("http", "request")`, or `("http", "response")` topics. Event payloads live in `src/events.rs` and in the contract-local structs at the top of `src/contract.rs`.
+
+## Reading the record
+
+```bash
+# Stream audit events from a local network
+soroban events --start-ledger 1000 --filter "audit"
+
+# All attestation events
+soroban events --start-ledger 1000 --filter "attest"
+
+# Route events to jq for indexing
+soroban events --start-ledger 1000 --filter "audit" | \
+  jq -c 'select(.type == "contract")'
 ```
 
-## Troubleshooting
+The CLI wraps the audit read path:
 
-### Common Issues
+```bash
+# Single entry
+anchorkit audit get 42
 
-1. **Logs not appearing**
-   - Check that the logging configuration is properly set
-   - Verify event subscription is active
+# All entries for a session
+anchorkit audit list --session 7 --format json --pretty
 
-2. **Sensitive data not redacted**
-   - Verify `redact_sensitive: true` in configuration
-   - Check that sensitive patterns are recognized
+# Export for external ingestion
+anchorkit export-audit --format csv --output audit.csv
+```
 
-3. **Logs truncated**
-   - Increase `max_log_size` in configuration
-   - Consider if full payload logging is necessary
+## Sensitive data
 
-4. **Performance impact**
-   - Reduce `max_log_size` if needed
-   - Consider disabling request/response logging for high-volume endpoints
+Redaction is **not** a contract feature. The contract stores no log payloads, so there is nothing to redact on-chain. Anything resembling payload capture happens in off-chain consumers of these events.
 
-## Future Enhancements
+The contract does store payload hashes (`payload_hash: Bytes`) on attestations, never payload bodies. Attestation payloads must never be submitted on-chain — only their hashes.
 
-- [ ] Log rotation and archival
-- [ ] Custom redaction patterns
-- [ ] Log sampling for high-volume scenarios
-- [ ] Integration with OpenTelemetry
-- [ ] Structured query interface
-- [ ] Real-time log streaming
-- [ ] Log-based metrics and dashboards
+## Verification
+
+```bash
+# Tracing spans
+cargo test tracing_span_tests
+
+# Request ID generation and propagation
+cargo test request_id_tests
+
+# Audit log
+cargo test audit_log_offset_tests
+
+# Event emission
+cargo test attestor_event_tests
+```
+
+`cargo test logging_tests` matches no tests in this crate — there is no logging test module. The modules above are the real coverage for observability.
+
+## CLI verbosity
+
+`anchorkit test --verbose` passes `--verbose` through to `cargo test`. This is test output verbosity, not contract logging, and there is no global `--debug` or `--verbose` flag on other subcommands.
+
+## Future work
+
+These are not implemented. Treat them as proposals, not features:
+
+- Off-chain structured log sink with configurable redaction and size limits
+- Log rotation and archival
+- Integration with OpenTelemetry

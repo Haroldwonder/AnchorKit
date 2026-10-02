@@ -1,0 +1,48 @@
+name: SEP-6 Testnet Integration
+
+# Runs the full SEP-6 deposit lifecycle integration test against a local
+# Soroban test environment. This test is gated behind the `testnet-integration`
+# feature flag and exercises SEP-10 auth → anchor registration → deposit
+# initiation → status polling through all transitions → completion assertions.
+#
+# It runs on a weekly schedule and on pushes to main so the most end-to-end
+# deposit flow coverage is verified regularly without slowing down every PR.
+# Closes #977.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday at 00:00 UTC
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  testnet-integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-testnet-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-testnet-
+
+      - name: Run testnet-integration tests
+        run: cargo test --features testnet-integration --verbose
+
+      - name: Run clippy on testnet-integration
+        run: cargo clippy --features testnet-integration -- -D warnings

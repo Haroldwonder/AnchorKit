@@ -1,13 +1,20 @@
 # Rate Limit Detection & Backoff Implementation Plan
 
+> **Status: PLANNING DRAFT — not implemented.**
+> This document is a proposal, not shipped feature documentation. Every task
+> below is unchecked on purpose. The `Current State Analysis` section describes
+> the code as of the commit that drafted this plan; re-verify it against
+> `src/` before using this as a starting point, because the error codes in
+> particular have changed since the plan was written.
+
 ## 1. Information Gathered
 
 ### Current State Analysis:
 
 - **retry.rs**: Has basic exponential backoff but NO jitter and NO Retry-After header parsing
 - **rate_limiter.rs**: Internal client-side rate limiting (FixedWindow/TokenBucket)
-- **errors.rs**: Has `RateLimitExceeded` (error code 50) and `ProtocolRateLimitExceeded` (error code 46)
-- **error_mapping.rs**: Maps HTTP 429 to `ProtocolRateLimitExceeded`
+- **errors.rs**: Has `RateLimitExceeded` (error code 16). There is no `ProtocolRateLimitExceeded` variant — HTTP 429 handling maps onto the existing `RateLimitExceeded` code.
+- **error_mapping.rs**: Maps HTTP 429 onto `RateLimitExceeded`
 - **transport.rs**: Transport layer with MockTransport for testing (no HTTP response parsing)
 - **events.rs**: No rate limit events for monitoring
 

@@ -19,7 +19,9 @@
     "types": ["jest", "@testing-library/jest-dom", "node"]
   },
   "include": [
+    "index.ts",
     "components/**/*",
+    "hooks/**/*",
     "src/**/*"
   ],
   "exclude": [

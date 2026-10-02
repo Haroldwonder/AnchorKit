@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [[bin]]
 name = "anchorkit"
 path = "src/bin/anchorkit.rs"
+required-features = ["std"]
 
 [features]
 default = ["std"]

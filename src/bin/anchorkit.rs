@@ -771,25 +771,49 @@ fn check_configs() -> bool {
         println!("✖ configs/ directory not found");
         return false;
     }
-    let count = std::fs::read_dir(configs)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .filter(|e| {
-                    matches!(
-                        e.path().extension().and_then(|s| s.to_str()),
-                        Some("json") | Some("toml")
-                    )
-                })
-                .count()
-        })
-        .unwrap_or(0);
-    if count > 0 {
-        println!("✔ Config files valid ({} found)", count);
-        true
-    } else {
-        println!("✖ No config files found in configs/");
-        false
+    let entries = match std::fs::read_dir(configs) {
+        Ok(entries) => entries,
+        Err(e) => {
+            println!("✖ Cannot read configs/ directory: {}", e);
+            return false;
+        }
+    };
+    let mut config_files = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                println!("✖ Failed to read an entry in configs/: {}", e);
+                return false;
+            }
+        };
+        let path = entry.path();
+        if path.is_file()
+            && matches!(
+                path.extension().and_then(|s| s.to_str()),
+                Some("json") | Some("toml")
+            )
+        {
+            config_files.push(path);
+        }
     }
+    config_files.sort();
+    if config_files.is_empty() {
+        println!("✖ No config files found in configs/");
+        return false;
+    }
+
+    let count = config_files.len();
+    let mut all_valid = true;
+    for path in &config_files {
+        all_valid &= validate_file(path);
+    }
+    if all_valid {
+        println!("✔ Config files valid ({} found)", count);
+    } else {
+        println!("✖ Config validation failed ({} files checked)", count);
+    }
+    all_valid
 }
 
 fn check_network() -> bool {
@@ -2067,6 +2091,35 @@ fn fetch_audit_logs_by_session(session_id: u64, from: Option<u64>, to: Option<u6
     }
 
     results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_event_uses_real_onchain_log_id_not_pagination_offset() {
+        let event = serde_json::json!({
+            "value": {
+                "log_id": 42,
+                "session_id": 7,
+                "operation_index": 3,
+                "address": "GTEST",
+                "status": "success",
+                "result": "ok",
+                "operation_type": "attest"
+            },
+            "topic": "audit_log",
+            "ledgerClosedAt": "1710000000"
+        });
+
+        let entry = parse_audit_log_entry_from_event(&event, 999, 7);
+
+        assert_eq!(entry.log_id, 42);
+        assert_eq!(entry.session_id, 7);
+        assert_eq!(entry.operation_index, 3);
+        assert_eq!(entry.actor, "GTEST");
+    }
 }
 
 // ── Session data structures ──────────────────────────────────────────────────

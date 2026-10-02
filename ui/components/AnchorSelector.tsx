@@ -44,7 +44,13 @@ export function AnchorSelector({
   const [selected, setSelected] = useState<string | null>(
     selectedId ?? best?.id ?? null
   );
-  const [focusedIndex, setFocusedIndex] = useState<number>(0);
+  // Initialize focusedIndex to the first eligible (non-disabled) anchor so
+  // that the listbox always has at least one element with tabIndex=0 on initial
+  // render, even when anchors[0] is below minHealthScore.
+  const [focusedIndex, setFocusedIndex] = useState<number>(() => {
+    const firstEligible = anchors.findIndex((a) => a.healthScore >= minHealthScore);
+    return firstEligible >= 0 ? firstEligible : 0;
+  });
   const userPicked = useRef(selectedId !== undefined);
 
   // Re-derive the effective selection whenever the caller controls selectedId, or

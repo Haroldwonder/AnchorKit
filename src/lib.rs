@@ -9,13 +9,13 @@ mod events;
 mod rate_limiter;
 mod response_validator;
 mod retry;
-mod sep10_jwt;
+pub mod sep10_jwt;
 pub mod sdk_config;
 mod storage;
 mod transaction_state_tracker;
 pub mod transport;
 mod types;
-mod sep6;
+pub mod sep6;
 
 pub use errors::{AnchorKitError, ErrorCode};
 

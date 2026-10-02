@@ -45,6 +45,44 @@ fn test_doctor_rust_version_check() {
     );
 }
 
+#[test]
+fn test_doctor_rejects_invalid_config_files() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "anchorkit-doctor-config-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("System clock is before UNIX epoch")
+            .as_nanos()
+    ));
+    let configs_dir = test_dir.join("configs");
+    std::fs::create_dir_all(&configs_dir).expect("Failed to create test configs directory");
+    std::fs::write(configs_dir.join("malformed.json"), "{\"contract\": }")
+        .expect("Failed to write malformed config");
+    std::fs::write(configs_dir.join("schema-invalid.json"), "{}")
+        .expect("Failed to write schema-invalid config");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_anchorkit"))
+        .arg("doctor")
+        .current_dir(&test_dir)
+        .output();
+    std::fs::remove_dir_all(&test_dir).expect("Failed to remove test directory");
+
+    let output = output.expect("Failed to execute doctor command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("invalid JSON"), "Output: {}", stdout);
+    assert!(
+        stdout.contains("field 'contract' is missing"),
+        "Output: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("✔ Config files valid"),
+        "Output: {}",
+        stdout
+    );
+}
+
 /// Test that parse_rustc_version correctly parses version strings
 #[test]
 fn test_parse_rustc_version() {

@@ -305,6 +305,138 @@ describe('ApiRequestPanel', () => {
         expect(errorIcons.length).toBeGreaterThan(0);
       });
     });
+
+    it('should clear the rendered history list as well as localStorage', async () => {
+      render(
+        <ApiRequestPanel
+          endpoint="https://api.example.com/test"
+          method="GET"
+          persistHistory={true}
+          response={{ data: 'test' }}
+        />
+      );
+
+      // Expand history and confirm the entry is rendered
+      const toggleButton = screen.getAllByTitle(/show history|hide history/i)[0];
+      fireEvent.click(toggleButton);
+
+      await waitFor(() => {
+        expect(screen.getAllByRole('listitem').length).toBe(1);
+      });
+
+      fireEvent.click(screen.getByTitle('Clear history'));
+
+      // The list is now empty and the empty state is shown
+      await waitFor(() => {
+        expect(screen.queryAllByRole('listitem').length).toBe(0);
+      });
+      expect(screen.getByText('No history yet')).toBeInTheDocument();
+
+      // localStorage was overwritten with an empty array
+      const stored = localStorage.getItem('anchorkit_api_history');
+      expect(stored).toBe('[]');
+    });
+
+    it('should rehydrate history from localStorage on mount', async () => {
+      // Simulate a previous session that already wrote history to localStorage
+      const seeded: HistoryEntry[] = [
+        {
+          id: 'seeded-1',
+          timestamp: 1700000000000,
+          endpoint: 'https://api.example.com/previous',
+          method: 'PUT',
+        },
+      ];
+      localStorage.setItem('anchorkit_api_history', JSON.stringify(seeded));
+
+      render(
+        <ApiRequestPanel
+          endpoint="https://api.example.com/current"
+          method="GET"
+          persistHistory={true}
+          response={{ ok: true }}
+        />
+      );
+
+      const toggleButton = screen.getAllByTitle(/show history|hide history/i)[0];
+      fireEvent.click(toggleButton);
+
+      // The entry written by the previous mount is rendered from localStorage
+      await waitFor(() => {
+        expect(screen.getByText('https://api.example.com/previous')).toBeInTheDocument();
+      });
+      expect(screen.getByText('PUT')).toBeInTheDocument();
+    });
+
+    it('should tolerate corrupt localStorage without crashing', async () => {
+      localStorage.setItem('anchorkit_api_history', '{not valid json');
+
+      render(
+        <ApiRequestPanel
+          endpoint="https://api.example.com/test"
+          method="GET"
+          persistHistory={true}
+          response={{ data: 'test' }}
+        />
+      );
+
+      const toggleButton = screen.getAllByTitle(/show history|hide history/i)[0];
+      fireEvent.click(toggleButton);
+
+      // loadHistory() swallows the parse error and yields an empty list
+      await waitFor(() => {
+        expect(screen.getByText('No history yet')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('persistHistory suppression', () => {
+    it('should never call localStorage.setItem when persistHistory is false', () => {
+      const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+
+      try {
+        render(
+          <ApiRequestPanel
+            endpoint="https://api.example.com/test"
+            method="POST"
+            persistHistory={false}
+            requestBody={{ name: 'Ada' }}
+            response={{ data: 'test' }}
+          />
+        );
+
+        // No history is written, and no history section is rendered at all
+        expect(setItemSpy).not.toHaveBeenCalled();
+        expect(localStorage.getItem('anchorkit_api_history')).toBeNull();
+        expect(screen.queryByText('History')).not.toBeInTheDocument();
+      } finally {
+        setItemSpy.mockRestore();
+      }
+    });
+
+    it('should not record or render history when persistHistory is false', () => {
+      const { rerender } = render(
+        <ApiRequestPanel
+          endpoint="https://api.example.com/test"
+          method="GET"
+          persistHistory={false}
+          response={{ count: 1 }}
+        />
+      );
+
+      rerender(
+        <ApiRequestPanel
+          endpoint="https://api.example.com/test2"
+          method="GET"
+          persistHistory={false}
+          response={{ count: 2 }}
+        />
+      );
+
+      // The History section is gated on persistHistory, so nothing to expand
+      expect(screen.queryByTitle(/show history|hide history/i)).not.toBeInTheDocument();
+      expect(localStorage.getItem('anchorkit_api_history')).toBeNull();
+    });
   });
 
   describe('Sensitive Data Redaction', () => {

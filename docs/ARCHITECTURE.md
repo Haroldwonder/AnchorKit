@@ -86,7 +86,7 @@ All source modules and their responsibilities:
 | Module | File | Responsibility |
 |---|---|---|
 | Module declarations | `src/lib.rs` | Re-exports public APIs and declares all `mod` entries; contains no business logic |
-| Core contract | `src/contract.rs` | On-chain entry points, attestor registration, attestation submission and retrieval |
+| Core contract | `src/contract.rs` | On-chain entry points, attestor registration, attestation submission and retrieval, and inline timestamp replay protection (`check_timestamp`) |
 | Storage | `src/storage.rs` | Persistent key/value storage helpers and TTL management |
 | Events | `src/events.rs` | Contract event definitions emitted on every state change |
 | Types | `src/types.rs` | Shared data structures used across modules |
@@ -99,7 +99,6 @@ All source modules and their responsibilities:
 | Transaction state tracker | `src/transaction_state_tracker.rs` | Tracks deposit/withdrawal lifecycle states (Pending → InProgress → Completed/Failed) |
 | SEP-10 JWT | `src/sep10_jwt.rs` | Minimal Ed25519 / EdDSA JWT verification for SEP-10 anchor authentication tokens |
 | Deterministic hash | `src/deterministic_hash.rs` | Canonical payload hashing used for off-chain ↔ on-chain attestation matching |
-| Replay window | `src/replay_window.rs` (via `lib.rs`) | Nonce-based replay-attack prevention |
 
 ### Module interaction summary
 

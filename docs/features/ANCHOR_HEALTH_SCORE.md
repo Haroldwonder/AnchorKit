@@ -84,7 +84,7 @@ Tiered scoring based on `average_settlement_time` (seconds):
 use soroban_sdk::{Address, Env};
 
 // Get health score for an anchor
-let score = contract.get_anchor_health_score(&env, &anchor_address);
+let score = client.get_anchor_health_score(&anchor_address);
 
 if score >= 80 {
     // High-quality anchor
@@ -98,9 +98,9 @@ if score >= 80 {
 ### Comparing Multiple Anchors
 
 ```rust
-let anchor1_score = contract.get_anchor_health_score(&env, &anchor1);
-let anchor2_score = contract.get_anchor_health_score(&env, &anchor2);
-let anchor3_score = contract.get_anchor_health_score(&env, &anchor3);
+let anchor1_score = client.get_anchor_health_score(&anchor1);
+let anchor2_score = client.get_anchor_health_score(&anchor2);
+let anchor3_score = client.get_anchor_health_score(&anchor3);
 
 // Select the healthiest anchor
 let best_anchor = if anchor1_score >= anchor2_score && anchor1_score >= anchor3_score {
@@ -117,18 +117,18 @@ let best_anchor = if anchor1_score >= anchor2_score && anchor1_score >= anchor3_
 ```rust
 use crate::errors::ErrorCode;
 
-match contract.try_get_anchor_health_score(&env, &anchor) {
+match client.try_get_anchor_health_score(&anchor) {
     Ok(score) => {
         // Use the score
     },
     Err(ErrorCode::CacheNotFound) => {
         // Metadata not cached - fetch and cache it first
-        contract.cache_metadata(&anchor, &metadata, &ttl);
+        client.cache_metadata(&anchor, &metadata, &ttl);
     },
     Err(ErrorCode::CacheExpired) => {
         // Cache expired - refresh metadata
-        contract.refresh_metadata_cache(&anchor);
-        contract.cache_metadata(&anchor, &updated_metadata, &ttl);
+        client.refresh_metadata_cache(&anchor);
+        client.cache_metadata(&anchor, &updated_metadata, &ttl);
     },
     Err(e) => {
         // Handle other errors
@@ -193,10 +193,10 @@ The health score can be used alongside the existing routing strategies:
 
 ```rust
 // Filter anchors by minimum health score before routing
-let health_score = contract.get_anchor_health_score(&env, &anchor);
+let health_score = client.get_anchor_health_score(&anchor);
 if health_score >= 70 {
     // Include in routing candidates
-    let quote = contract.route_transaction(&options);
+    let quote = client.route_transaction(&options);
 }
 ```
 

@@ -4,7 +4,13 @@ import {
   clearRateLimitCache,
   type RateLimitStatus,
 } from './useRateLimitStatus';
-import type { RateLimitStatusRaw } from './contractClient';
+import {
+  getRateLimitStatus,
+  setRateLimitClient,
+  resetRateLimitClient,
+  ContractError,
+  type RateLimitStatusRaw,
+} from './contractClient';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -35,6 +41,7 @@ function mockGet(raw: RateLimitStatusRaw) {
 
 beforeEach(() => {
   clearRateLimitCache();
+  resetRateLimitClient();
   jest.clearAllMocks();
 });
 
@@ -540,5 +547,52 @@ describe('useRateLimitStatus – returned shape', () => {
     expect(typeof s.limit).toBe('number');
     expect(s.windowResetsAt).toBeInstanceOf(Date);
     expect(typeof s.isThrottled).toBe('boolean');
+  });
+});
+
+// ── Default getStatus / contractClient ────────────────────────────────────────
+
+describe('useRateLimitStatus – default getStatus out of the box', () => {
+  it('works out of the box without options using default getRateLimitStatus', async () => {
+    const { result } = renderHook(() => useRateLimitStatus(ATTESTOR_A));
+
+    await waitFor(() => expect(result.current.status).not.toBeNull());
+
+    const s = result.current.status!;
+    expect(s.used).toBe(0);
+    expect(s.limit).toBe(10);
+    expect(s.isThrottled).toBe(false);
+    expect(s.windowResetsAt).toBeInstanceOf(Date);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+});
+
+describe('getRateLimitStatus & setRateLimitClient', () => {
+  it('returns default rate limit data when no custom client is configured', async () => {
+    const data = await getRateLimitStatus(ATTESTOR_A);
+    expect(data.submissionCount).toBe(0);
+    expect(data.maxSubmissions).toBe(10);
+    expect(data.windowLength).toBe(100);
+    expect(data.currentLedger).toBeGreaterThan(0);
+    expect(data.windowStartLedger).toBe(data.currentLedger);
+    expect(data.ledgerTimestamp).toBeGreaterThan(0);
+  });
+
+  it('uses custom client when configured via setRateLimitClient', async () => {
+    setRateLimitClient(async () => makeRaw({ submissionCount: 5 }));
+    const data = await getRateLimitStatus(ATTESTOR_A);
+    expect(data.submissionCount).toBe(5);
+  });
+
+  it('reverts to default client after resetRateLimitClient', async () => {
+    setRateLimitClient(async () => makeRaw({ submissionCount: 9 }));
+    resetRateLimitClient();
+    const data = await getRateLimitStatus(ATTESTOR_A);
+    expect(data.submissionCount).toBe(0);
+  });
+
+  it('throws ContractError when attestor address is empty', async () => {
+    await expect(getRateLimitStatus('')).rejects.toThrow(ContractError);
   });
 });
