@@ -157,7 +157,7 @@ PUBLIC_METHODS=(
 )
 
 for method in "${PUBLIC_METHODS[@]}"; do
-    if grep -q "pub fn $method" src/lib.rs; then
+    if grep -q "pub fn $method" src/contract.rs; then
         check_pass "Method $method exposed in contract"
     else
         check_fail "Method $method NOT exposed"
