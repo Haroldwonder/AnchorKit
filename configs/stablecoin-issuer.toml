@@ -16,9 +16,8 @@ name = "reserve-auditor"
 address = "GBAA5XKQC3KVDPD5OS3CHJJ24SB3BX7GI7XBXKNNCKQVPQVX6S3VT5O"
 description = "Independent auditor verifying reserve adequacy"
 endpoint = "https://auditor.example.com/reserves"
-role = "reserve-verifier"
+role = "attestor"
 enabled = true
-contact_email = "audit@example.com"
 
 # Collateral Manager
 [[attestors.registry]]
@@ -26,18 +25,17 @@ name = "collateral-manager"
 address = "GBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 description = "Manages collateral positions and liquidations"
 endpoint = "https://collateral-mgmt.example.com/positions"
-role = "collateral-custodian"
+role = "attestor"
 enabled = true
-contact_email = "collateral@example.com"
 
 # Treasury Manager
 [[attestors.registry]]
 name = "treasury-manager"
 address = "GBYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
 description = "Authorizes mint, burn, and redeemable operations"
-role = "treasury-operator"
+endpoint = "https://treasury-ops.example.com/authorize"
+role = "attestor"
 enabled = true
-contact_email = "treasury@example.com"
 
 # Risk Monitor
 [[attestors.registry]]
@@ -45,9 +43,8 @@ name = "risk-monitor"
 address = "GBZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
 description = "Continuous monitoring of stablecoin risk parameters"
 endpoint = "https://risk-system.example.com/monitor"
-role = "risk-analyst"
+role = "attestor"
 enabled = true
-contact_email = "risk@example.com"
 
 [sessions]
 enable_session_tracking = true

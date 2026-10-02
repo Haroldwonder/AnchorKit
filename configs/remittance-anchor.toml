@@ -15,7 +15,7 @@ name = "identity-verifier"
 address = "GBAA5XKQC3KVDPD5OS3CHJJ24SB3BX7GI7XBXKNNCKQVPQVX6S3VT5O"
 description = "Biometric and document verification for remittance recipients"
 endpoint = "https://identity-service.example.com/verify"
-role = "identity-verifier"
+role = "kyc-issuer"
 enabled = true
 
 # Correspondent Bank
@@ -24,7 +24,7 @@ name = "correspondent-bank"
 address = "GBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 description = "Correspondent bank for settlement in recipient country"
 endpoint = "https://bank-api.example.com/settlement"
-role = "settlement-bank"
+role = "transfer-verifier"
 enabled = true
 
 # Corridor Operator
@@ -32,7 +32,8 @@ enabled = true
 name = "corridor-operator"
 address = "GBYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
 description = "Remittance corridor operator managing local partnerships"
-role = "corridor-manager"
+endpoint = "https://corridor-ops.example.com/route"
+role = "attestor"
 enabled = true
 
 # AML/CFT Compliance
@@ -41,7 +42,7 @@ name = "aml-screening"
 address = "GBZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
 description = "Sanctions screening and AML/CFT compliance checks"
 endpoint = "https://aml-service.example.com/screen"
-role = "compliance-checker"
+role = "compliance-approver"
 enabled = true
 
 [sessions]
