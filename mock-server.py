@@ -5,14 +5,23 @@ Implements a small subset of SEP-6 and SEP-10 endpoints using the Python
 standard library (no external deps).
 
 Supported endpoints:
+- GET  /auth?account=<G...>   SEP-10 step 1 — returns a signed challenge envelope
+- POST /auth                  SEP-10 step 2 — accepts the signed envelope, returns a JWT
 - POST /deposit
 - POST /withdraw
 - POST /transaction
-- POST /auth
 
 Also supports:
 - OPTIONS preflight for CORS
 - GET /health
+
+SEP-10 two-step flow
+---------------------
+Step 1: GET /auth?account=G...
+    Response: {"transaction": "<mock-XDR-challenge>", "network_passphrase": "..."}
+
+Step 2: POST /auth  body: {"transaction": "<signed-XDR>"}
+    Response: {"token": "<mock-JWT>"}
 
 The mock is intentionally lenient about input format (JSON body + query
 params) to accommodate slightly different client implementations.
@@ -20,8 +29,11 @@ params) to accommodate slightly different client implementations.
 
 from __future__ import annotations
 
+import base64
 import json
+import secrets
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -107,6 +119,9 @@ class MockAnchorHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/health":
             _send_json(self, 200, {"status": "ok"})
+            return
+        if parsed.path == "/auth":
+            self._get_auth_challenge()
             return
         _send_json(self, 404, {"error": "not_found", "path": parsed.path})
 
@@ -237,38 +252,101 @@ class MockAnchorHandler(BaseHTTPRequestHandler):
         resp = {k: v for k, v in resp.items() if v is not None}
         _send_json(self, 200, resp)
 
-    def _post_auth(self, body: dict, query: dict) -> None:
-        # Extremely forgiving mock for SEP-10 /auth.
-        # We return a plausible challenge/envelope structure.
-        # Some clients may just expect 200 + a JWT-like string.
+    def _get_auth_challenge(self) -> None:
+        """SEP-10 step 1: GET /auth?account=G...
 
-        # If client provides a challenge/anchor info, reflect it.
-        envelope = body.get("envelope") or query.get("envelope")
-        client_domain = (
-            body.get("clientDomain")
-            or body.get("homeDomain")
-            or query.get("clientDomain")
-            or query.get("homeDomain")
-            or "https://client.example.com"
+        Returns a mock challenge transaction envelope that the client must
+        sign with the account's private key before posting back to POST /auth.
+
+        Real anchors return a base64-encoded XDR Stellar transaction.  This
+        mock returns a human-readable placeholder so tests can inspect it
+        without needing the Stellar SDK.
+        """
+        query = _parse_query(self)
+        account = query.get("account") or query.get("client_domain") or ""
+
+        if not account:
+            _send_json(self, 400, {
+                "error": "missing_account",
+                "message": "account query parameter is required",
+            })
+            return
+
+        # Produce a deterministic-but-unique nonce per request so the
+        # challenge transaction is never reused (mirrors real anchor behaviour).
+        nonce = secrets.token_hex(16)
+        issued_at = int(time.time())
+        # A real anchor would build and sign a Stellar transaction XDR here.
+        # We encode a JSON descriptor so test assertions can decode and inspect it.
+        challenge_payload = {
+            "account": account,
+            "nonce": nonce,
+            "issued_at": issued_at,
+            "home_domain": "mock.example.com",
+        }
+        mock_xdr = base64.b64encode(
+            json.dumps(challenge_payload).encode("utf-8")
+        ).decode("ascii")
+
+        _send_json(self, 200, {
+            "transaction": mock_xdr,
+            "network_passphrase": "Test SDF Network ; September 2015",
+        })
+
+    def _post_auth(self, body: dict, query: dict) -> None:
+        """SEP-10 step 2: POST /auth
+
+        Accepts the signed challenge transaction and returns a JWT token.
+
+        The client must supply the signed XDR in the ``transaction`` field of
+        the JSON body (the field name specified by SEP-10).  For maximum
+        compatibility with clients that use different field names, the mock
+        also checks several common aliases.
+        """
+        transaction = (
+            body.get("transaction")
+            or body.get("envelope")
+            or query.get("transaction")
+            or query.get("envelope")
         )
 
-        # Some flows request the anchor to produce a token/challenge; keep it deterministic.
-        challenge = body.get("challenge") or query.get("challenge") or "mock-challenge"
-        sep10_token = body.get("sep10_token") or query.get("sep10_token") or "mock-sep10-jwt"
+        if not transaction:
+            _send_json(self, 400, {
+                "error": "missing_transaction",
+                "message": (
+                    "A signed challenge transaction is required. "
+                    "Call GET /auth?account=<G...> first to obtain the challenge."
+                ),
+            })
+            return
 
-        resp = {
-            "envelope": envelope if envelope is not None else {
-                "clientDomain": client_domain,
-                "challenge": challenge,
-            },
-            "challenge": challenge,
-            "jwt": sep10_token,
-            # Include commonly used top-level fields defensively
-            "token": sep10_token,
-            "success": True,
+        # Decode the mock challenge to extract the account so the JWT subject
+        # matches what the client expects.  Real anchors verify the signature;
+        # we skip that here since this is a test mock.
+        account = "unknown"
+        try:
+            decoded = json.loads(base64.b64decode(transaction).decode("utf-8"))
+            account = decoded.get("account", "unknown")
+        except Exception:
+            # Client may pass a real or hand-crafted XDR — that's fine for a mock.
+            pass
+
+        # Build a plausible but clearly mock JWT (header.payload.signature).
+        issued_at = int(time.time())
+        expires_at = issued_at + 86400  # 24 hours
+        header = base64.b64encode(b'{"alg":"none","typ":"JWT"}').decode("ascii").rstrip("=")
+        payload_data = {
+            "sub": account,
+            "iss": "mock.example.com",
+            "iat": issued_at,
+            "exp": expires_at,
         }
+        payload_b64 = base64.b64encode(
+            json.dumps(payload_data).encode("utf-8")
+        ).decode("ascii").rstrip("=")
+        mock_jwt = f"{header}.{payload_b64}.mock-signature"
 
-        _send_json(self, 200, resp)
+        _send_json(self, 200, {"token": mock_jwt})
 
 
 def main() -> None:
