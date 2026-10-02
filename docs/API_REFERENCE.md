@@ -548,7 +548,7 @@ Selects the best anchor according to the routing strategy in `options` and retur
 | Field in `RoutingOptions` | Description |
 |--------------------------|-------------|
 | `request` | `RoutingRequest` with base/quote assets, amount, operation type |
-| `strategy` | `BestRate`, `LowestFee`, `HighestReputation`, `FastestSettlement`, or `BestOverall` |
+| `strategy` | `LowestFee`, `FastestSettlement`, `HighestReputation`, `Balanced`, or `Weighted` |
 | `filters` | Optional min-reputation, max-fee, required services |
 
 **Errors:** `NoQuotesAvailable (13)`, `ServicesNotConfigured (14)`

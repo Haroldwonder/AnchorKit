@@ -9,69 +9,10 @@
 
 # Node / UI
 ui/node_modules/
-node_modules/
-ui/dist/
-ui/build/
-ui/coverage/
-ui/.vitepress/cache/
-ui/.vitepress/dist/
-ui/storybook-static/
-ui/test-results/
-ui/playwright-report/
-ui/.turbo/
-ui/.cache/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Test snapshots / generated fixtures
-/test_snapshots/
-**/*.snap.new
-**/__snapshots__/*/
-
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-*.egg-info/
-
-# Environment & secrets
-.env
-.env.*
-!.env.example
-
-# Coverage & profiling
-/coverage/
-*.profraw
-*.profdata
-lcov.info
-
-# Logs
+test_snapshots/
+coverage/
+dist/
 *.log
-!*.log.example
-
-# Editors / OS
-.DS_Store
-Thumbs.db
-Desktop.ini
-.idea/
-*.swp
-*.swo
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-!.vscode/launch.json
-!.vscode/tasks.json
-
-# Agent / local scratch
-/.claude/settings.local.json
-/.kilo/scratch/
-/.kiro/scratch/
 AGENTS.md
 pr_description.md
 scratch/
