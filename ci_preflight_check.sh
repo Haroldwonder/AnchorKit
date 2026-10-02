@@ -49,7 +49,7 @@ else
     check_fail "src/anchor_info_discovery_tests.rs missing"
 fi
 
-if [ -f "ANCHOR_INFO_DISCOVERY.md" ]; then
+if [ -f "docs/features/ANCHOR_INFO_DISCOVERY.md" ]; then
     check_pass "ANCHOR_INFO_DISCOVERY.md exists"
 else
     check_fail "ANCHOR_INFO_DISCOVERY.md missing"
