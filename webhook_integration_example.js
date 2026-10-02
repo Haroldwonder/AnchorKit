@@ -474,3 +474,24 @@ Replace the simulation code in webhook_monitor.html with:
     });
 </script>
 */
+
+// ============================================================================
+// MODULE EXPORTS
+// Guard with typeof check so this file can still be loaded as a plain browser
+// <script> without errors (browsers have no `module` global).
+// ============================================================================
+
+/* istanbul ignore next */
+if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
+    module.exports = {
+        // Security / sanitization
+        WEBHOOK_PAYLOAD_ALLOWLIST,
+        sanitizeWebhookPayload,
+        // Monitor classes
+        WebhookMonitorWebSocket,
+        WebhookMonitorSSE,
+        WebhookMonitorPolling,
+        // Standalone bootstrap (useful for test harnesses that want to spy on addEvent)
+        addEvent,
+    };
+}
