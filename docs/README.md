@@ -17,7 +17,7 @@ Reference docs for each feature exposed by the contract and SDK.
 | [ANCHOR_INFO_DISCOVERY.md](./features/ANCHOR_INFO_DISCOVERY.md) | Fetch and parse stellar.toml, cache assets/fees/limits |
 | [METADATA_CACHE.md](./features/METADATA_CACHE.md) | TTL-based metadata and capabilities caching |
 | [REQUEST_ID_PROPAGATION.md](./features/REQUEST_ID_PROPAGATION.md) | UUID per flow with tracing |
-| [LOGGING.md](./features/LOGGING.md) | Logging system |
+| [LOGGING.md](./features/LOGGING.md) | Observability: tracing spans, audit log, events |
 | [DOMAIN_VALIDATION.md](./features/DOMAIN_VALIDATION.md) | Domain validation |
 | [ERROR_CODES_REFERENCE.md](./features/ERROR_CODES_REFERENCE.md) | Stable API error codes reference |
 | [RETRY_BACKOFF.md](./features/RETRY_BACKOFF.md) | Retry and backoff strategies |

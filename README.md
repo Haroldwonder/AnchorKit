@@ -1,5 +1,9 @@
 # AnchorKit
 
+[![Rust CI](https://github.com/Haroldwonder/AnchorKit/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/rust-ci.yml)
+[![Coverage](https://github.com/Haroldwonder/AnchorKit/actions/workflows/coverage.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/coverage.yml)
+[![Feature Flag Matrix](https://github.com/Haroldwonder/AnchorKit/actions/workflows/feature-flag-matrix.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/feature-flag-matrix.yml)
+[![WASM Size](https://github.com/Haroldwonder/AnchorKit/actions/workflows/wasm-size-check.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/wasm-size-check.yml)
 [![UI Tests](https://github.com/Haroldwonder/AnchorKit/actions/workflows/ui-tests.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/ui-tests.yml)
 
 AnchorKit is a Soroban-native toolkit for anchoring off-chain attestations to Stellar. It enables smart contracts to verify real-world events such as KYC approvals, payment confirmations, and signed claims in a trust-minimized way.
@@ -159,7 +163,7 @@ If you prefer the Stellar JavaScript SDK, use its contract invocation API instea
 - **[docs/features/ANCHOR_ADAPTER.md](./docs/features/ANCHOR_ADAPTER.md)** - Unified anchor adapter interface
 - **[docs/features/METADATA_CACHE.md](./docs/features/METADATA_CACHE.md)** - Metadata and capabilities caching
 - **[docs/features/REQUEST_ID_PROPAGATION.md](./docs/features/REQUEST_ID_PROPAGATION.md)** - Request ID tracking and tracing
-- **[docs/features/LOGGING.md](./docs/features/LOGGING.md)** - Logging system
+- **[docs/features/LOGGING.md](./docs/features/LOGGING.md)** - Observability: tracing spans, audit log, events
 - **[docs/features/DOMAIN_VALIDATION.md](./docs/features/DOMAIN_VALIDATION.md)** - Domain validation
 - **[docs/features/ERROR_CODES_REFERENCE.md](./docs/features/ERROR_CODES_REFERENCE.md)** - API error codes reference
 - **[docs/features/RETRY_BACKOFF.md](./docs/features/RETRY_BACKOFF.md)** - Retry and backoff strategies
