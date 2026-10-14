@@ -165,13 +165,11 @@ mod tests {
         let padding_len = MAX_ANCHOR_LEN as usize - prefix.len();
         let anchor: alloc::string::String = prefix.to_owned() + &"a".repeat(padding_len);
         assert_eq!(anchor.len(), MAX_ANCHOR_LEN as usize);
-        let config = SdkConfig::new(
-            Network::Testnet,
-            30,
-            3,
-            String::from_str(&env, &anchor),
+        let config = SdkConfig::new(Network::Testnet, 30, 3, String::from_str(&env, &anchor));
+        assert!(
+            config.is_ok(),
+            "anchor of exactly {MAX_ANCHOR_LEN} bytes must be accepted"
         );
-        assert!(config.is_ok(), "anchor of exactly {MAX_ANCHOR_LEN} bytes must be accepted");
     }
 
     /// A default_anchor one byte over MAX_ANCHOR_LEN (257 bytes) must be
@@ -183,13 +181,11 @@ mod tests {
         let padding_len = MAX_ANCHOR_LEN as usize - prefix.len() + 1; // 257 total
         let anchor: alloc::string::String = prefix.to_owned() + &"a".repeat(padding_len);
         assert_eq!(anchor.len(), MAX_ANCHOR_LEN as usize + 1);
-        let config = SdkConfig::new(
-            Network::Testnet,
-            30,
-            3,
-            String::from_str(&env, &anchor),
+        let config = SdkConfig::new(Network::Testnet, 30, 3, String::from_str(&env, &anchor));
+        assert!(
+            config.is_err(),
+            "anchor longer than {MAX_ANCHOR_LEN} bytes must be rejected"
         );
-        assert!(config.is_err(), "anchor longer than {MAX_ANCHOR_LEN} bytes must be rejected");
     }
 
     // --- Anchor format validation tests ---
@@ -206,7 +202,10 @@ mod tests {
             3,
             String::from_str(&env, "anchor.stellar.org"),
         );
-        assert!(config.is_err(), "anchor without https:// scheme must be rejected");
+        assert!(
+            config.is_err(),
+            "anchor without https:// scheme must be rejected"
+        );
     }
 
     /// A value with HTTP (not HTTPS) must be rejected.
@@ -219,7 +218,10 @@ mod tests {
             3,
             String::from_str(&env, "http://anchor.stellar.org"),
         );
-        assert!(config.is_err(), "http:// anchor must be rejected; only https:// is allowed");
+        assert!(
+            config.is_err(),
+            "http:// anchor must be rejected; only https:// is allowed"
+        );
     }
 
     /// Arbitrary garbage that meets the length bounds must be rejected.
@@ -232,6 +234,9 @@ mod tests {
             3,
             String::from_str(&env, "not a domain!!"),
         );
-        assert!(config.is_err(), "garbage anchor string must be rejected by format validation");
+        assert!(
+            config.is_err(),
+            "garbage anchor string must be rejected by format validation"
+        );
     }
 }

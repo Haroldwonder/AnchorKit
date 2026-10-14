@@ -1,8 +1,8 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 use crate::contract::{AnchorKitContract, AnchorKitContractClient};
 use crate::sep10_test_util::register_attestor_with_sep10;

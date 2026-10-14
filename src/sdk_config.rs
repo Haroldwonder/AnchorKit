@@ -76,7 +76,8 @@ impl SdkConfig {
         let mut buf = [0u8; MAX_ANCHOR_LEN as usize];
         self.default_anchor.copy_into_slice(&mut buf[..len]);
         let anchor_str = core::str::from_utf8(&buf[..len]).map_err(|_| Error::invalid_config())?;
-        domain_validator::validate_anchor_domain(anchor_str).map_err(|_| Error::invalid_config())?;
+        domain_validator::validate_anchor_domain(anchor_str)
+            .map_err(|_| Error::invalid_config())?;
 
         Ok(())
     }

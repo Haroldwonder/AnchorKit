@@ -5,6 +5,7 @@
 
 #![cfg(feature = "stress-tests")]
 
+use anchorkit::contract::{AnchorKitContract, AnchorKitContractClient};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use ed25519_dalek::{Signer, SigningKey};
 use rand::rngs::OsRng;
@@ -12,7 +13,6 @@ use soroban_sdk::{
     testutils::{Address as _, Ledger, LedgerInfo},
     Address, Bytes, Env, String, Vec,
 };
-use anchorkit::contract::{AnchorKitContract, AnchorKitContractClient};
 
 fn make_env() -> Env {
     let env = Env::default();
@@ -106,7 +106,10 @@ fn test_batch_attestor_registration_stress() {
     }
 
     assert_eq!(registered.len(), ATTESTOR_COUNT as u32);
-    println!("Successfully registered {} attestors under stress", ATTESTOR_COUNT);
+    println!(
+        "Successfully registered {} attestors under stress",
+        ATTESTOR_COUNT
+    );
 }
 
 /// Test rate comparison under stress with many quotes.
@@ -168,19 +171,29 @@ fn test_rate_comparison_stress() {
             );
             // Validate quote ID is positive and monotonically increasing
             assert!(quote_id > 0, "Quote ID must be positive");
-            assert!(quote_id > prev_quote_id, "Quote IDs must be monotonically increasing");
+            assert!(
+                quote_id > prev_quote_id,
+                "Quote IDs must be monotonically increasing"
+            );
             prev_quote_id = quote_id;
             total_quotes += 1;
         }
     }
 
     // Targeted assertions instead of full-state snapshot
-    assert_eq!(total_quotes, EXPECTED_TOTAL_QUOTES as usize, 
-        "Total quote count should match expected");
-    assert_eq!(prev_quote_id, EXPECTED_TOTAL_QUOTES,
-        "Final quote ID should equal total count");
-    
-    println!("Successfully processed {} quote submissions under stress", total_quotes);
+    assert_eq!(
+        total_quotes, EXPECTED_TOTAL_QUOTES as usize,
+        "Total quote count should match expected"
+    );
+    assert_eq!(
+        prev_quote_id, EXPECTED_TOTAL_QUOTES,
+        "Final quote ID should equal total count"
+    );
+
+    println!(
+        "Successfully processed {} quote submissions under stress",
+        total_quotes
+    );
 }
 
 /// Test batch attestor registration with overflow handling.
@@ -293,7 +306,14 @@ fn test_connection_pool_high_load() {
             let payload_hash = Bytes::from_slice(&env, &payload_bytes);
             let signature = sign_payload(&env, sk, &payload_hash);
 
-            let attestation_id = client.submit_attestation(anchor, &subject, &current_time, &payload_hash, &signature, &None::<soroban_sdk::Map<soroban_sdk::String, soroban_sdk::String>>);
+            let attestation_id = client.submit_attestation(
+                anchor,
+                &subject,
+                &current_time,
+                &payload_hash,
+                &signature,
+                &None::<soroban_sdk::Map<soroban_sdk::String, soroban_sdk::String>>,
+            );
             attestation_ids.push_back(attestation_id);
         }
     }
@@ -345,7 +365,7 @@ fn test_rate_limiter_burst_1000_submissions() {
     const WINDOW_LENGTH: u32 = 100;
     const BURST_SIZE: usize = 1000;
 
-    use anchorkit::rate_limiter::{RateLimiter, RateLimitConfig};
+    use anchorkit::rate_limiter::{RateLimitConfig, RateLimiter};
 
     // Configure global rate limit
     let config = RateLimitConfig {
@@ -392,16 +412,25 @@ fn test_rate_limiter_burst_1000_submissions() {
     }
 
     // Verify rate limiting worked as expected
-    assert_eq!(accepted, MAX_SUBMISSIONS as usize,
-        "Should accept exactly max_submissions before throttling");
-    assert_eq!(throttled, BURST_SIZE - (MAX_SUBMISSIONS as usize),
-        "Should throttle remaining submissions");
+    assert_eq!(
+        accepted, MAX_SUBMISSIONS as usize,
+        "Should accept exactly max_submissions before throttling"
+    );
+    assert_eq!(
+        throttled,
+        BURST_SIZE - (MAX_SUBMISSIONS as usize),
+        "Should throttle remaining submissions"
+    );
 
     let state = RateLimiter::get_state(env.clone(), attestor.clone());
-    assert_eq!(state.submission_count, MAX_SUBMISSIONS,
-        "Submission count should equal max_submissions");
-    assert_eq!(state.total_requests, BURST_SIZE as u64,
-        "Total requests should track all attempts including throttled");
+    assert_eq!(
+        state.submission_count, MAX_SUBMISSIONS,
+        "Submission count should equal max_submissions"
+    );
+    assert_eq!(
+        state.total_requests, BURST_SIZE as u64,
+        "Total requests should track all attempts including throttled"
+    );
 
     println!(
         "Rate limiter burst test (1000 submissions): accepted={}, throttled={}, total_attempts={}",
@@ -426,7 +455,7 @@ fn test_rate_limiter_window_reset_under_load() {
     const WINDOW_LENGTH: u32 = 10;
     const WINDOWS_TO_TEST: u32 = 3;
 
-    use anchorkit::rate_limiter::{RateLimiter, RateLimitConfig};
+    use anchorkit::rate_limiter::{RateLimitConfig, RateLimiter};
 
     let config = RateLimitConfig {
         max_submissions: MAX_SUBMISSIONS,
@@ -458,8 +487,11 @@ fn test_rate_limiter_window_reset_under_load() {
         }
 
         // Should accept exactly max_submissions per window
-        assert_eq!(window_accepted, MAX_SUBMISSIONS,
-            "Window {} should accept exactly {} submissions", window_idx, MAX_SUBMISSIONS);
+        assert_eq!(
+            window_accepted, MAX_SUBMISSIONS,
+            "Window {} should accept exactly {} submissions",
+            window_idx, MAX_SUBMISSIONS
+        );
 
         // Advance ledger to trigger window reset
         let current_ledger = env.ledger().sequence();
@@ -467,12 +499,18 @@ fn test_rate_limiter_window_reset_under_load() {
 
         let state = RateLimiter::get_state(env.clone(), attestor.clone());
         // After window reset, submission_count should be 0
-        assert_eq!(state.submission_count, 0,
-            "Window {} should reset submission_count after expiration", window_idx);
+        assert_eq!(
+            state.submission_count, 0,
+            "Window {} should reset submission_count after expiration",
+            window_idx
+        );
     }
 
-    assert_eq!(total_accepted, MAX_SUBMISSIONS * WINDOWS_TO_TEST,
-        "Total accepted across all windows should equal max_submissions * windows");
+    assert_eq!(
+        total_accepted,
+        MAX_SUBMISSIONS * WINDOWS_TO_TEST,
+        "Total accepted across all windows should equal max_submissions * windows"
+    );
 
     println!(
         "Rate limiter window reset test: {} windows tested, {} total submissions accepted",
@@ -495,7 +533,7 @@ fn test_rate_limiter_multiple_attestors_isolation() {
     const MAX_SUBMISSIONS: u32 = 20;
     const SUBMISSIONS_PER_ATTESTOR: usize = 50;
 
-    use anchorkit::rate_limiter::{RateLimiter, RateLimitConfig};
+    use anchorkit::rate_limiter::{RateLimitConfig, RateLimiter};
 
     let config = RateLimitConfig {
         max_submissions: MAX_SUBMISSIONS,
@@ -537,22 +575,30 @@ fn test_rate_limiter_multiple_attestors_isolation() {
         throttled_per_attestor.push(throttled);
 
         // Verify isolation: each attestor should have same throttling pattern
-        assert_eq!(accepted, MAX_SUBMISSIONS as usize,
-            "Each attestor should accept {} submissions", MAX_SUBMISSIONS);
+        assert_eq!(
+            accepted, MAX_SUBMISSIONS as usize,
+            "Each attestor should accept {} submissions",
+            MAX_SUBMISSIONS
+        );
     }
 
     // Verify all attestors have identical throttling behavior (isolated limits)
     for (idx, &accepted) in accepted_per_attestor.iter().enumerate() {
-        assert_eq!(accepted, MAX_SUBMISSIONS as usize,
-            "Attestor {} should accept exactly {}", idx, MAX_SUBMISSIONS);
+        assert_eq!(
+            accepted, MAX_SUBMISSIONS as usize,
+            "Attestor {} should accept exactly {}",
+            idx, MAX_SUBMISSIONS
+        );
     }
 
     let total_accepted: usize = accepted_per_attestor.iter().sum();
     let total_throttled: usize = throttled_per_attestor.iter().sum();
     let expected_throttled = ATTESTOR_COUNT * (SUBMISSIONS_PER_ATTESTOR - MAX_SUBMISSIONS as usize);
 
-    assert_eq!(total_throttled, expected_throttled,
-        "Total throttled should match expected");
+    assert_eq!(
+        total_throttled, expected_throttled,
+        "Total throttled should match expected"
+    );
 
     println!(
         "Rate limiter isolation test: {} attestors, {} submissions each, {} total accepted, {} total throttled",

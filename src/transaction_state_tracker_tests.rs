@@ -1,6 +1,5 @@
 /// Transaction State Tracker Tests
 /// This test file demonstrates and validates the Transaction State Tracker implementation
-
 use crate::transaction_state_tracker::*;
 use soroban_sdk::Env;
 
@@ -187,18 +186,19 @@ mod transaction_state_tracker_tests {
     #[test]
     fn test_clear_cache_dev_mode() {
         with_contract(|env| {
-        let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
-        AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
-        let mut tracker = TransactionStateTracker::new();
-        let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
+            let mut tracker = TransactionStateTracker::new();
+            let initiator =
+                <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
 
-        tracker.create_transaction(1, initiator.clone(), &env).ok();
-        tracker.create_transaction(2, initiator.clone(), &env).ok();
-        assert_eq!(tracker.cache_size(), 2);
+            tracker.create_transaction(1, initiator.clone(), &env).ok();
+            tracker.create_transaction(2, initiator.clone(), &env).ok();
+            assert_eq!(tracker.cache_size(), 2);
 
-        let clear_result = tracker.clear_cache(&admin, &env);
-        assert!(clear_result.is_ok());
-        assert_eq!(tracker.cache_size(), 0);
+            let clear_result = tracker.clear_cache(&admin, &env);
+            assert!(clear_result.is_ok());
+            assert_eq!(tracker.cache_size(), 0);
         });
     }
 
@@ -241,16 +241,34 @@ mod transaction_state_tracker_tests {
         tracker.create_transaction(2, initiator.clone(), &env).ok();
         tracker.create_transaction(3, initiator.clone(), &env).ok();
 
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 3);
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::InProgress), 0);
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::Pending),
+            3
+        );
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::InProgress),
+            0
+        );
 
         tracker.start_transaction(1, &env).ok();
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 2);
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::InProgress), 1);
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::Pending),
+            2
+        );
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::InProgress),
+            1
+        );
 
         tracker.complete_transaction(1, &env).ok();
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::InProgress), 0);
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Completed), 1);
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::InProgress),
+            0
+        );
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::Completed),
+            1
+        );
     }
 
     #[test]
@@ -264,23 +282,36 @@ mod transaction_state_tracker_tests {
         let err = String::from_str(&env, "err");
         tracker.fail_transaction(1, err, &env).ok();
 
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 1);
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Failed), 1);
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::Pending),
+            1
+        );
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::Failed),
+            1
+        );
     }
 
     #[test]
     fn test_get_transaction_count_by_state_after_clear() {
         with_contract(|env| {
-        let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
-        let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
-        AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
-        let mut tracker = TransactionStateTracker::new();
+            let initiator =
+                <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
+            let mut tracker = TransactionStateTracker::new();
 
-        tracker.create_transaction(1, initiator.clone(), &env).ok();
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 1);
+            tracker.create_transaction(1, initiator.clone(), &env).ok();
+            assert_eq!(
+                tracker.get_transaction_count_by_state(TransactionState::Pending),
+                1
+            );
 
-        tracker.clear_cache(&admin, &env).ok();
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Pending), 0);
+            tracker.clear_cache(&admin, &env).ok();
+            assert_eq!(
+                tracker.get_transaction_count_by_state(TransactionState::Pending),
+                0
+            );
         });
     }
 }

@@ -98,7 +98,11 @@ impl TransactionStateTracker {
         env: &Env,
     ) -> Result<TransactionStateRecord, String> {
         // #909: reject duplicate transaction IDs to prevent orphaned records
-        if self.cache.iter().any(|r| r.transaction_id == transaction_id) {
+        if self
+            .cache
+            .iter()
+            .any(|r| r.transaction_id == transaction_id)
+        {
             return Err(String::from_str(
                 env,
                 "Transaction with this ID already exists",
@@ -204,10 +208,7 @@ impl TransactionStateTracker {
 
                 // Enforce the documented state machine.
                 if !Self::is_valid_transition(old_state, new_state) {
-                    return Err(String::from_str(
-                        env,
-                        "Invalid state transition",
-                    ));
+                    return Err(String::from_str(env, "Invalid state transition"));
                 }
 
                 record.state = new_state;
@@ -225,10 +226,7 @@ impl TransactionStateTracker {
                 return Ok(record.clone());
             }
         }
-        Err(String::from_str(
-            env,
-            "Transaction not found in cache",
-        ))
+        Err(String::from_str(env, "Transaction not found in cache"))
     }
 
     /// Get transaction state by ID
@@ -258,7 +256,6 @@ impl TransactionStateTracker {
         }
         Err(String::from_str(_env, "Transaction not found"))
     }
-
 
     /// Get all transactions in a specific state
     pub fn get_transactions_by_state(
@@ -290,7 +287,10 @@ impl TransactionStateTracker {
             return Err(String::from_str(env, "Contract admin is not configured"));
         };
         if admin != &expected_admin {
-            return Err(String::from_str(env, "Only the contract admin can clear the cache"));
+            return Err(String::from_str(
+                env,
+                "Only the contract admin can clear the cache",
+            ));
         }
         admin.require_auth();
         self.cache = alloc::vec::Vec::new();
@@ -314,8 +314,8 @@ impl TransactionStateTracker {
 mod tests {
     use super::*;
     use crate::contract::AnchorKitContract;
-    use soroban_sdk::Env;
     use soroban_sdk::testutils::Address;
+    use soroban_sdk::Env;
 
     fn with_contract<F, R>(f: F) -> R
     where
@@ -448,16 +448,17 @@ mod tests {
     #[test]
     fn test_clear_cache() {
         with_contract(|env| {
-        let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
-        AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
-        let mut tracker = TransactionStateTracker::new();
-        let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            let admin = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            AnchorKitContract::initialize(env.clone(), admin.clone(), 100, None, None).unwrap();
+            let mut tracker = TransactionStateTracker::new();
+            let initiator =
+                <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
 
-        tracker.create_transaction(1, initiator.clone(), &env).ok();
-        let clear_result = tracker.clear_cache(&admin, &env);
+            tracker.create_transaction(1, initiator.clone(), &env).ok();
+            let clear_result = tracker.clear_cache(&admin, &env);
 
-        assert!(clear_result.is_ok());
-        assert_eq!(tracker.cache_size(), 0);
+            assert!(clear_result.is_ok());
+            assert_eq!(tracker.cache_size(), 0);
         });
     }
 
@@ -493,7 +494,10 @@ mod tests {
         // Directly increment the Unknown state counter to simulate a transition
         // This verifies the array is large enough
         tracker.state_counts[TransactionState::Unknown as usize] = 1;
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Unknown), 1);
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::Unknown),
+            1
+        );
     }
 
     #[test]
@@ -510,8 +514,10 @@ mod tests {
     #[test]
     fn test_clear_cache_rejects_self_authorized_non_admin() {
         with_contract(|env| {
-            let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
-            let unprivileged_user = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            let initiator =
+                <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+            let unprivileged_user =
+                <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
             AnchorKitContract::initialize(env.clone(), initiator.clone(), 100, None, None).unwrap();
             let mut tracker = TransactionStateTracker::new();
 
@@ -543,7 +549,10 @@ mod tests {
 
         // Attempting to restart a completed transaction must fail
         let err = tracker.start_transaction(1, &env);
-        assert!(err.is_err(), "start_transaction on Completed should be rejected");
+        assert!(
+            err.is_err(),
+            "start_transaction on Completed should be rejected"
+        );
     }
 
     #[test]
@@ -557,7 +566,10 @@ mod tests {
         tracker.complete_transaction(1, &env).unwrap();
 
         let err = tracker.fail_transaction(1, String::from_str(&env, "late failure"), &env);
-        assert!(err.is_err(), "fail_transaction on Completed should be rejected");
+        assert!(
+            err.is_err(),
+            "fail_transaction on Completed should be rejected"
+        );
     }
 
     #[test]
@@ -571,7 +583,10 @@ mod tests {
         tracker.complete_transaction(1, &env).unwrap();
 
         let err = tracker.complete_transaction(1, &env);
-        assert!(err.is_err(), "complete_transaction on Completed should be rejected");
+        assert!(
+            err.is_err(),
+            "complete_transaction on Completed should be rejected"
+        );
     }
 
     #[test]
@@ -581,10 +596,15 @@ mod tests {
         let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
 
         tracker.create_transaction(1, initiator, &env).unwrap();
-        tracker.fail_transaction(1, String::from_str(&env, "error"), &env).unwrap();
+        tracker
+            .fail_transaction(1, String::from_str(&env, "error"), &env)
+            .unwrap();
 
         let err = tracker.start_transaction(1, &env);
-        assert!(err.is_err(), "start_transaction on Failed should be rejected");
+        assert!(
+            err.is_err(),
+            "start_transaction on Failed should be rejected"
+        );
     }
 
     #[test]
@@ -594,10 +614,15 @@ mod tests {
         let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
 
         tracker.create_transaction(1, initiator, &env).unwrap();
-        tracker.fail_transaction(1, String::from_str(&env, "error"), &env).unwrap();
+        tracker
+            .fail_transaction(1, String::from_str(&env, "error"), &env)
+            .unwrap();
 
         let err = tracker.complete_transaction(1, &env);
-        assert!(err.is_err(), "complete_transaction on Failed should be rejected");
+        assert!(
+            err.is_err(),
+            "complete_transaction on Failed should be rejected"
+        );
     }
 
     #[test]
@@ -607,10 +632,15 @@ mod tests {
         let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
 
         tracker.create_transaction(1, initiator, &env).unwrap();
-        tracker.fail_transaction(1, String::from_str(&env, "first error"), &env).unwrap();
+        tracker
+            .fail_transaction(1, String::from_str(&env, "first error"), &env)
+            .unwrap();
 
         let err = tracker.fail_transaction(1, String::from_str(&env, "second error"), &env);
-        assert!(err.is_err(), "fail_transaction on Failed should be rejected");
+        assert!(
+            err.is_err(),
+            "fail_transaction on Failed should be rejected"
+        );
     }
 
     #[test]
@@ -623,7 +653,10 @@ mod tests {
         tracker.create_transaction(1, initiator, &env).unwrap();
 
         let err = tracker.complete_transaction(1, &env);
-        assert!(err.is_err(), "complete_transaction on Pending (skipping InProgress) should be rejected");
+        assert!(
+            err.is_err(),
+            "complete_transaction on Pending (skipping InProgress) should be rejected"
+        );
     }
 
     #[test]
@@ -650,14 +683,26 @@ mod tests {
         tracker.start_transaction(1, &env).unwrap();
         tracker.complete_transaction(1, &env).unwrap();
 
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Completed), 1);
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::InProgress), 0);
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::Completed),
+            1
+        );
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::InProgress),
+            0
+        );
 
         // Rejected transition — counts must remain unchanged
         tracker.start_transaction(1, &env).ok();
 
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Completed), 1);
-        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::InProgress), 0);
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::Completed),
+            1
+        );
+        assert_eq!(
+            tracker.get_transaction_count_by_state(TransactionState::InProgress),
+            0
+        );
     }
 
     #[test]
@@ -669,27 +714,47 @@ mod tests {
 
         tracker.create_transaction(1, initiator, &env).unwrap();
         tracker.complete_transaction(1, &env).unwrap_err(); // Pending → Completed invalid
-        tracker.start_transaction(1, &env).unwrap();        // Pending → InProgress OK
-        tracker.complete_transaction(1, &env).unwrap();     // InProgress → Completed OK
+        tracker.start_transaction(1, &env).unwrap(); // Pending → InProgress OK
+        tracker.complete_transaction(1, &env).unwrap(); // InProgress → Completed OK
 
         // All further transitions must be rejected
         assert!(tracker.start_transaction(1, &env).is_err());
-        assert!(tracker.fail_transaction(1, String::from_str(&env, "msg"), &env).is_err());
+        assert!(tracker
+            .fail_transaction(1, String::from_str(&env, "msg"), &env)
+            .is_err());
         assert!(tracker.complete_transaction(1, &env).is_err());
     }
 
     #[test]
     fn test_from_str_parses_valid_states() {
-        assert_eq!(TransactionState::from_str("pending"), TransactionState::Pending);
-        assert_eq!(TransactionState::from_str("in_progress"), TransactionState::InProgress);
-        assert_eq!(TransactionState::from_str("completed"), TransactionState::Completed);
-        assert_eq!(TransactionState::from_str("failed"), TransactionState::Failed);
+        assert_eq!(
+            TransactionState::from_str("pending"),
+            TransactionState::Pending
+        );
+        assert_eq!(
+            TransactionState::from_str("in_progress"),
+            TransactionState::InProgress
+        );
+        assert_eq!(
+            TransactionState::from_str("completed"),
+            TransactionState::Completed
+        );
+        assert_eq!(
+            TransactionState::from_str("failed"),
+            TransactionState::Failed
+        );
     }
 
     #[test]
     fn test_from_str_unknown_state_fallback() {
-        assert_eq!(TransactionState::from_str("unknown"), TransactionState::Unknown);
-        assert_eq!(TransactionState::from_str("invalid"), TransactionState::Unknown);
+        assert_eq!(
+            TransactionState::from_str("unknown"),
+            TransactionState::Unknown
+        );
+        assert_eq!(
+            TransactionState::from_str("invalid"),
+            TransactionState::Unknown
+        );
         assert_eq!(TransactionState::from_str(""), TransactionState::Unknown);
     }
 

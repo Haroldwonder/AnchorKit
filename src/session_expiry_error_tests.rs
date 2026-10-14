@@ -7,12 +7,12 @@ mod session_expiry_error_tests {
     };
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+    use crate::deterministic_hash::compute_payload_hash;
     use crate::errors::ErrorCode;
     use crate::sep10_test_util::{build_sep10_jwt, sign_payload};
-    use crate::deterministic_hash::compute_payload_hash;
-    use soroban_sdk::Bytes;
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
+    use soroban_sdk::Bytes;
 
     fn make_env() -> Env {
         let env = Env::default();
@@ -79,10 +79,20 @@ mod session_expiry_error_tests {
         let hash_bytes: Bytes = hash.into();
         let sig = sign_payload(&env, &sk, &hash_bytes);
 
-        let result = client.try_submit_attestation_with_session(&nonexistent_session_id, &attestor, &subject, &ts, &hash_bytes, &sig);
+        let result = client.try_submit_attestation_with_session(
+            &nonexistent_session_id,
+            &attestor,
+            &subject,
+            &ts,
+            &hash_bytes,
+            &sig,
+        );
         assert!(result.is_err());
         let err = result.unwrap_err().unwrap();
-        assert_eq!(err, soroban_sdk::Error::from_contract_error(ErrorCode::SessionNotFound as u32));
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ErrorCode::SessionNotFound as u32)
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -109,10 +119,20 @@ mod session_expiry_error_tests {
         let hash_bytes: Bytes = hash.into();
         let sig = sign_payload(&env, &sk, &hash_bytes);
 
-        let result = client.try_submit_attestation_with_session(&session_id, &attestor, &subject, &ts, &hash_bytes, &sig);
+        let result = client.try_submit_attestation_with_session(
+            &session_id,
+            &attestor,
+            &subject,
+            &ts,
+            &hash_bytes,
+            &sig,
+        );
         assert!(result.is_err());
         let err = result.unwrap_err().unwrap();
-        assert_eq!(err, soroban_sdk::Error::from_contract_error(ErrorCode::SessionExpired as u32));
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ErrorCode::SessionExpired as u32)
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -136,7 +156,14 @@ mod session_expiry_error_tests {
         let sig = sign_payload(&env, &sk, &hash_bytes);
 
         // Should succeed without panic
-        let result = client.try_submit_attestation_with_session(&session_id, &attestor, &subject, &ts, &hash_bytes, &sig);
+        let result = client.try_submit_attestation_with_session(
+            &session_id,
+            &attestor,
+            &subject,
+            &ts,
+            &hash_bytes,
+            &sig,
+        );
         assert!(result.is_ok());
     }
 }

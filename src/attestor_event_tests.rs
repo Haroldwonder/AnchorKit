@@ -1,7 +1,11 @@
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger as _, LedgerInfo}, symbol_short, Address, Env, Symbol, String};
 use crate::domain_validator::validate_anchor_domain;
 use crate::errors::{AnchorKitError, ErrorCode};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Ledger as _, LedgerInfo},
+    Address, Env, String, Symbol,
+};
 
 #[test]
 fn test_register_attestor_emits_registered_event() {
@@ -14,7 +18,8 @@ fn test_register_attestor_emits_registered_event() {
 
     // Expect event
     let topics = (symbol_short!("attestor"), symbol_short!("reg"));
-    env.events().publish_expect(&topics, &AttestorRegistered(attestor.clone()));
+    env.events()
+        .publish_expect(&topics, &AttestorRegistered(attestor.clone()));
 
     // Call
     AnchorKitContract::register_attestor(&env, attestor, token, issuer);
@@ -34,7 +39,8 @@ fn test_revoke_attestor_emits_revoked_event() {
 
     // Expect event
     let topics = (symbol_short!("attestor"), symbol_short!("revoked"));
-    env.events().publish_expect(&topics, &AttestorRevoked(attestor.clone()));
+    env.events()
+        .publish_expect(&topics, &AttestorRevoked(attestor.clone()));
 
     // Call
     AnchorKitContract::revoke_attestor(&env, attestor);
@@ -49,7 +55,12 @@ fn test_set_get_endpoint_happy_path() {
     let endpoint = String::from_str(&env, "https://example.com/api");
 
     // Register attestor (admin auth mocked)
-    AnchorKitContract::register_attestor(&env, attestor.clone(), String::from_str(&env, "mock_token"), Address::random(&env));
+    AnchorKitContract::register_attestor(
+        &env,
+        attestor.clone(),
+        String::from_str(&env, "mock_token"),
+        Address::random(&env),
+    );
 
     // Set endpoint
     AnchorKitContract::set_endpoint(&env, attestor.clone(), endpoint.clone());
@@ -87,7 +98,12 @@ fn test_set_endpoint_invalid_url() {
     env.mock_all_auths();
 
     let attestor = Address::random(&env);
-    AnchorKitContract::register_attestor(&env, attestor.clone(), String::from_str(&env, "mock"), Address::random(&env));
+    AnchorKitContract::register_attestor(
+        &env,
+        attestor.clone(),
+        String::from_str(&env, "mock"),
+        Address::random(&env),
+    );
 
     let invalid = String::from_str(&env, "http://invalid.com"); // HTTP
     AnchorKitContract::set_endpoint(&env, attestor, invalid);
@@ -99,7 +115,12 @@ fn test_set_endpoint_unauthorized() {
     let env = Env::default();
 
     let attestor = Address::random(&env);
-    AnchorKitContract::register_attestor(&env, attestor.clone(), String::from_str(&env, "mock"), Address::random(&env));
+    AnchorKitContract::register_attestor(
+        &env,
+        attestor.clone(),
+        String::from_str(&env, "mock"),
+        Address::random(&env),
+    );
 
     let endpoint = String::from_str(&env, "https://example.com");
     let caller = Address::random(&env);
@@ -118,11 +139,22 @@ fn test_endpoint_updated_event() {
     let attestor = Address::random(&env);
     let endpoint = String::from_str(&env, "https://test.com");
 
-    AnchorKitContract::register_attestor(&env, attestor.clone(), String::from_str(&env, "token"), Address::random(&env));
+    AnchorKitContract::register_attestor(
+        &env,
+        attestor.clone(),
+        String::from_str(&env, "token"),
+        Address::random(&env),
+    );
 
     // Expect event
     let topics = (symbol_short!("endpoint"), symbol_short!("updated"));
-    env.events().publish_expect(&topics, &EndpointUpdated { attestor: attestor.clone(), endpoint: endpoint.clone() });
+    env.events().publish_expect(
+        &topics,
+        &EndpointUpdated {
+            attestor: attestor.clone(),
+            endpoint: endpoint.clone(),
+        },
+    );
 
     // Calling set_endpoint should emit it
     AnchorKitContract::set_endpoint(&env, attestor, endpoint.clone());

@@ -1,11 +1,11 @@
 use super::*;
+use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+use crate::sep10_test_util::{register_attestor_with_sep10, sign_payload};
+use ed25519_dalek::SigningKey;
 use soroban_sdk::{
     testutils::{Address as _, Ledger, LedgerInfo},
     Address, Bytes, Env,
 };
-use ed25519_dalek::SigningKey;
-use crate::contract::{AnchorKitContract, AnchorKitContractClient};
-use crate::sep10_test_util::{register_attestor_with_sep10, sign_payload};
 
 #[test]
 fn test_submit_attestation_happy_path() {
@@ -33,8 +33,8 @@ fn test_submit_attestation_happy_path() {
     // Deterministic key material so the happy path registers a real SEP-10
     // verifying key and submits a valid attestation signature.
     let secret_bytes: [u8; 32] = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+        26, 27, 28, 29, 30, 31, 32,
     ];
     let keypair = SigningKey::from_bytes(&secret_bytes);
     register_attestor_with_sep10(&env, &client, &issuer, &issuer, &keypair);
@@ -45,13 +45,7 @@ fn test_submit_attestation_happy_path() {
     let signature = sign_payload(&env, &keypair, &payload_hash);
     let timestamp = env.ledger().timestamp();
 
-    let id = client.submit_attestation(
-        &issuer,
-        &subject,
-        &timestamp,
-        &payload_hash,
-        &signature,
-    );
+    let id = client.submit_attestation(&issuer, &subject, &timestamp, &payload_hash, &signature);
 
     assert_eq!(id, 0);
 }
@@ -67,14 +61,18 @@ fn test_submit_attestation_empty_hash() {
 
     let issuer = Address::generate(&env);
     let subject = Address::generate(&env);
-    
+
     // Empty hash
     let payload_hash = Bytes::new(&env);
     let signature = Bytes::from_slice(&env, &[0u8; 64]);
     let timestamp = 123456789;
 
     // Register issuer
-    client.register_attestor(&issuer, &soroban_sdk::String::from_str(&env, "mock"), &Address::generate(&env));
+    client.register_attestor(
+        &issuer,
+        &soroban_sdk::String::from_str(&env, "mock"),
+        &Address::generate(&env),
+    );
 
     client.submit_attestation(&issuer, &subject, &timestamp, &payload_hash, &signature);
 }
@@ -90,14 +88,18 @@ fn test_submit_attestation_short_hash() {
 
     let issuer = Address::generate(&env);
     let subject = Address::generate(&env);
-    
+
     // 31-byte hash (one byte short)
     let payload_hash = Bytes::from_slice(&env, &[0u8; 31]);
     let signature = Bytes::from_slice(&env, &[0u8; 64]);
     let timestamp = 123456789;
 
     // Register issuer
-    client.register_attestor(&issuer, &soroban_sdk::String::from_str(&env, "mock"), &Address::generate(&env));
+    client.register_attestor(
+        &issuer,
+        &soroban_sdk::String::from_str(&env, "mock"),
+        &Address::generate(&env),
+    );
 
     client.submit_attestation(&issuer, &subject, &timestamp, &payload_hash, &signature);
 }
@@ -112,8 +114,8 @@ fn test_submit_attestation_valid_signature() {
 
     // Using a predictable hardcoded seed for deterministic tests
     let secret_bytes: [u8; 32] = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+        26, 27, 28, 29, 30, 31, 32,
     ];
     let keypair = ed25519_dalek::SigningKey::from_bytes(&secret_bytes);
     let public_key = keypair.verifying_key().to_bytes();
@@ -128,7 +130,7 @@ fn test_submit_attestation_valid_signature() {
     let mut hash_data = [0u8; 32];
     hash_data[0] = 42;
     let payload_hash = Bytes::from_slice(&env, &hash_data);
-    
+
     // Sign the hash
     use ed25519_dalek::Signer;
     let dalek_sig = keypair.sign(&hash_data);
@@ -144,14 +146,16 @@ fn test_submit_attestation_valid_signature() {
     // Alternatively, since mock_all_auths is on, can we skip registration?
     // The contract explicitly queries storage:
     // env.storage().persistent().get(&StorageKey::Attestor(attestor.clone())).unwrap_or(false)
-    // So we must register! 
+    // So we must register!
     // To register, we need a valid JWT token signed by `issuer`!
     // Actually, `verify_sep10_token_matches_attestor` checks the token.
     // Let's just create a valid JWT!
     // Or we can just call `env.storage().persistent().set(&StorageKey::Attestor(issuer.clone()), &true);` directly via `env.as_contract`.
-    
+
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&crate::storage::StorageKey::Attestor(issuer.clone()), &true);
+        env.storage()
+            .persistent()
+            .set(&crate::storage::StorageKey::Attestor(issuer.clone()), &true);
     });
 
     let id = client.submit_attestation(&issuer, &subject, &timestamp, &payload_hash, &signature);
@@ -181,19 +185,21 @@ fn test_submit_attestation_tampered_signature() {
     let mut hash_data = [0u8; 32];
     hash_data[0] = 42;
     let payload_hash = Bytes::from_slice(&env, &hash_data);
-    
+
     // Sign the hash
     use ed25519_dalek::Signer;
     let mut dalek_sig = keypair.sign(&hash_data).to_bytes();
-    
+
     // TAMPER THE SIGNATURE
-    dalek_sig[0] ^= 1; 
-    
+    dalek_sig[0] ^= 1;
+
     let signature = Bytes::from_slice(&env, &dalek_sig);
     let timestamp = 123456789;
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&crate::storage::StorageKey::Attestor(issuer.clone()), &true);
+        env.storage()
+            .persistent()
+            .set(&crate::storage::StorageKey::Attestor(issuer.clone()), &true);
     });
 
     client.submit_attestation(&issuer, &subject, &timestamp, &payload_hash, &signature);

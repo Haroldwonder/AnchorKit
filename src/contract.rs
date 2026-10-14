@@ -8,10 +8,9 @@ use crate::domain_validator::validate_anchor_domain;
 use crate::errors::ErrorCode;
 use crate::sep10_jwt;
 use crate::storage::{
-    StorageKey,
-    key_admin, key_counter, key_session_counter, key_quote_counter,
-    key_audit_counter, key_anchor_list, key_health_threshold, key_replay_window,
-    key_clock_skew, key_attestor_count, key_audit_log_offset, key_attestor_list,
+    key_admin, key_anchor_list, key_attestor_count, key_attestor_list, key_audit_counter,
+    key_audit_log_offset, key_clock_skew, key_counter, key_health_threshold, key_quote_counter,
+    key_replay_window, key_session_counter, StorageKey,
 };
 
 // ---------------------------------------------------------------------------
@@ -19,10 +18,11 @@ use crate::storage::{
 // ---------------------------------------------------------------------------
 
 pub use crate::types::{
-    AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CapabilitiesCache,
-    CachedToml, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
-    RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
-    SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES, ServiceType,
+    AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CachedToml,
+    CapabilitiesCache, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache,
+    OperationContext, Quote, RequestId, RoutingOptions, RoutingRequest, ServiceType, Session,
+    StellarToml, StoredCredential, TracingSpan, SERVICE_DEPOSITS, SERVICE_EXCHANGE_QUOTES,
+    SERVICE_KYC, SERVICE_QUOTES, SERVICE_WITHDRAWALS,
 };
 
 /// One attestation payload within a batch submission.
@@ -51,14 +51,13 @@ pub struct RoutingAnchorMeta {
     pub is_active: bool,
 }
 
-
 const MIN_TEMP_TTL: u32 = 15; // min_temp_entry_ttl - 1
 const LEDGER_PERIOD_SECS: u64 = 5; // approximate seconds per ledger
 
 use crate::events::{
-    AdminTransferred, AnchorDeactivated, AttestationRevoked, AttestEvent, AuditLogEvent, AuditLogPruned,
-    ContractPaused, ContractUnpaused, EndpointUpdated,
-    QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent,
+    AdminTransferred, AnchorDeactivated, AttestEvent, AttestationRevoked, AuditLogEvent,
+    AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated, QuoteReceivedEvent,
+    QuoteSubmitEvent, SessionCreatedEvent,
 };
 
 // ---------------------------------------------------------------------------
@@ -119,8 +118,6 @@ pub const MAX_ATTESTORS: u64 = 100;
 fn pending_admin_key(env: &Env) -> soroban_sdk::Vec<soroban_sdk::Symbol> {
     soroban_sdk::vec![env, symbol_short!("PADMIN")]
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Contract
@@ -257,8 +254,12 @@ impl AnchorKitContract {
         if max_page_size == 0 {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
-        env.storage().instance().set(&StorageKey::MaxPageSize, &max_page_size);
-        env.storage().instance().extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
+        env.storage()
+            .instance()
+            .set(&StorageKey::MaxPageSize, &max_page_size);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
         env.events().publish(
             (symbol_short!("pagesize"), symbol_short!("updated")),
             max_page_size,
@@ -421,7 +422,9 @@ impl AnchorKitContract {
         if keys.is_empty() {
             panic_with_error!(&env, ErrorCode::MissingSigningKey);
         }
-        let clock_skew: u64 = env.storage().instance()
+        let clock_skew: u64 = env
+            .storage()
+            .instance()
             .get(&key_clock_skew(&env))
             .unwrap_or(60u64);
         if sep10_jwt::verify_sep10_jwt(&env, &token, &keys, None, clock_skew, None).is_err() {
@@ -453,15 +456,8 @@ impl AnchorKitContract {
             .instance()
             .get(&key_clock_skew(&env))
             .unwrap_or(60u64);
-        if sep10_jwt::verify_sep10_jwt_multisig(
-            &env,
-            &tokens,
-            &keys,
-            threshold,
-            None,
-            clock_skew,
-        )
-        .is_err()
+        if sep10_jwt::verify_sep10_jwt_multisig(&env, &tokens, &keys, threshold, None, clock_skew)
+            .is_err()
         {
             panic_with_error!(&env, ErrorCode::InvalidSep10Token);
         }
@@ -481,10 +477,14 @@ impl AnchorKitContract {
         if keys.is_empty() {
             panic_with_error!(&env, ErrorCode::MissingSigningKey);
         }
-        let clock_skew: u64 = env.storage().instance()
+        let clock_skew: u64 = env
+            .storage()
+            .instance()
             .get(&key_clock_skew(&env))
             .unwrap_or(60u64);
-        if sep10_jwt::verify_sep10_jwt(&env, &token, &keys, None, clock_skew, Some(service)).is_err() {
+        if sep10_jwt::verify_sep10_jwt(&env, &token, &keys, None, clock_skew, Some(service))
+            .is_err()
+        {
             panic_with_error!(&env, ErrorCode::InvalidSep10Token);
         }
     }
@@ -503,28 +503,41 @@ impl AnchorKitContract {
         if keys.is_empty() {
             panic_with_error!(env, ErrorCode::MissingSigningKey);
         }
-        let clock_skew: u64 = env.storage().instance()
+        let clock_skew: u64 = env
+            .storage()
+            .instance()
             .get(&key_clock_skew(env))
             .unwrap_or(60u64);
         let expected = attestor.to_string();
-        if sep10_jwt::verify_sep10_jwt(env, token, &keys, Some(&expected), clock_skew, None).is_err() {
+        if sep10_jwt::verify_sep10_jwt(env, token, &keys, Some(&expected), clock_skew, None)
+            .is_err()
+        {
             panic_with_error!(env, ErrorCode::InvalidSep10Token);
         }
     }
 
     fn add_to_cached_anchors(env: &Env, anchor: &Address) {
         let list_key = soroban_sdk::vec![env, symbol_short!("CANCHORS")];
-        let mut list: Vec<Address> = env.storage().persistent()
+        let mut list: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(env));
         if !list.contains(anchor) {
             list.push_back(anchor.clone());
             env.storage().persistent().set(&list_key, &list);
-            env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+            env.storage()
+                .persistent()
+                .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
         }
     }
 
-    pub fn register_attestor(env: Env, attestor: Address, sep10_token: String, sep10_issuer: Address) {
+    pub fn register_attestor(
+        env: Env,
+        attestor: Address,
+        sep10_token: String,
+        sep10_issuer: Address,
+    ) {
         Self::require_not_paused(&env);
         Self::require_admin(&env);
         Self::verify_sep10_token_matches_attestor(&env, &sep10_token, &sep10_issuer, &attestor);
@@ -535,7 +548,9 @@ impl AnchorKitContract {
         }
         // Clear any prior revocation marker so re-registered attestors are not
         // permanently flagged as revoked on new attestations.
-        env.storage().persistent().remove(&StorageKey::AttestorRevoked(attestor.clone()));
+        env.storage()
+            .persistent()
+            .remove(&StorageKey::AttestorRevoked(attestor.clone()));
         let inst = env.storage().instance();
         let cnt_key = key_attestor_count(&env);
         let count: u64 = inst.get(&cnt_key).unwrap_or(0u64);
@@ -550,15 +565,19 @@ impl AnchorKitContract {
             .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let list_key = key_attestor_list(&env);
-        let mut attestors: Vec<Address> = env.storage().persistent()
+        let mut attestors: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
         attestors.push_back(attestor.clone());
         env.storage().persistent().set(&list_key, &attestors);
-        env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         env.events().publish(
-(symbol_short!("attestor"), symbol_short!("reg")),
+            (symbol_short!("attestor"), symbol_short!("reg")),
             AttestorRegistered(attestor),
         );
     }
@@ -578,7 +597,9 @@ impl AnchorKitContract {
         inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
 
         let list_key = key_attestor_list(&env);
-        let attestors: Vec<Address> = env.storage().persistent()
+        let attestors: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
         let mut new_list = Vec::new(&env);
@@ -588,11 +609,15 @@ impl AnchorKitContract {
             }
         }
         env.storage().persistent().set(&list_key, &new_list);
-        env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let revoked_key = StorageKey::AttestorRevoked(attestor.clone());
         env.storage().persistent().set(&revoked_key, &true);
-        env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
         env.events().publish(
             (symbol_short!("attestor"), symbol_short!("revoked")),
             AttestorRevoked(attestor),
@@ -615,9 +640,15 @@ impl AnchorKitContract {
         }
         let revoked_key = StorageKey::AttestationRevoked(attestation_id);
         env.storage().persistent().set(&revoked_key, &true);
-        env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
         env.events().publish(
-            (symbol_short!("attest"), symbol_short!("revoked"), attestation_id),
+            (
+                symbol_short!("attest"),
+                symbol_short!("revoked"),
+                attestation_id,
+            ),
             attestor,
         );
     }
@@ -635,7 +666,8 @@ impl AnchorKitContract {
         Self::require_not_paused(&env);
         Self::require_admin(&env);
         let att_key = StorageKey::Attest(attestation_id);
-        let attestation: Attestation = env.storage()
+        let attestation: Attestation = env
+            .storage()
             .persistent()
             .get(&att_key)
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
@@ -655,7 +687,9 @@ impl AnchorKitContract {
     /// Retrieve all registered attestors with pagination support.
     pub fn get_all_attestors(env: Env, offset: u64, limit: u32) -> Vec<Address> {
         let list_key = key_attestor_list(&env);
-        let attestors: Vec<Address> = env.storage().persistent()
+        let attestors: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
 
@@ -696,7 +730,9 @@ impl AnchorKitContract {
 
         let key = StorageKey::Endpoint(attestor.clone());
         env.storage().persistent().set(&key, &endpoint);
-        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
         env.events().publish(
             (symbol_short!("endpoint"), symbol_short!("updated")),
             EndpointUpdated { attestor, endpoint },
@@ -818,14 +854,34 @@ impl AnchorKitContract {
         }
 
         let id = Self::next_attestation_id(&env);
-        Self::store_attestation(&env, id, issuer.clone(), subject.clone(), timestamp, payload_hash.clone(), signature, None);
+        Self::store_attestation(
+            &env,
+            id,
+            issuer.clone(),
+            subject.clone(),
+            timestamp,
+            payload_hash.clone(),
+            signature,
+            None,
+        );
 
         env.storage().persistent().set(&used_key, &true);
-        env.storage().persistent().extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         env.events().publish(
-            (symbol_short!("attest"), symbol_short!("recorded"), id, subject.clone()),
-            AttestEvent { subject, payload_hash, timestamp },
+            (
+                symbol_short!("attest"),
+                symbol_short!("recorded"),
+                id,
+                subject.clone(),
+            ),
+            AttestEvent {
+                subject,
+                payload_hash,
+                timestamp,
+            },
         );
 
         id
@@ -878,11 +934,22 @@ impl AnchorKitContract {
             );
 
             env.storage().persistent().set(&used_key, &true);
-            env.storage().persistent().extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
+            env.storage()
+                .persistent()
+                .extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
             env.events().publish(
-                (symbol_short!("attest"), symbol_short!("recorded"), id, input.subject.clone()),
-                AttestEvent { payload_hash: input.payload_hash, timestamp: input.timestamp, subject: input.subject },
+                (
+                    symbol_short!("attest"),
+                    symbol_short!("recorded"),
+                    id,
+                    input.subject.clone(),
+                ),
+                AttestEvent {
+                    payload_hash: input.payload_hash,
+                    timestamp: input.timestamp,
+                    subject: input.subject,
+                },
             );
 
             ids.push_back(id);
@@ -913,17 +980,44 @@ impl AnchorKitContract {
         }
 
         let id = Self::next_attestation_id(&env);
-        Self::store_attestation(&env, id, issuer.clone(), subject.clone(), timestamp, payload_hash.clone(), signature, None);
+        Self::store_attestation(
+            &env,
+            id,
+            issuer.clone(),
+            subject.clone(),
+            timestamp,
+            payload_hash.clone(),
+            signature,
+            None,
+        );
 
         env.storage().persistent().set(&used_key, &true);
-        env.storage().persistent().extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let now = env.ledger().timestamp();
-        Self::store_span(&env, &request_id, String::from_str(&env, "submit_attestation"), issuer.clone(), now, String::from_str(&env, "success"));
+        Self::store_span(
+            &env,
+            &request_id,
+            String::from_str(&env, "submit_attestation"),
+            issuer.clone(),
+            now,
+            String::from_str(&env, "success"),
+        );
 
         env.events().publish(
-            (symbol_short!("attest"), symbol_short!("recorded"), id, subject.clone()),
-            AttestEvent { subject, payload_hash, timestamp },
+            (
+                symbol_short!("attest"),
+                symbol_short!("recorded"),
+                id,
+                subject.clone(),
+            ),
+            AttestEvent {
+                subject,
+                payload_hash,
+                timestamp,
+            },
         );
 
         id
@@ -981,14 +1075,25 @@ impl AnchorKitContract {
         };
         let q_key = StorageKey::Quote(anchor.clone(), next);
         env.storage().persistent().set(&q_key, &quote);
-        env.storage().persistent().extend_ttl(&q_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&q_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let lq_key = StorageKey::LatestQuote(anchor.clone());
         env.storage().persistent().set(&lq_key, &next);
-        env.storage().persistent().extend_ttl(&lq_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&lq_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let now = env.ledger().timestamp();
-        Self::store_span(&env, &request_id, String::from_str(&env, "submit_quote"), anchor, now, String::from_str(&env, "success"));
+        Self::store_span(
+            &env,
+            &request_id,
+            String::from_str(&env, "submit_quote"),
+            anchor,
+            now,
+            String::from_str(&env, "success"),
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1007,16 +1112,24 @@ impl AnchorKitContract {
 
     pub fn get_attestation(env: Env, id: u64) -> Option<Attestation> {
         let key = StorageKey::Attest(id);
-        let mut attestation = env.storage()
-            .persistent()
-            .get::<_, Attestation>(&key)?;
+        let mut attestation = env.storage().persistent().get::<_, Attestation>(&key)?;
         // Bump TTL on read so actively-queried attestations don't expire (#630).
-        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
         // Reflect current revocation status without rewriting every stored attestation.
-        if env.storage().persistent().has(&StorageKey::AttestorRevoked(attestation.issuer.clone())) {
+        if env
+            .storage()
+            .persistent()
+            .has(&StorageKey::AttestorRevoked(attestation.issuer.clone()))
+        {
             attestation.issuer_revoked = true;
         }
-        if env.storage().persistent().has(&StorageKey::AttestationRevoked(id)) {
+        if env
+            .storage()
+            .persistent()
+            .has(&StorageKey::AttestationRevoked(id))
+        {
             return None;
         }
         if let Some(expires_at) = attestation.expires_at {
@@ -1036,11 +1149,21 @@ impl AnchorKitContract {
             .persistent()
             .get::<_, Attestation>(&key)
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
-        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
-        if env.storage().persistent().has(&StorageKey::AttestorRevoked(attestation.issuer.clone())) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        if env
+            .storage()
+            .persistent()
+            .has(&StorageKey::AttestorRevoked(attestation.issuer.clone()))
+        {
             attestation.issuer_revoked = true;
         }
-        if env.storage().persistent().has(&StorageKey::AttestationRevoked(id)) {
+        if env
+            .storage()
+            .persistent()
+            .has(&StorageKey::AttestationRevoked(id))
+        {
             panic_with_error!(&env, ErrorCode::AttestationRevoked);
         }
         if let Some(expires_at) = attestation.expires_at {
@@ -1064,12 +1187,23 @@ impl AnchorKitContract {
         if attestation.issuer_revoked {
             return false;
         }
-        env.storage().persistent().has(&StorageKey::Attestor(attestation.issuer))
+        env.storage()
+            .persistent()
+            .has(&StorageKey::Attestor(attestation.issuer))
     }
 
-    pub fn list_attestations(env: Env, subject: Address, offset: u64, limit: u32) -> Vec<Attestation> {
+    pub fn list_attestations(
+        env: Env,
+        subject: Address,
+        offset: u64,
+        limit: u32,
+    ) -> Vec<Attestation> {
         let max_page_size = Self::get_max_page_size(env.clone());
-        let actual_limit = if limit > max_page_size { max_page_size } else { limit };
+        let actual_limit = if limit > max_page_size {
+            max_page_size
+        } else {
+            limit
+        };
         let mut results = Vec::new(&env);
 
         let count_key = StorageKey::SubjectCount(subject.clone());
@@ -1089,11 +1223,21 @@ impl AnchorKitContract {
             let index_key = StorageKey::SubjectAttestation(subject.clone(), i);
             if let Some(attestation_id) = env.storage().persistent().get::<_, u64>(&index_key) {
                 let main_key = StorageKey::Attest(attestation_id);
-                if let Some(mut attestation) = env.storage().persistent().get::<_, Attestation>(&main_key) {
-                    if env.storage().persistent().has(&StorageKey::AttestorRevoked(attestation.issuer.clone())) {
+                if let Some(mut attestation) =
+                    env.storage().persistent().get::<_, Attestation>(&main_key)
+                {
+                    if env
+                        .storage()
+                        .persistent()
+                        .has(&StorageKey::AttestorRevoked(attestation.issuer.clone()))
+                    {
                         attestation.issuer_revoked = true;
                     }
-                    if env.storage().persistent().has(&StorageKey::AttestationRevoked(attestation_id)) {
+                    if env
+                        .storage()
+                        .persistent()
+                        .has(&StorageKey::AttestationRevoked(attestation_id))
+                    {
                         continue;
                     }
                     if let Some(expires_at) = attestation.expires_at {
@@ -1121,7 +1265,12 @@ impl AnchorKitContract {
     /// the same host-side encoding as on-chain attestation submission, avoiding
     /// divergence that can occur when the module function is called outside the
     /// host context.
-    pub fn compute_payload_hash_public(env: Env, subject: Address, timestamp: u64, data: Bytes) -> BytesN<32> {
+    pub fn compute_payload_hash_public(
+        env: Env,
+        subject: Address,
+        timestamp: u64,
+        data: Bytes,
+    ) -> BytesN<32> {
         compute_payload_hash(&env, &subject, timestamp, &data)
     }
 
@@ -1132,9 +1281,10 @@ impl AnchorKitContract {
             .get::<_, Attestation>(&StorageKey::Attest(attestation_id))
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
 
-        let stored: BytesN<32> = attestation.payload_hash.try_into().unwrap_or_else(|_| {
-            panic_with_error!(&env, ErrorCode::StorageCorrupted)
-        });
+        let stored: BytesN<32> = attestation
+            .payload_hash
+            .try_into()
+            .unwrap_or_else(|_| panic_with_error!(&env, ErrorCode::StorageCorrupted));
         verify_payload_hash(&stored, &expected_hash)
     }
 
@@ -1161,11 +1311,21 @@ impl AnchorKitContract {
         };
         let sess_key = StorageKey::Session(session_id);
         env.storage().persistent().set(&sess_key, &session);
-        env.storage().persistent().extend_ttl(&sess_key, SESSION_LEDGER_TTL, SESSION_LEDGER_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&sess_key, SESSION_LEDGER_TTL, SESSION_LEDGER_TTL);
 
         env.events().publish(
-            (symbol_short!("session"), symbol_short!("created"), session_id),
-            SessionCreatedEvent { session_id, initiator, timestamp: now },
+            (
+                symbol_short!("session"),
+                symbol_short!("created"),
+                session_id,
+            ),
+            SessionCreatedEvent {
+                session_id,
+                initiator,
+                timestamp: now,
+            },
         );
 
         session_id
@@ -1215,15 +1375,26 @@ impl AnchorKitContract {
         };
         let q_key = StorageKey::Quote(anchor.clone(), next);
         env.storage().persistent().set(&q_key, &quote);
-        env.storage().persistent().extend_ttl(&q_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&q_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let lq_key = StorageKey::LatestQuote(anchor.clone());
         env.storage().persistent().set(&lq_key, &next);
-        env.storage().persistent().extend_ttl(&lq_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&lq_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         env.events().publish(
             (symbol_short!("quote"), symbol_short!("submit"), next),
-            QuoteSubmitEvent { quote_id: next, anchor, base_asset, quote_asset, rate, valid_until },
+            QuoteSubmitEvent {
+                quote_id: next,
+                anchor,
+                base_asset,
+                quote_asset,
+                rate,
+                valid_until,
+            },
         );
 
         next
@@ -1232,12 +1403,19 @@ impl AnchorKitContract {
     pub fn receive_quote(env: Env, receiver: Address, anchor: Address, quote_id: u64) -> Quote {
         receiver.require_auth();
         let q_key = StorageKey::Quote(anchor.clone(), quote_id);
-        let quote: Quote = env.storage().persistent().get(&q_key)
+        let quote: Quote = env
+            .storage()
+            .persistent()
+            .get(&q_key)
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
 
         env.events().publish(
             (symbol_short!("quote"), symbol_short!("received"), quote_id),
-            QuoteReceivedEvent { quote_id, receiver, timestamp: env.ledger().timestamp() },
+            QuoteReceivedEvent {
+                quote_id,
+                receiver,
+                timestamp: env.ledger().timestamp(),
+            },
         );
 
         quote
@@ -1255,9 +1433,7 @@ impl AnchorKitContract {
     /// and delete the stale entries, then emit `AuditLogPruned`.
     fn maybe_prune_audit_log(env: &Env, log_id: u64) {
         let inst = env.storage().instance();
-        let max_size: u64 = inst
-            .get(&StorageKey::AuditLogMaxSize)
-            .unwrap_or(u64::MAX);
+        let max_size: u64 = inst.get(&StorageKey::AuditLogMaxSize).unwrap_or(u64::MAX);
         let offset: u64 = inst.get(&key_audit_log_offset(env)).unwrap_or(0u64);
         let live_count = log_id.saturating_sub(offset); // entries [offset, log_id)
         if live_count <= max_size {
@@ -1272,7 +1448,10 @@ impl AnchorKitContract {
         inst.set(&key_audit_log_offset(env), &new_offset);
         env.events().publish(
             (symbol_short!("audit"), symbol_short!("pruned")),
-            AuditLogPruned { pruned_count: to_prune, new_offset },
+            AuditLogPruned {
+                pruned_count: to_prune,
+                new_offset,
+            },
         );
     }
 
@@ -1313,16 +1492,29 @@ impl AnchorKitContract {
         }
 
         let id = Self::next_attestation_id(&env);
-        Self::store_attestation(&env, id, issuer.clone(), subject.clone(), timestamp, payload_hash.clone(), signature, None);
+        Self::store_attestation(
+            &env,
+            id,
+            issuer.clone(),
+            subject.clone(),
+            timestamp,
+            payload_hash.clone(),
+            signature,
+            None,
+        );
 
         env.storage().persistent().set(&used_key, &true);
-        env.storage().persistent().extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         // Get and increment session operation count
         let sopcnt_key = StorageKey::SessionOpCount(session_id);
         let op_index: u64 = env.storage().persistent().get(&sopcnt_key).unwrap_or(0u64);
         env.storage().persistent().set(&sopcnt_key, &(op_index + 1));
-        env.storage().persistent().extend_ttl(&sopcnt_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&sopcnt_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let inst = env.storage().instance();
         let acnt_key = key_audit_counter(&env);
@@ -1349,11 +1541,22 @@ impl AnchorKitContract {
         };
         let audit_key = StorageKey::AuditLog(log_id);
         env.storage().persistent().set(&audit_key, &audit);
-        env.storage().persistent().extend_ttl(&audit_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&audit_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         env.events().publish(
-            (symbol_short!("attest"), symbol_short!("recorded"), id, subject.clone()),
-            AttestEvent { subject, payload_hash, timestamp },
+            (
+                symbol_short!("attest"),
+                symbol_short!("recorded"),
+                id,
+                subject.clone(),
+            ),
+            AttestEvent {
+                subject,
+                payload_hash,
+                timestamp,
+            },
         );
         env.events().publish(
             (symbol_short!("audit"), symbol_short!("logged"), log_id),
@@ -1369,7 +1572,13 @@ impl AnchorKitContract {
         id
     }
 
-    pub fn register_attestor_with_session(env: Env, session_id: u64, attestor: Address, sep10_token: String, sep10_issuer: Address) {
+    pub fn register_attestor_with_session(
+        env: Env,
+        session_id: u64,
+        attestor: Address,
+        sep10_token: String,
+        sep10_issuer: Address,
+    ) {
         Self::require_not_paused(&env);
         if let Err(e) = Self::check_session_expiry(&env, session_id) {
             panic_with_error!(&env, e);
@@ -1383,7 +1592,9 @@ impl AnchorKitContract {
         }
         // Clear any prior revocation marker so re-registered attestors are not
         // permanently flagged as revoked on new attestations.
-        env.storage().persistent().remove(&StorageKey::AttestorRevoked(attestor.clone()));
+        env.storage()
+            .persistent()
+            .remove(&StorageKey::AttestorRevoked(attestor.clone()));
         let inst = env.storage().instance();
         let cnt_key = key_attestor_count(&env);
         let count: u64 = inst.get(&cnt_key).unwrap_or(0u64);
@@ -1393,20 +1604,28 @@ impl AnchorKitContract {
         inst.set(&cnt_key, &(count + 1));
         inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
         env.storage().persistent().set(&key, &true);
-        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let list_key = key_attestor_list(&env);
-        let mut attestors: Vec<Address> = env.storage().persistent()
+        let mut attestors: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
         attestors.push_back(attestor.clone());
         env.storage().persistent().set(&list_key, &attestors);
-        env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let sopcnt_key = StorageKey::SessionOpCount(session_id);
         let op_index: u64 = env.storage().persistent().get(&sopcnt_key).unwrap_or(0u64);
         env.storage().persistent().set(&sopcnt_key, &(op_index + 1));
-        env.storage().persistent().extend_ttl(&sopcnt_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&sopcnt_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let inst = env.storage().instance();
         let acnt_key = key_audit_counter(&env);
@@ -1436,9 +1655,14 @@ impl AnchorKitContract {
         };
         let audit_key = StorageKey::AuditLog(log_id);
         env.storage().persistent().set(&audit_key, &audit);
-        env.storage().persistent().extend_ttl(&audit_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&audit_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
-        env.events().publish((symbol_short!("attestor"), symbol_short!("added"), attestor), ());
+        env.events().publish(
+            (symbol_short!("attestor"), symbol_short!("added"), attestor),
+            (),
+        );
         env.events().publish(
             (symbol_short!("audit"), symbol_short!("logged"), log_id),
             AuditLogEvent {
@@ -1469,7 +1693,9 @@ impl AnchorKitContract {
         inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
 
         let list_key = key_attestor_list(&env);
-        let mut attestors: Vec<Address> = env.storage().persistent()
+        let mut attestors: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
         let mut new_list = Vec::new(&env);
@@ -1479,17 +1705,23 @@ impl AnchorKitContract {
             }
         }
         env.storage().persistent().set(&list_key, &new_list);
-        env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         // Mark the attestor as revoked so historical attestations surface issuer_revoked=true.
         let revoked_key = StorageKey::AttestorRevoked(attestor.clone());
         env.storage().persistent().set(&revoked_key, &true);
-        env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let sopcnt_key = StorageKey::SessionOpCount(session_id);
         let op_index: u64 = env.storage().persistent().get(&sopcnt_key).unwrap_or(0u64);
         env.storage().persistent().set(&sopcnt_key, &(op_index + 1));
-        env.storage().persistent().extend_ttl(&sopcnt_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&sopcnt_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let inst = env.storage().instance();
         let acnt_key = key_audit_counter(&env);
@@ -1519,9 +1751,18 @@ impl AnchorKitContract {
         };
         let audit_key = StorageKey::AuditLog(log_id);
         env.storage().persistent().set(&audit_key, &audit);
-        env.storage().persistent().extend_ttl(&audit_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&audit_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
-        env.events().publish((symbol_short!("attestor"), symbol_short!("removed"), attestor), ());
+        env.events().publish(
+            (
+                symbol_short!("attestor"),
+                symbol_short!("removed"),
+                attestor,
+            ),
+            (),
+        );
         env.events().publish(
             (symbol_short!("audit"), symbol_short!("logged"), log_id),
             AuditLogEvent {
@@ -1563,7 +1804,11 @@ impl AnchorKitContract {
         };
         let mut id = from_id;
         while id <= end {
-            if let Some(log) = env.storage().persistent().get::<_, AuditLog>(&StorageKey::AuditLog(id)) {
+            if let Some(log) = env
+                .storage()
+                .persistent()
+                .get::<_, AuditLog>(&StorageKey::AuditLog(id))
+            {
                 result.push_back(log);
             }
             if id == end {
@@ -1622,7 +1867,10 @@ impl AnchorKitContract {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
         let key = StorageKey::MetadataCache(anchor.clone());
-        let existing: Option<MetadataCache> = env.storage().persistent().get(&key)
+        let existing: Option<MetadataCache> = env
+            .storage()
+            .persistent()
+            .get(&key)
             .or_else(|| env.storage().temporary().get(&key));
         if let Some(existing) = existing {
             let m = &existing.metadata;
@@ -1638,17 +1886,29 @@ impl AnchorKitContract {
             }
         }
         let now = env.ledger().timestamp();
-        let entry = MetadataCache { metadata, cached_at: now, ttl_seconds };
+        let entry = MetadataCache {
+            metadata,
+            cached_at: now,
+            ttl_seconds,
+        };
         if ttl_seconds == 0 {
             // Persistent storage is not subject to network-level eviction within
             // its TTL window, so ttl_seconds=0 ("never expire at app level") is
             // backed by storage that won't disappear under the contract's feet.
             env.storage().persistent().set(&key, &entry);
-            env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
         } else {
-            let ledger_ttl = if ttl_seconds as u32 > MIN_TEMP_TTL { ttl_seconds as u32 } else { MIN_TEMP_TTL };
+            let ledger_ttl = if ttl_seconds as u32 > MIN_TEMP_TTL {
+                ttl_seconds as u32
+            } else {
+                MIN_TEMP_TTL
+            };
             env.storage().temporary().set(&key, &entry);
-            env.storage().temporary().extend_ttl(&key, ledger_ttl, ledger_ttl);
+            env.storage()
+                .temporary()
+                .extend_ttl(&key, ledger_ttl, ledger_ttl);
         }
 
         Self::add_to_cached_anchors(&env, &anchor);
@@ -1657,7 +1917,10 @@ impl AnchorKitContract {
     pub fn get_cached_metadata(env: Env, anchor: Address) -> AnchorMetadata {
         let key = StorageKey::MetadataCache(anchor);
         // ttl_seconds=0 entries are stored persistently; all others are temporary.
-        let entry: MetadataCache = env.storage().persistent().get(&key)
+        let entry: MetadataCache = env
+            .storage()
+            .persistent()
+            .get(&key)
             .or_else(|| env.storage().temporary().get(&key))
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::CacheNotFound));
         let now = env.ledger().timestamp();
@@ -1673,9 +1936,17 @@ impl AnchorKitContract {
     /// `Ok(0)` means the entry was just cached at the current ledger timestamp.
     pub fn get_cache_age_seconds(env: Env, anchor: Address) -> Result<u64, ErrorCode> {
         let key = StorageKey::MetadataCache(anchor);
-        let entry: MetadataCache = env.storage().persistent().get(&key)
+        let entry: MetadataCache = env
+            .storage()
+            .persistent()
+            .get(&key)
             .ok_or(ErrorCode::CacheNotFound)
-            .or_else(|_| env.storage().temporary().get(&key).ok_or(ErrorCode::CacheNotFound))?;
+            .or_else(|_| {
+                env.storage()
+                    .temporary()
+                    .get(&key)
+                    .ok_or(ErrorCode::CacheNotFound)
+            })?;
         let now = env.ledger().timestamp();
         Ok(now.saturating_sub(entry.cached_at))
     }
@@ -1684,7 +1955,10 @@ impl AnchorKitContract {
     pub fn refresh_metadata_cache(env: Env, anchor: Address) -> AnchorMetadata {
         Self::require_admin(&env);
         let key = StorageKey::MetadataCache(anchor.clone());
-        let entry: MetadataCache = env.storage().persistent().get(&key)
+        let entry: MetadataCache = env
+            .storage()
+            .persistent()
+            .get(&key)
             .or_else(|| env.storage().temporary().get(&key))
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::CacheNotFound));
         let metadata = entry.metadata.clone();
@@ -1702,7 +1976,9 @@ impl AnchorKitContract {
                 }
             }
             env.storage().persistent().set(&list_key, &new_list);
-            env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+            env.storage()
+                .persistent()
+                .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
         }
         metadata
     }
@@ -1770,12 +2046,16 @@ impl AnchorKitContract {
         let weighted_sum = UPTIME_WEIGHT * uptime_score
             + REPUTATION_WEIGHT * reputation_score
             + SPEED_WEIGHT * speed_score;
-        
+
         // Divide by (100 * SCALE_FACTOR) to get final score: 100 for weights, SCALE_FACTOR for precision
         let health_score = weighted_sum / (100 * SCALE_FACTOR);
 
         // Ensure score is capped at 100
-        let final_score = if health_score > 100 { 100 } else { health_score as u32 };
+        let final_score = if health_score > 100 {
+            100
+        } else {
+            health_score as u32
+        };
 
         // Issue #464: enforce configurable minimum acceptable health score.
         // When key_health_threshold is set (> 0), reject anchors whose computed
@@ -1792,7 +2072,6 @@ impl AnchorKitContract {
         final_score
     }
 
-
     /// Issue #276: list all anchors that currently have active metadata cache entries.
     ///
     /// Filters out any anchor whose temporary cache keys have all been evicted, and
@@ -1800,7 +2079,9 @@ impl AnchorKitContract {
     /// unboundedly after natural TTL eviction.
     pub fn list_cached_anchors(env: Env) -> Vec<Address> {
         let list_key = soroban_sdk::vec![&env, symbol_short!("CANCHORS")];
-        let list: Vec<Address> = env.storage().persistent()
+        let list: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
 
@@ -1825,7 +2106,9 @@ impl AnchorKitContract {
         // Write back the pruned list so stale entries don't accumulate in persistent storage.
         if pruned {
             env.storage().persistent().set(&list_key, &active);
-            env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+            env.storage()
+                .persistent()
+                .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
         }
 
         active
@@ -1835,7 +2118,13 @@ impl AnchorKitContract {
     // Capabilities cache
     // -----------------------------------------------------------------------
 
-    pub fn cache_capabilities(env: Env, anchor: Address, toml_url: String, capabilities: Vec<u32>, ttl_seconds: u64) {
+    pub fn cache_capabilities(
+        env: Env,
+        anchor: Address,
+        toml_url: String,
+        capabilities: Vec<u32>,
+        ttl_seconds: u64,
+    ) {
         Self::require_admin(&env);
 
         // Issue #280: Validate toml_url before caching
@@ -1851,18 +2140,32 @@ impl AnchorKitContract {
         }
 
         let now = env.ledger().timestamp();
-        let entry = CapabilitiesCache { toml_url, capabilities, cached_at: now, ttl_seconds };
+        let entry = CapabilitiesCache {
+            toml_url,
+            capabilities,
+            cached_at: now,
+            ttl_seconds,
+        };
         let key = StorageKey::CapabilitiesCache(anchor.clone());
-        let ledger_ttl = if ttl_seconds as u32 > MIN_TEMP_TTL { ttl_seconds as u32 } else { MIN_TEMP_TTL };
+        let ledger_ttl = if ttl_seconds as u32 > MIN_TEMP_TTL {
+            ttl_seconds as u32
+        } else {
+            MIN_TEMP_TTL
+        };
         env.storage().temporary().set(&key, &entry);
-        env.storage().temporary().extend_ttl(&key, ledger_ttl, ledger_ttl);
+        env.storage()
+            .temporary()
+            .extend_ttl(&key, ledger_ttl, ledger_ttl);
 
         Self::add_to_cached_anchors(&env, &anchor);
     }
 
     pub fn get_cached_capabilities(env: Env, anchor: Address) -> CapabilitiesCache {
         let key = StorageKey::CapabilitiesCache(anchor);
-        let entry: CapabilitiesCache = env.storage().temporary().get(&key)
+        let entry: CapabilitiesCache = env
+            .storage()
+            .temporary()
+            .get(&key)
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::CacheNotFound));
         let now = env.ledger().timestamp();
         // ttl_seconds = 0 means "never expire" — skip the expiry check to prevent refresh loops
@@ -1890,7 +2193,9 @@ impl AnchorKitContract {
                     }
                 }
                 env.storage().persistent().set(&list_key, &new_list);
-                env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
             }
         }
     }
@@ -1901,7 +2206,9 @@ impl AnchorKitContract {
     pub fn invalidate_all_caches(env: Env) {
         Self::require_admin(&env);
         let list_key = soroban_sdk::vec![&env, symbol_short!("CANCHORS")];
-        let anchors: Vec<Address> = env.storage().persistent()
+        let anchors: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
 
@@ -1932,12 +2239,12 @@ impl AnchorKitContract {
         // Clear the anchor list
         let empty: Vec<Address> = Vec::new(&env);
         env.storage().persistent().set(&list_key, &empty);
-        env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
-        env.events().publish(
-            (symbol_short!("cache"), symbol_short!("invall")),
-            count,
-        );
+        env.events()
+            .publish((symbol_short!("cache"), symbol_short!("invall")), count);
     }
 
     // -----------------------------------------------------------------------
@@ -1975,7 +2282,8 @@ impl AnchorKitContract {
         }
 
         // Track migration completion to prevent re-running the same migration
-        let name_str = core::str::from_utf8(&name_buf[..name_len]).unwrap_or_else(|_| panic_with_error!(&env, ErrorCode::ValidationError));
+        let name_str = core::str::from_utf8(&name_buf[..name_len])
+            .unwrap_or_else(|_| panic_with_error!(&env, ErrorCode::ValidationError));
         let migration_key = Symbol::new(&env, name_str);
         if inst.has(&migration_key) {
             panic_with_error!(&env, ErrorCode::ValidationError);
@@ -1998,8 +2306,12 @@ impl AnchorKitContract {
 
     pub fn set_health_failure_threshold(env: Env, threshold: u32) {
         Self::require_admin(&env);
-        env.storage().instance().set(&key_health_threshold(&env), &threshold);
-        env.storage().instance().extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
+        env.storage()
+            .instance()
+            .set(&key_health_threshold(&env), &threshold);
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
     }
 
     pub fn update_health_status(
@@ -2018,7 +2330,9 @@ impl AnchorKitContract {
         };
         let key = StorageKey::Health(anchor.clone());
         env.storage().persistent().set(&key, &status);
-        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         let threshold: u32 = env
             .storage()
@@ -2036,10 +2350,18 @@ impl AnchorKitContract {
                 if meta.is_active {
                     meta.is_active = false;
                     env.storage().persistent().set(&meta_key, &meta);
-                    env.storage().persistent().extend_ttl(&meta_key, PERSISTENT_TTL, PERSISTENT_TTL);
+                    env.storage().persistent().extend_ttl(
+                        &meta_key,
+                        PERSISTENT_TTL,
+                        PERSISTENT_TTL,
+                    );
                     env.events().publish(
                         (symbol_short!("anchor"), symbol_short!("deactiv")),
-                        AnchorDeactivated { anchor, failure_count, threshold },
+                        AnchorDeactivated {
+                            anchor,
+                            failure_count,
+                            threshold,
+                        },
                     );
                 }
             }
@@ -2061,7 +2383,9 @@ impl AnchorKitContract {
         let quote = env.storage().persistent().get::<_, Quote>(&key);
         // Bump TTL on read so actively-queried quotes don't expire (#1164).
         if quote.is_some() {
-            env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
         }
         quote
     }
@@ -2078,7 +2402,7 @@ impl AnchorKitContract {
     ) {
         Self::require_admin(&env);
         let meta_key = StorageKey::AnchorMeta(anchor.clone());
-        
+
         // Preserve existing is_active state: only set to true if no prior record exists.
         // This ensures update_health_status's auto-deactivation is not silently undone
         // by an unrelated metadata update.
@@ -2088,7 +2412,7 @@ impl AnchorKitContract {
             .get::<_, AnchorMetadata>(&meta_key)
             .map(|existing| existing.is_active)
             .unwrap_or(true);
-        
+
         let meta = AnchorMetadata {
             anchor: anchor.clone(),
             reputation_score,
@@ -2100,23 +2424,30 @@ impl AnchorKitContract {
             homepage_url,
         };
         env.storage().persistent().set(&meta_key, &meta);
-        env.storage().persistent().extend_ttl(&meta_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&meta_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         // Maintain ANCHLIST
         let list_key = key_anchor_list(&env);
-        let mut list: Vec<Address> = env.storage().persistent()
+        let mut list: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
         if !list.contains(&anchor) {
             list.push_back(anchor);
             env.storage().persistent().set(&list_key, &list);
-            env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+            env.storage()
+                .persistent()
+                .extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
         }
     }
 
     pub fn get_routing_anchors(env: Env) -> Vec<Address> {
         let list_key = key_anchor_list(&env);
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env))
     }
@@ -2131,7 +2462,9 @@ impl AnchorKitContract {
         match jurisdiction {
             Some(j) => {
                 env.storage().persistent().set(&key, &j);
-                env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
             }
             None => {
                 env.storage().persistent().remove(&key);
@@ -2180,7 +2513,9 @@ impl AnchorKitContract {
     fn select_routing_quote(env: &Env, options: &RoutingOptions, emit_events: bool) -> Quote {
         let now = env.ledger().timestamp();
         let list_key = key_anchor_list(&env);
-        let anchors: Vec<Address> = env.storage().persistent()
+        let anchors: Vec<Address> = env
+            .storage()
+            .persistent()
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
 
@@ -2192,14 +2527,17 @@ impl AnchorKitContract {
                 Some(m) => m,
                 None => continue,
             };
-            if !meta.is_active { continue; }
-            if meta.reputation_score < options.min_reputation { continue; }
+            if !meta.is_active {
+                continue;
+            }
+            if meta.reputation_score < options.min_reputation {
+                continue;
+            }
 
             // Check jurisdiction filter (regulated flows)
             if options.jurisdiction.is_some() {
                 let j_key = StorageKey::AnchorJurisdiction(anchor.clone());
-                let anchor_jurisdiction: Option<String> =
-                    env.storage().persistent().get(&j_key);
+                let anchor_jurisdiction: Option<String> = env.storage().persistent().get(&j_key);
                 if !crate::types::anchor_matches_jurisdiction(
                     &options.jurisdiction,
                     &anchor_jurisdiction,
@@ -2211,10 +2549,11 @@ impl AnchorKitContract {
             // Check KYC requirement filter
             if options.require_kyc {
                 let services_key = StorageKey::Services(anchor.clone());
-                let services_record: AnchorServices = match env.storage().persistent().get(&services_key) {
-                    Some(sr) => sr,
-                    None => continue,
-                };
+                let services_record: AnchorServices =
+                    match env.storage().persistent().get(&services_key) {
+                        Some(sr) => sr,
+                        None => continue,
+                    };
                 if !services_record.services.contains(SERVICE_KYC) {
                     continue;
                 }
@@ -2245,7 +2584,9 @@ impl AnchorKitContract {
                 }
                 continue;
             }
-            if options.request.amount < quote.minimum_amount || options.request.amount > quote.maximum_amount {
+            if options.request.amount < quote.minimum_amount
+                || options.request.amount > quote.maximum_amount
+            {
                 continue;
             }
 
@@ -2271,8 +2612,12 @@ impl AnchorKitContract {
                     Some(m) => m,
                     None => continue,
                 };
-                if !meta.is_active { continue; }
-                if meta.reputation_score < options.min_reputation { continue; }
+                if !meta.is_active {
+                    continue;
+                }
+                if meta.reputation_score < options.min_reputation {
+                    continue;
+                }
 
                 // Check jurisdiction filter (regulated flows)
                 if options.jurisdiction.is_some() {
@@ -2290,10 +2635,11 @@ impl AnchorKitContract {
                 // Check KYC requirement filter
                 if options.require_kyc {
                     let services_key = StorageKey::Services(fallback_anchor.clone());
-                    let services_record: AnchorServices = match env.storage().persistent().get(&services_key) {
-                        Some(sr) => sr,
-                        None => continue,
-                    };
+                    let services_record: AnchorServices =
+                        match env.storage().persistent().get(&services_key) {
+                            Some(sr) => sr,
+                            None => continue,
+                        };
                     if !services_record.services.contains(SERVICE_KYC) {
                         continue;
                     }
@@ -2324,7 +2670,9 @@ impl AnchorKitContract {
                     }
                     continue;
                 }
-                if options.request.amount < quote.minimum_amount || options.request.amount > quote.maximum_amount {
+                if options.request.amount < quote.minimum_amount
+                    || options.request.amount > quote.maximum_amount
+                {
                     continue;
                 }
 
@@ -2337,7 +2685,9 @@ impl AnchorKitContract {
             panic_with_error!(&env, ErrorCode::NoQuotesAvailable);
         }
 
-        let strategy_sym = options.strategy.get(0)
+        let strategy_sym = options
+            .strategy
+            .get(0)
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::NoQuotesAvailable));
 
         let lowest_fee_sym = Symbol::new(&env, "LowestFee");
@@ -2351,7 +2701,8 @@ impl AnchorKitContract {
             && strategy_sym != fastest_sym
             && strategy_sym != reputation_sym
             && strategy_sym != balanced_sym
-            && strategy_sym != weighted_sym {
+            && strategy_sym != weighted_sym
+        {
             panic_with_error!(&env, ErrorCode::InvalidStrategy);
         }
 
@@ -2366,13 +2717,17 @@ impl AnchorKitContract {
         } else if strategy_sym == fastest_sym {
             // Need settlement time from metadata
             let meta_key = StorageKey::AnchorMeta(best.anchor.clone());
-            let mut best_time: u64 = env.storage().persistent()
+            let mut best_time: u64 = env
+                .storage()
+                .persistent()
                 .get::<_, AnchorMetadata>(&meta_key)
                 .map(|m| m.average_settlement_time)
                 .unwrap_or(u64::MAX);
             for q in candidates.iter() {
                 let mk = StorageKey::AnchorMeta(q.anchor.clone());
-                let t = env.storage().persistent()
+                let t = env
+                    .storage()
+                    .persistent()
                     .get::<_, AnchorMetadata>(&mk)
                     .map(|m| m.average_settlement_time)
                     .unwrap_or(u64::MAX);
@@ -2383,13 +2738,17 @@ impl AnchorKitContract {
             }
         } else if strategy_sym == reputation_sym {
             let meta_key = StorageKey::AnchorMeta(best.anchor.clone());
-            let mut best_rep: u32 = env.storage().persistent()
+            let mut best_rep: u32 = env
+                .storage()
+                .persistent()
                 .get::<_, AnchorMetadata>(&meta_key)
                 .map(|m| m.reputation_score)
                 .unwrap_or(0);
             for q in candidates.iter() {
                 let mk = StorageKey::AnchorMeta(q.anchor.clone());
-                let rep = env.storage().persistent()
+                let rep = env
+                    .storage()
+                    .persistent()
                     .get::<_, AnchorMetadata>(&mk)
                     .map(|m| m.reputation_score)
                     .unwrap_or(0);
@@ -2404,20 +2763,28 @@ impl AnchorKitContract {
             // fee_percentage = 0 or settlement_time = 0 contribute 0 to avoid division by zero.
             let balanced_score = |env: &Env, q: &Quote| -> u64 {
                 let mk = StorageKey::AnchorMeta(q.anchor.clone());
-                let meta: AnchorMetadata = env.storage().persistent()
-                    .get(&mk)
-                    .unwrap_or(AnchorMetadata {
-                        anchor: q.anchor.clone(),
-                        reputation_score: 0,
-                        average_settlement_time: 0,
-                        liquidity_score: 0,
-                        uptime_percentage: 0,
-                        total_volume: 0,
-                        is_active: false,
-                        homepage_url: None,
-                    });
-                let fee_term = if q.fee_percentage > 0 { 40_000 / q.fee_percentage as u64 } else { 0 };
-                let time_term = 30_000u64.checked_div(meta.average_settlement_time).unwrap_or(0);
+                let meta: AnchorMetadata =
+                    env.storage()
+                        .persistent()
+                        .get(&mk)
+                        .unwrap_or(AnchorMetadata {
+                            anchor: q.anchor.clone(),
+                            reputation_score: 0,
+                            average_settlement_time: 0,
+                            liquidity_score: 0,
+                            uptime_percentage: 0,
+                            total_volume: 0,
+                            is_active: false,
+                            homepage_url: None,
+                        });
+                let fee_term = if q.fee_percentage > 0 {
+                    40_000 / q.fee_percentage as u64
+                } else {
+                    0
+                };
+                let time_term = 30_000u64
+                    .checked_div(meta.average_settlement_time)
+                    .unwrap_or(0);
                 // Scale reputation (0–10_000) to a 0–3_000 range to match the weight of other terms.
                 let rep_term = meta.reputation_score as u64 * 3_000 / 10_000;
                 fee_term + time_term + rep_term
@@ -2436,14 +2803,16 @@ impl AnchorKitContract {
             // Higher health score = higher probability of selection
             let health_score = |env: &Env, q: &Quote| -> i64 {
                 let health_key = StorageKey::Health(q.anchor.clone());
-                let health: HealthStatus = env.storage().persistent()
-                    .get(&health_key)
-                    .unwrap_or(HealthStatus {
-                        anchor: q.anchor.clone(),
-                        latency_ms: 0,
-                        failure_count: 0,
-                        availability_percent: 100,
-                    });
+                let health: HealthStatus =
+                    env.storage()
+                        .persistent()
+                        .get(&health_key)
+                        .unwrap_or(HealthStatus {
+                            anchor: q.anchor.clone(),
+                            latency_ms: 0,
+                            failure_count: 0,
+                            availability_percent: 100,
+                        });
                 let score = health.availability_percent as i64 - (health.failure_count as i64 * 10);
                 score.max(0)
             };
@@ -2505,7 +2874,13 @@ impl AnchorKitContract {
     // Anchor Info Discovery
     // -----------------------------------------------------------------------
 
-    pub fn fetch_anchor_info(env: Env, anchor: Address, toml_data: StellarToml, network_passphrase: String, ttl_override: Option<u64>) {
+    pub fn fetch_anchor_info(
+        env: Env,
+        anchor: Address,
+        toml_data: StellarToml,
+        network_passphrase: String,
+        ttl_override: Option<u64>,
+    ) {
         anchor.require_auth();
 
         // Validate network_passphrase matches a known network before caching.
@@ -2531,7 +2906,9 @@ impl AnchorKitContract {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
         let mut toml_np_buf = [0u8; 256];
-        toml_data.network_passphrase.copy_into_slice(&mut toml_np_buf[..toml_np_len]);
+        toml_data
+            .network_passphrase
+            .copy_into_slice(&mut toml_np_buf[..toml_np_len]);
         let toml_np_str = core::str::from_utf8(&toml_np_buf[..toml_np_len]).unwrap_or("");
         if toml_np_str != np_str {
             panic_with_error!(&env, ErrorCode::ValidationError);
@@ -2543,7 +2920,9 @@ impl AnchorKitContract {
             panic_with_error!(&env, ErrorCode::InvalidEndpointFormat);
         }
         let mut ts_buf = [0u8; 2048];
-        toml_data.transfer_server.copy_into_slice(&mut ts_buf[..ts_len]);
+        toml_data
+            .transfer_server
+            .copy_into_slice(&mut ts_buf[..ts_len]);
         let transfer_server_str = core::str::from_utf8(&ts_buf[..ts_len]).unwrap_or("");
         if validate_anchor_domain(transfer_server_str).is_err() {
             panic_with_error!(&env, ErrorCode::InvalidEndpointFormat);
@@ -2567,9 +2946,15 @@ impl AnchorKitContract {
             ttl_seconds,
         };
         let key = StorageKey::TomlCache(anchor.clone());
-        let ledger_ttl = if ttl_seconds as u32 > MIN_TEMP_TTL { ttl_seconds as u32 } else { MIN_TEMP_TTL };
+        let ledger_ttl = if ttl_seconds as u32 > MIN_TEMP_TTL {
+            ttl_seconds as u32
+        } else {
+            MIN_TEMP_TTL
+        };
         env.storage().temporary().set(&key, &cached);
-        env.storage().temporary().extend_ttl(&key, ledger_ttl, ledger_ttl);
+        env.storage()
+            .temporary()
+            .extend_ttl(&key, ledger_ttl, ledger_ttl);
 
         Self::add_to_cached_anchors(&env, &anchor);
     }
@@ -2590,7 +2975,7 @@ impl AnchorKitContract {
     pub fn refresh_anchor_info(env: Env, anchor: Address, force: bool) {
         anchor.require_auth();
         let key = StorageKey::TomlCache(anchor);
-        
+
         if force {
             env.storage().temporary().remove(&key);
         } else if let Some(cached) = env.storage().temporary().get::<_, CachedToml>(&key) {
@@ -2629,7 +3014,11 @@ impl AnchorKitContract {
         Ok(toml.fiat_currencies)
     }
 
-    pub fn get_anchor_asset_info(env: Env, anchor: Address, asset_code: String) -> Result<AssetInfo, ErrorCode> {
+    pub fn get_anchor_asset_info(
+        env: Env,
+        anchor: Address,
+        asset_code: String,
+    ) -> Result<AssetInfo, ErrorCode> {
         let toml = Self::get_anchor_toml(env.clone(), anchor)?;
         for asset in toml.currencies.iter() {
             if asset.code == asset_code {
@@ -2639,7 +3028,11 @@ impl AnchorKitContract {
         Err(ErrorCode::ValidationError)
     }
 
-    pub fn get_anchor_deposit_limits(env: Env, anchor: Address, asset_code: String) -> Result<(u64, u64), ErrorCode> {
+    pub fn get_anchor_deposit_limits(
+        env: Env,
+        anchor: Address,
+        asset_code: String,
+    ) -> Result<(u64, u64), ErrorCode> {
         let key = StorageKey::TomlCache(anchor.clone());
         if !env.storage().temporary().has(&key) {
             return Err(ErrorCode::CacheNotFound);
@@ -2648,7 +3041,11 @@ impl AnchorKitContract {
         Ok((asset.deposit_min_amount, asset.deposit_max_amount))
     }
 
-    pub fn get_anchor_withdrawal_limits(env: Env, anchor: Address, asset_code: String) -> Result<(u64, u64), ErrorCode> {
+    pub fn get_anchor_withdrawal_limits(
+        env: Env,
+        anchor: Address,
+        asset_code: String,
+    ) -> Result<(u64, u64), ErrorCode> {
         let key = StorageKey::TomlCache(anchor.clone());
         if !env.storage().temporary().has(&key) {
             return Err(ErrorCode::CacheNotFound);
@@ -2657,7 +3054,11 @@ impl AnchorKitContract {
         Ok((asset.withdrawal_min_amount, asset.withdrawal_max_amount))
     }
 
-    pub fn get_anchor_deposit_fees(env: Env, anchor: Address, asset_code: String) -> Result<(u64, u32), ErrorCode> {
+    pub fn get_anchor_deposit_fees(
+        env: Env,
+        anchor: Address,
+        asset_code: String,
+    ) -> Result<(u64, u32), ErrorCode> {
         let key = StorageKey::TomlCache(anchor.clone());
         if !env.storage().temporary().has(&key) {
             return Err(ErrorCode::CacheNotFound);
@@ -2666,7 +3067,11 @@ impl AnchorKitContract {
         Ok((asset.deposit_fee_fixed, asset.deposit_fee_percent))
     }
 
-    pub fn get_anchor_withdrawal_fees(env: Env, anchor: Address, asset_code: String) -> Result<(u64, u32), ErrorCode> {
+    pub fn get_anchor_withdrawal_fees(
+        env: Env,
+        anchor: Address,
+        asset_code: String,
+    ) -> Result<(u64, u32), ErrorCode> {
         let key = StorageKey::TomlCache(anchor.clone());
         if !env.storage().temporary().has(&key) {
             return Err(ErrorCode::CacheNotFound);
@@ -2738,7 +3143,13 @@ impl AnchorKitContract {
     /// - `rate` is zero
     /// - `minimum_amount` exceeds `maximum_amount`
     /// - `valid_until` is not strictly in the future
-    fn validate_quote_params(env: &Env, rate: u64, minimum_amount: u64, maximum_amount: u64, valid_until: u64) {
+    fn validate_quote_params(
+        env: &Env,
+        rate: u64,
+        minimum_amount: u64,
+        maximum_amount: u64,
+        valid_until: u64,
+    ) {
         if rate == 0 {
             panic_with_error!(env, ErrorCode::InvalidQuote);
         }
@@ -2802,8 +3213,15 @@ impl AnchorKitContract {
         if now >= session.expires_at {
             // Publish the event on the error path so it's observable before panic
             env.events().publish(
-                (symbol_short!("session"), symbol_short!("expired"), session_id),
-                SessionExpired { session_id, expired_at: now },
+                (
+                    symbol_short!("session"),
+                    symbol_short!("expired"),
+                    session_id,
+                ),
+                SessionExpired {
+                    session_id,
+                    expired_at: now,
+                },
             );
             return Err(ErrorCode::SessionExpired);
         }
@@ -2843,13 +3261,23 @@ impl AnchorKitContract {
         };
         let key = StorageKey::Attest(id);
         env.storage().persistent().set(&key, &attestation);
-        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         // Per-attestor count
         let attestor_count_key = StorageKey::PerAttestorCount(issuer);
-        let attestor_count: u64 = env.storage().persistent().get(&attestor_count_key).unwrap_or(0);
-        env.storage().persistent().set(&attestor_count_key, &(attestor_count + 1));
-        env.storage().persistent().extend_ttl(&attestor_count_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        let attestor_count: u64 = env
+            .storage()
+            .persistent()
+            .get(&attestor_count_key)
+            .unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&attestor_count_key, &(attestor_count + 1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&attestor_count_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         // Subject-specific index for pagination support (#215)
         // Store only the ID to save storage space (O(1) extra space)
@@ -2858,7 +3286,9 @@ impl AnchorKitContract {
 
         let subj_att_key = StorageKey::SubjectAttestation(subject.clone(), count);
         env.storage().persistent().set(&subj_att_key, &id);
-        env.storage().persistent().extend_ttl(&subj_att_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&subj_att_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         env.storage().persistent().set(&count_key, &(count + 1));
         let total_key = symbol_short!("TOTALCNT");
@@ -2869,7 +3299,14 @@ impl AnchorKitContract {
             .extend_ttl(&count_key, PERSISTENT_TTL, PERSISTENT_TTL);
     }
 
-    fn store_span(env: &Env, request_id: &RequestId, operation: String, actor: Address, now: u64, status: String) {
+    fn store_span(
+        env: &Env,
+        request_id: &RequestId,
+        operation: String,
+        actor: Address,
+        now: u64,
+        status: String,
+    ) {
         let span = TracingSpan {
             request_id: request_id.clone(),
             operation,
@@ -2880,7 +3317,9 @@ impl AnchorKitContract {
         };
         let key = StorageKey::Span(request_id.id.clone());
         env.storage().temporary().set(&key, &span);
-        env.storage().temporary().extend_ttl(&key, SPAN_TTL, SPAN_TTL);
+        env.storage()
+            .temporary()
+            .extend_ttl(&key, SPAN_TTL, SPAN_TTL);
     }
 
     /// Verifies that the attestation signature is valid for the given payload hash
@@ -2897,55 +3336,55 @@ impl AnchorKitContract {
     ///
     /// Panics with `ErrorCode::UnauthorizedAttestor` if no valid signature is found
     /// or if the signature format is invalid.
-fn verify_attestation_signature(
-    env: &Env,
-    issuer: &Address,
-    payload_hash: &Bytes,
-    signature: &Bytes,
-) {
-    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+    fn verify_attestation_signature(
+        env: &Env,
+        issuer: &Address,
+        payload_hash: &Bytes,
+        signature: &Bytes,
+    ) {
+        use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
-    // Retrieve the list of registered public keys for the issuer.
-    let keys: Vec<Bytes> = env
-        .storage()
-        .persistent()
-        .get(&StorageKey::Sep10Key(issuer.clone()))
-        .unwrap_or_else(|| panic_with_error!(env, ErrorCode::UnauthorizedAttestor));
+        // Retrieve the list of registered public keys for the issuer.
+        let keys: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&StorageKey::Sep10Key(issuer.clone()))
+            .unwrap_or_else(|| panic_with_error!(env, ErrorCode::UnauthorizedAttestor));
 
-    if signature.len() != 64 {
+        if signature.len() != 64 {
+            panic_with_error!(env, ErrorCode::UnauthorizedAttestor);
+        }
+        let mut sig_arr = [0u8; 64];
+        signature.copy_into_slice(&mut sig_arr);
+        let dalek_sig = Signature::from_bytes(&sig_arr);
+
+        let mut msg = alloc::vec::Vec::with_capacity(payload_hash.len() as usize);
+        msg.resize(payload_hash.len() as usize, 0u8);
+        payload_hash.copy_into_slice(&mut msg);
+
+        // Try each registered key until one successfully verifies the signature.
+        // This allows key rotation: an issuer can have up to MAX_VERIFYING_KEYS active keys,
+        // and any one of them can be used to sign attestations.
+        for key in keys.iter() {
+            if key.len() != 32 {
+                continue;
+            }
+            // Use non-trapping verification: convert to VerifyingKey and call verify(),
+            // which returns a Result instead of trapping. This allows the loop to try
+            // the next key on failure.
+            if let Ok(verifying_key) = VerifyingKey::from_bytes(&key.clone().try_into().unwrap()) {
+                if verifying_key.verify(&msg, &dalek_sig).is_ok() {
+                    // Signature verified with this key
+                    return;
+                }
+                // Signature did not verify with this key; try the next one
+            }
+            // Key format invalid; try the next one
+        }
+
+        // If we reach this point, no key verified the signature.
         panic_with_error!(env, ErrorCode::UnauthorizedAttestor);
     }
-    let mut sig_arr = [0u8; 64];
-    signature.copy_into_slice(&mut sig_arr);
-    let dalek_sig = Signature::from_bytes(&sig_arr);
-
-    let mut msg = alloc::vec::Vec::with_capacity(payload_hash.len() as usize);
-    msg.resize(payload_hash.len() as usize, 0u8);
-    payload_hash.copy_into_slice(&mut msg);
-
-    // Try each registered key until one successfully verifies the signature.
-    // This allows key rotation: an issuer can have up to MAX_VERIFYING_KEYS active keys,
-    // and any one of them can be used to sign attestations.
-    for key in keys.iter() {
-        if key.len() != 32 {
-            continue;
-        }
-        // Use non-trapping verification: convert to VerifyingKey and call verify(),
-        // which returns a Result instead of trapping. This allows the loop to try
-        // the next key on failure.
-        if let Ok(verifying_key) = VerifyingKey::from_bytes(&key.clone().try_into().unwrap()) {
-            if verifying_key.verify(&msg, &dalek_sig).is_ok() {
-                // Signature verified with this key
-                return;
-            }
-            // Signature did not verify with this key; try the next one
-        }
-        // Key format invalid; try the next one
-    }
-
-    // If we reach this point, no key verified the signature.
-    panic_with_error!(env, ErrorCode::UnauthorizedAttestor);
-}
 
     pub fn get_rate_limit_rejections(env: Env, attestor: Address) -> u64 {
         crate::rate_limiter::RateLimiter::get_rate_limit_rejections(env, attestor)

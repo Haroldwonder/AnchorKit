@@ -2,7 +2,10 @@
 
 use crate::contract::{AnchorKitContract, AnchorKitContractClient};
 use crate::types::AnchorMetadata;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env,
+};
 
 /// Helper to create a test environment with initialized contract
 fn setup_test_env() -> (Env, AnchorKitContractClient<'static>, Address, Address) {
@@ -45,7 +48,7 @@ fn test_perfect_health_score() {
     client.cache_metadata(&anchor, &metadata, &3600);
 
     let score = client.get_anchor_health_score(&anchor);
-    
+
     // Expected: (40 * 100 + 35 * 100 + 25 * 100) / 100 = 100
     assert_eq!(score, 100);
 }
@@ -59,7 +62,7 @@ fn test_good_health_score() {
     client.cache_metadata(&anchor, &metadata, &3600);
 
     let score = client.get_anchor_health_score(&anchor);
-    
+
     // Expected: (40 * 95 + 35 * 85 + 25 * 80) / 100 = 87.75 → 87
     assert_eq!(score, 87);
 }
@@ -73,7 +76,7 @@ fn test_acceptable_health_score() {
     client.cache_metadata(&anchor, &metadata, &3600);
 
     let score = client.get_anchor_health_score(&anchor);
-    
+
     // Expected: (40 * 80 + 35 * 70 + 25 * 60) / 100 = 71.5 → 71
     assert_eq!(score, 71);
 }
@@ -87,7 +90,7 @@ fn test_poor_health_score() {
     client.cache_metadata(&anchor, &metadata, &3600);
 
     let score = client.get_anchor_health_score(&anchor);
-    
+
     // Expected: (40 * 50 + 35 * 40 + 25 * 40) / 100 = 44
     assert_eq!(score, 44);
 }
@@ -101,7 +104,7 @@ fn test_very_poor_health_score() {
     client.cache_metadata(&anchor, &metadata, &3600);
 
     let score = client.get_anchor_health_score(&anchor);
-    
+
     // Expected: (40 * 20 + 35 * 10 + 25 * 20) / 100 = 16.5 → 16
     assert_eq!(score, 16);
 }
@@ -173,7 +176,7 @@ fn test_zero_values() {
     client.cache_metadata(&anchor, &metadata, &3600);
 
     let score = client.get_anchor_health_score(&anchor);
-    
+
     // Expected: (40 * 0 + 35 * 0 + 25 * 20) / 100 = 5
     assert_eq!(score, 5);
 }
@@ -202,7 +205,7 @@ fn test_multiple_anchors() {
     // Verify scores are different and in expected order
     assert!(score1 > score2);
     assert!(score2 > score3);
-    
+
     // Verify approximate values
     assert!(score1 >= 90); // Excellent anchor
     assert!(score2 >= 60 && score2 <= 75); // Acceptable anchor
@@ -218,7 +221,7 @@ fn test_edge_case_max_values() {
     client.cache_metadata(&anchor, &metadata, &3600);
 
     let score = client.get_anchor_health_score(&anchor);
-    
+
     // Should be capped at 100
     assert_eq!(score, 100);
 }
@@ -246,5 +249,8 @@ fn test_realistic_scenarios() {
     let metadata = create_metadata(&env, &anchor_struggling, 6000, 5000, 3000);
     client.cache_metadata(&anchor_struggling, &metadata, &3600);
     let score = client.get_anchor_health_score(&anchor_struggling);
-    assert!(score >= 40 && score <= 55, "Struggling anchor should score 40-55");
+    assert!(
+        score >= 40 && score <= 55,
+        "Struggling anchor should score 40-55"
+    );
 }

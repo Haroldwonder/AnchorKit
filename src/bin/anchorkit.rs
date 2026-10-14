@@ -1,9 +1,9 @@
 #![cfg(feature = "std")]
 
 use clap::{Parser, Subcommand};
+use regex::Regex;
 use std::process::Command;
 use std::time::Instant;
-use regex::Regex;
 
 mod soroban_rpc;
 use soroban_rpc::*;
@@ -26,7 +26,10 @@ fn validate_network_arg(s: &str) -> Result<String, String> {
 }
 
 #[derive(Parser)]
-#[command(name = "anchorkit", about = "AnchorKit CLI for Soroban anchor management")]
+#[command(
+    name = "anchorkit",
+    about = "AnchorKit CLI for Soroban anchor management"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -225,16 +228,27 @@ fn main() {
         Commands::Init { admin } => run_init(&admin),
         Commands::Doctor => run_doctor(),
         Commands::Validate { path } => run_validate(&path),
-        Commands::Register { address, services, endpoint, output } => {
-            run_register(&address, services.as_deref(), endpoint.as_deref(), &output)
-        }
-        Commands::Attest { subject, payload_hash, session } => {
-            run_attest(&subject, &payload_hash, session.as_deref())
-        }
-        Commands::Query { transaction_id, output } => run_query(&transaction_id, &output),
-        Commands::Health { attestor, watch, interval, output } => {
-            run_health(attestor.as_deref(), watch, interval, &output)
-        }
+        Commands::Register {
+            address,
+            services,
+            endpoint,
+            output,
+        } => run_register(&address, services.as_deref(), endpoint.as_deref(), &output),
+        Commands::Attest {
+            subject,
+            payload_hash,
+            session,
+        } => run_attest(&subject, &payload_hash, session.as_deref()),
+        Commands::Query {
+            transaction_id,
+            output,
+        } => run_query(&transaction_id, &output),
+        Commands::Health {
+            attestor,
+            watch,
+            interval,
+            output,
+        } => run_health(attestor.as_deref(), watch, interval, &output),
         Commands::Test { pattern, verbose } => run_test(pattern.as_deref(), verbose),
         Commands::ExportAudit { format, output } => run_export_audit(&format, &output),
         Commands::Config { command } => match command {
@@ -243,16 +257,22 @@ fn main() {
         },
         Commands::Audit { action } => match action {
             AuditAction::Get { log_id } => run_audit_get(log_id),
-            AuditAction::List { session, from, to, format, pretty } => {
-                run_audit_list(session, from, to, &format, pretty)
-            }
+            AuditAction::List {
+                session,
+                from,
+                to,
+                format,
+                pretty,
+            } => run_audit_list(session, from, to, &format, pretty),
         },
         Commands::Session { action } => match action {
             SessionAction::Create { initiator } => run_session_create(initiator),
             SessionAction::Get { session_id } => run_session_get(session_id),
-            SessionAction::List { format, pretty, limit } => {
-                run_session_list(&format, pretty, limit)
-            }
+            SessionAction::List {
+                format,
+                pretty,
+                limit,
+            } => run_session_list(&format, pretty, limit),
         },
     }
 }
@@ -261,17 +281,17 @@ fn main() {
 
 fn run_build(release: bool) {
     println!("🔨 Building AnchorKit smart contract...");
-    
+
     let mut cmd = Command::new("cargo");
     cmd.args(["build", "--target", "wasm32-unknown-unknown"]);
-    
+
     if release {
         cmd.arg("--release");
         println!("  Mode: Release (optimized)");
     } else {
         println!("  Mode: Debug");
     }
-    
+
     match cmd.output() {
         Ok(output) if output.status.success() => {
             println!("✅ Contract built successfully");
@@ -297,14 +317,14 @@ fn run_build(release: bool) {
 
 fn run_deploy(network: &str) {
     println!("🚀 Deploying to {} network...", network);
-    
+
     // Check if contract is built
     let wasm_path = "target/wasm32-unknown-unknown/release/anchorkit.wasm";
     if !std::path::Path::new(wasm_path).exists() {
         println!("⚠️  Contract not found. Building first...");
         run_build(true);
     }
-    
+
     println!("📋 Deployment steps:");
     println!("  1. Use soroban CLI to deploy:");
     println!("     soroban contract deploy \\");
@@ -322,13 +342,13 @@ fn run_deploy(network: &str) {
 
 fn run_init(admin: &str) {
     println!("🔧 Initializing contract with admin: {}", admin);
-    
+
     // Validate admin address format (prefix, length, and base32 strkey charset)
     if !is_valid_g_address(admin) {
         eprintln!("❌ Invalid admin address format. Expected Stellar public key starting with 'G' followed by 55 base32 characters (A-Z2-7)");
         std::process::exit(1);
     }
-    
+
     println!("📋 Initialization steps:");
     println!("  Use soroban CLI to initialize:");
     println!("  soroban contract invoke \\");
@@ -351,18 +371,18 @@ fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>) {
     if let Some(s) = session {
         println!("  Session: {}", s);
     }
-    
+
     // Validate inputs
     if !is_valid_g_address(subject) {
         eprintln!("❌ Invalid subject address format. Expected Stellar public key starting with 'G' followed by 55 base32 characters (A-Z2-7)");
         std::process::exit(1);
     }
-    
+
     if payload_hash.len() != 64 || !payload_hash.chars().all(|c| c.is_ascii_hexdigit()) {
         eprintln!("❌ Invalid payload hash format (expected 64-character hex string)");
         std::process::exit(1);
     }
-    
+
     println!("📋 Attestation steps:");
     println!("  Use soroban CLI to submit:");
     println!("  soroban contract invoke \\");
@@ -432,7 +452,10 @@ fn print_ascii_table(headers: &[&str], rows: &[Vec<String>]) {
 /// Prints an error and exits on invalid input.
 fn validate_output_format(output: &str) {
     if !matches!(output, "json" | "text" | "table") {
-        eprintln!("❌ Invalid output format '{}'. Use 'json', 'text', or 'table'", output);
+        eprintln!(
+            "❌ Invalid output format '{}'. Use 'json', 'text', or 'table'",
+            output
+        );
         std::process::exit(1);
     }
 }
@@ -446,11 +469,11 @@ fn run_query(transaction_id: &str, output: &str) {
     // from an on-chain query via the soroban RPC).
     let record = [
         ("Transaction ID", transaction_id),
-        ("Status",         "pending_external"),
-        ("Subject",        "G…<subject>"),
-        ("Issuer",         "G…<issuer>"),
-        ("Payload Hash",   "abc123…"),
-        ("Timestamp",      "2024-01-15T10:30:00Z"),
+        ("Status", "pending_external"),
+        ("Subject", "G…<subject>"),
+        ("Issuer", "G…<issuer>"),
+        ("Payload Hash", "abc123…"),
+        ("Timestamp", "2024-01-15T10:30:00Z"),
     ];
 
     match output {
@@ -509,7 +532,10 @@ fn run_health(attestor: Option<&str>, watch: bool, interval: u64, output: &str) 
             eprintln!("❌ Invalid interval '0'. --interval must be greater than 0 seconds");
             std::process::exit(1);
         }
-        eprintln!("👀 Watch mode enabled (interval: {}s) — press Ctrl+C to stop", interval);
+        eprintln!(
+            "👀 Watch mode enabled (interval: {}s) — press Ctrl+C to stop",
+            interval
+        );
         loop {
             render_health(attestor, output);
             std::thread::sleep(std::time::Duration::from_secs(interval));
@@ -526,8 +552,8 @@ fn render_health(attestor: Option<&str>, output: &str) {
         vec![[addr, "18", "0", "99"]]
     } else {
         vec![
-            ["G…attestor-1", "18",  "0", "99"],
-            ["G…attestor-2", "42",  "1", "97"],
+            ["G…attestor-1", "18", "0", "99"],
+            ["G…attestor-2", "42", "1", "97"],
             ["G…attestor-3", "120", "3", "92"],
         ]
     };
@@ -536,12 +562,14 @@ fn render_health(attestor: Option<&str>, output: &str) {
         "json" => {
             let json_records: Vec<serde_json::Value> = records
                 .iter()
-                .map(|r| serde_json::json!({
-                    "anchor":               r[0],
-                    "latency_ms":           r[1].parse::<u64>().unwrap_or(0),
-                    "failure_count":        r[2].parse::<u32>().unwrap_or(0),
-                    "availability_percent": r[3].parse::<u32>().unwrap_or(0),
-                }))
+                .map(|r| {
+                    serde_json::json!({
+                        "anchor":               r[0],
+                        "latency_ms":           r[1].parse::<u64>().unwrap_or(0),
+                        "failure_count":        r[2].parse::<u32>().unwrap_or(0),
+                        "availability_percent": r[3].parse::<u32>().unwrap_or(0),
+                    })
+                })
                 .collect();
             println!("{}", serde_json::to_string_pretty(&json_records).unwrap());
         }
@@ -601,20 +629,20 @@ fn render_health(attestor: Option<&str>, output: &str) {
 
 fn run_test(pattern: Option<&str>, verbose: bool) {
     println!("🧪 Running contract tests...");
-    
+
     let mut cmd = Command::new("cargo");
     cmd.arg("test");
-    
+
     if let Some(p) = pattern {
         cmd.arg(p);
         println!("  Pattern: {}", p);
     }
-    
+
     if verbose {
         cmd.arg("--verbose");
         println!("  Mode: Verbose");
     }
-    
+
     match cmd.output() {
         Ok(output) if output.status.success() => {
             println!("✅ All tests passed");
@@ -669,7 +697,10 @@ fn check_rust_version() -> bool {
             let version_str = String::from_utf8_lossy(&out.stdout);
             if let Some((major, minor)) = parse_rustc_version(&version_str) {
                 if major > MIN_RUST_MAJOR || (major == MIN_RUST_MAJOR && minor >= MIN_RUST_MINOR) {
-                    println!("✔ Rust {}.{} detected (meets minimum {}.{}+)", major, minor, MIN_RUST_MAJOR, MIN_RUST_MINOR);
+                    println!(
+                        "✔ Rust {}.{} detected (meets minimum {}.{}+)",
+                        major, minor, MIN_RUST_MAJOR, MIN_RUST_MINOR
+                    );
                     true
                 } else {
                     println!(
@@ -713,12 +744,18 @@ fn check_wasm_target() -> bool {
 }
 
 fn check_wallet() -> bool {
-    let vars = ["STELLAR_SECRET_KEY", "SOROBAN_SECRET_KEY", "ANCHORKIT_SECRET_KEY"];
+    let vars = [
+        "STELLAR_SECRET_KEY",
+        "SOROBAN_SECRET_KEY",
+        "ANCHORKIT_SECRET_KEY",
+    ];
     if vars.iter().any(|v| std::env::var(v).is_ok()) {
         println!("✔ Wallet configured");
         return true;
     }
-    let identity_dir = std::env::var("HOME").ok().map(|h| h + "/.config/soroban/identity");
+    let identity_dir = std::env::var("HOME")
+        .ok()
+        .map(|h| h + "/.config/soroban/identity");
     if let Some(dir) = identity_dir {
         if std::path::Path::new(&dir).exists() {
             println!("✔ Wallet configured (soroban identity)");
@@ -742,7 +779,16 @@ fn check_rpc() -> bool {
     };
 
     let result = Command::new("curl")
-        .args(["-s", "--max-time", "5", "-o", "/dev/null", "-w", "%{http_code}", &url])
+        .args([
+            "-s",
+            "--max-time",
+            "5",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            &url,
+        ])
         .output();
 
     match result {
@@ -755,7 +801,10 @@ fn check_rpc() -> bool {
             false
         }
         Ok(o) if String::from_utf8_lossy(&o.stdout).trim() == "000" => {
-            println!("✖ RPC endpoint unreachable → check that {} is accessible", url);
+            println!(
+                "✖ RPC endpoint unreachable → check that {} is accessible",
+                url
+            );
             false
         }
         Ok(_) => {
@@ -821,7 +870,16 @@ fn check_network() -> bool {
         .unwrap_or_else(|_| "https://horizon-testnet.stellar.org".to_string());
 
     let result = Command::new("curl")
-        .args(["-s", "--max-time", "3", "-o", "/dev/null", "-w", "%{http_code}", &url])
+        .args([
+            "-s",
+            "--max-time",
+            "3",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            &url,
+        ])
         .output();
 
     match result {
@@ -834,7 +892,10 @@ fn check_network() -> bool {
             false
         }
         Ok(o) if String::from_utf8_lossy(&o.stdout).trim() == "000" => {
-            println!("✖ Network unreachable → check internet connection (probe: {})", url);
+            println!(
+                "✖ Network unreachable → check internet connection (probe: {})",
+                url
+            );
             false
         }
         Ok(_) => {
@@ -891,40 +952,48 @@ fn validate_file(path: &std::path::Path) -> bool {
             return false;
         }
     };
-    
+
     // First check syntax
     let config_value = match ext {
-        "json" => {
-            match serde_json::from_str::<serde_json::Value>(&content) {
-                Ok(v) => v,
-                Err(e) => {
-                    println!("✖ {}: invalid JSON at line {}, column {}: {}", 
-                             path.display(), e.line(), e.column(), e);
-                    return false;
-                }
+        "json" => match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(v) => v,
+            Err(e) => {
+                println!(
+                    "✖ {}: invalid JSON at line {}, column {}: {}",
+                    path.display(),
+                    e.line(),
+                    e.column(),
+                    e
+                );
+                return false;
             }
-        }
-        "toml" => {
-            match toml::from_str::<toml::Value>(&content) {
-                Ok(v) => serde_json::to_value(v).unwrap(),
-                Err(e) => {
-                    if let Some(span) = e.span() {
-                        let line = content[..span.start].chars().filter(|&c| c == '\n').count() + 1;
-                        println!("✖ {}: invalid TOML at line {}: {}", 
-                                 path.display(), line, e.message());
-                    } else {
-                        println!("✖ {}: invalid TOML: {}", path.display(), e);
-                    }
-                    return false;
+        },
+        "toml" => match toml::from_str::<toml::Value>(&content) {
+            Ok(v) => serde_json::to_value(v).unwrap(),
+            Err(e) => {
+                if let Some(span) = e.span() {
+                    let line = content[..span.start].chars().filter(|&c| c == '\n').count() + 1;
+                    println!(
+                        "✖ {}: invalid TOML at line {}: {}",
+                        path.display(),
+                        line,
+                        e.message()
+                    );
+                } else {
+                    println!("✖ {}: invalid TOML: {}", path.display(), e);
                 }
+                return false;
             }
-        }
+        },
         _ => {
-            println!("✖ {}: unsupported format (expected .json or .toml)", path.display());
+            println!(
+                "✖ {}: unsupported format (expected .json or .toml)",
+                path.display()
+            );
             return false;
         }
     };
-    
+
     // Now validate schema and business rules
     validate_config_schema(path, &config_value)
 }
@@ -932,7 +1001,7 @@ fn validate_file(path: &std::path::Path) -> bool {
 fn validate_config_schema(path: &std::path::Path, config: &serde_json::Value) -> bool {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
-    
+
     // Validate required top-level fields
     let obj = match config.as_object() {
         Some(o) => o,
@@ -941,24 +1010,24 @@ fn validate_config_schema(path: &std::path::Path, config: &serde_json::Value) ->
             return false;
         }
     };
-    
+
     // Check required top-level fields
     for required_field in &["contract", "attestors", "sessions"] {
         if !obj.contains_key(*required_field) {
             errors.push(format!("field '{}' is missing", required_field));
         }
     }
-    
+
     // Validate contract section
     if let Some(contract) = obj.get("contract") {
         validate_contract_section(contract, &mut errors, &mut warnings);
     }
-    
+
     // Validate attestors section
     if let Some(attestors) = obj.get("attestors") {
         validate_attestors_section(attestors, &mut errors, &mut warnings);
     }
-    
+
     // Validate sessions section
     if let Some(sessions) = obj.get("sessions") {
         validate_sessions_section(sessions, &mut errors, &mut warnings);
@@ -975,7 +1044,7 @@ fn validate_config_schema(path: &std::path::Path, config: &serde_json::Value) ->
             println!("⚠  {}: {}", path.display(), warning);
         }
     }
-    
+
     if errors.is_empty() {
         println!("✔ {}: valid configuration", path.display());
         true
@@ -988,7 +1057,11 @@ fn validate_config_schema(path: &std::path::Path, config: &serde_json::Value) ->
     }
 }
 
-fn validate_contract_section(contract: &serde_json::Value, errors: &mut Vec<String>, warnings: &mut Vec<String>) {
+fn validate_contract_section(
+    contract: &serde_json::Value,
+    errors: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) {
     let obj = match contract.as_object() {
         Some(o) => o,
         None => {
@@ -996,62 +1069,80 @@ fn validate_contract_section(contract: &serde_json::Value, errors: &mut Vec<Stri
             return;
         }
     };
-    
+
     // Required fields
     for required in &["name", "version", "network"] {
         if !obj.contains_key(*required) {
             errors.push(format!("field 'contract.{}' is missing", required));
         }
     }
-    
+
     // Validate name
     if let Some(name) = obj.get("name").and_then(|v| v.as_str()) {
         let name_regex = Regex::new(r"^[a-z0-9-]+$").unwrap();
         if !name_regex.is_match(name) {
-            errors.push("field 'contract.name' must contain only lowercase letters, numbers, and hyphens".to_string());
+            errors.push(
+                "field 'contract.name' must contain only lowercase letters, numbers, and hyphens"
+                    .to_string(),
+            );
         }
         if name.is_empty() || name.len() > 64 {
-            errors.push(format!("field 'contract.name' length must be 1-64 characters, got {}", name.len()));
+            errors.push(format!(
+                "field 'contract.name' length must be 1-64 characters, got {}",
+                name.len()
+            ));
         }
     } else if obj.contains_key("name") {
         errors.push("field 'contract.name' must be a string".to_string());
     }
-    
+
     // Validate version
     if let Some(version) = obj.get("version").and_then(|v| v.as_str()) {
         let version_regex = Regex::new(r"^\d+\.\d+\.\d+$").unwrap();
         if !version_regex.is_match(version) {
-            errors.push("field 'contract.version' must follow semantic versioning (e.g., 1.0.0)".to_string());
+            errors.push(
+                "field 'contract.version' must follow semantic versioning (e.g., 1.0.0)"
+                    .to_string(),
+            );
         }
     } else if obj.contains_key("version") {
         errors.push("field 'contract.version' must be a string".to_string());
     }
-    
+
     // Validate network
     if let Some(network) = obj.get("network").and_then(|v| v.as_str()) {
         let valid_networks = ["stellar-testnet", "stellar-mainnet", "stellar-futurenet"];
         if !valid_networks.contains(&network) {
-            errors.push(format!("field 'contract.network' must be one of: {}", valid_networks.join(", ")));
+            errors.push(format!(
+                "field 'contract.network' must be one of: {}",
+                valid_networks.join(", ")
+            ));
         }
     } else if obj.contains_key("network") {
         errors.push("field 'contract.network' must be a string".to_string());
     }
-    
+
     // Validate description (optional)
     if let Some(desc) = obj.get("description") {
         if let Some(desc_str) = desc.as_str() {
             if desc_str.len() > 256 {
-                errors.push(format!("field 'contract.description' exceeds maximum length of 256 characters"));
+                errors.push(format!(
+                    "field 'contract.description' exceeds maximum length of 256 characters"
+                ));
             }
         } else {
             errors.push("field 'contract.description' must be a string".to_string());
         }
     }
-    
+
     let _ = warnings; // Suppress unused warning
 }
 
-fn validate_attestors_section(attestors: &serde_json::Value, errors: &mut Vec<String>, warnings: &mut Vec<String>) {
+fn validate_attestors_section(
+    attestors: &serde_json::Value,
+    errors: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) {
     let obj = match attestors.as_object() {
         Some(o) => o,
         None => {
@@ -1059,13 +1150,13 @@ fn validate_attestors_section(attestors: &serde_json::Value, errors: &mut Vec<St
             return;
         }
     };
-    
+
     // Required field: registry
     if !obj.contains_key("registry") {
         errors.push("field 'attestors.registry' is missing".to_string());
         return;
     }
-    
+
     let registry = match obj.get("registry").and_then(|v| v.as_array()) {
         Some(arr) => arr,
         None => {
@@ -1073,41 +1164,51 @@ fn validate_attestors_section(attestors: &serde_json::Value, errors: &mut Vec<St
             return;
         }
     };
-    
+
     if registry.is_empty() {
         errors.push("field 'attestors.registry' must contain at least one attestor".to_string());
         return;
     }
-    
+
     if registry.len() > 100 {
-        errors.push(format!("field 'attestors.registry' exceeds maximum of 100 attestors, got {}", registry.len()));
+        errors.push(format!(
+            "field 'attestors.registry' exceeds maximum of 100 attestors, got {}",
+            registry.len()
+        ));
     }
-    
+
     // Track duplicates
     let mut names = Vec::new();
     let mut addresses = Vec::new();
     let mut has_enabled = false;
-    
+
     for (idx, attestor) in registry.iter().enumerate() {
         let attestor_obj = match attestor.as_object() {
             Some(o) => o,
             None => {
-                errors.push(format!("field 'attestors.registry[{}]' must be an object", idx));
+                errors.push(format!(
+                    "field 'attestors.registry[{}]' must be an object",
+                    idx
+                ));
                 continue;
             }
         };
-        
-        let attestor_name = attestor_obj.get("name")
+
+        let attestor_name = attestor_obj
+            .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or(&format!("attestor-{}", idx));
-        
+
         // Required fields
         for required in &["name", "address", "endpoint", "role", "enabled"] {
             if !attestor_obj.contains_key(*required) {
-                errors.push(format!("field 'attestors.registry[{}].{}' is missing", idx, required));
+                errors.push(format!(
+                    "field 'attestors.registry[{}].{}' is missing",
+                    idx, required
+                ));
             }
         }
-        
+
         // Validate name
         if let Some(name) = attestor_obj.get("name").and_then(|v| v.as_str()) {
             let name_regex = Regex::new(r"^[a-z0-9-]+$").unwrap();
@@ -1115,11 +1216,15 @@ fn validate_attestors_section(attestors: &serde_json::Value, errors: &mut Vec<St
                 errors.push(format!("field 'attestors.registry[{}].name' must contain only lowercase letters, numbers, and hyphens", idx));
             }
             if name.is_empty() || name.len() > 64 {
-                errors.push(format!("field 'attestors.registry[{}].name' length must be 1-64 characters, got {}", idx, name.len()));
+                errors.push(format!(
+                    "field 'attestors.registry[{}].name' length must be 1-64 characters, got {}",
+                    idx,
+                    name.len()
+                ));
             }
             names.push(name.to_string());
         }
-        
+
         // Validate address
         if let Some(address) = attestor_obj.get("address").and_then(|v| v.as_str()) {
             let addr_regex = Regex::new(r"^G[A-Z2-7]{55}$").unwrap();
@@ -1132,29 +1237,42 @@ fn validate_attestors_section(attestors: &serde_json::Value, errors: &mut Vec<St
             }
             addresses.push(address.to_string());
         }
-        
+
         // Validate endpoint
         if let Some(endpoint) = attestor_obj.get("endpoint").and_then(|v| v.as_str()) {
             if let Some(error) = validate_endpoint_url(endpoint) {
-                errors.push(format!("field 'attestors.registry[{}].endpoint' has invalid URL '{}' — {}", idx, endpoint, error));
+                errors.push(format!(
+                    "field 'attestors.registry[{}].endpoint' has invalid URL '{}' — {}",
+                    idx, endpoint, error
+                ));
             }
         }
-        
+
         // Validate role
         if let Some(role) = attestor_obj.get("role").and_then(|v| v.as_str()) {
-            let valid_roles = ["kyc-issuer", "transfer-verifier", "compliance-approver", "rate-provider", "attestor"];
+            let valid_roles = [
+                "kyc-issuer",
+                "transfer-verifier",
+                "compliance-approver",
+                "rate-provider",
+                "attestor",
+            ];
             if !valid_roles.contains(&role) {
-                errors.push(format!("field 'attestors.registry[{}].role' must be one of: {}", idx, valid_roles.join(", ")));
+                errors.push(format!(
+                    "field 'attestors.registry[{}].role' must be one of: {}",
+                    idx,
+                    valid_roles.join(", ")
+                ));
             }
         }
-        
+
         // Check if enabled
         if let Some(enabled) = attestor_obj.get("enabled").and_then(|v| v.as_bool()) {
             if enabled {
                 has_enabled = true;
             }
         }
-        
+
         // Validate description (optional)
         if let Some(desc) = attestor_obj.get("description") {
             if let Some(desc_str) = desc.as_str() {
@@ -1164,7 +1282,7 @@ fn validate_attestors_section(attestors: &serde_json::Value, errors: &mut Vec<St
             }
         }
     }
-    
+
     // Check for duplicates
     for name in &names {
         if names.iter().filter(|n| *n == name).count() > 1 {
@@ -1172,22 +1290,29 @@ fn validate_attestors_section(attestors: &serde_json::Value, errors: &mut Vec<St
             break;
         }
     }
-    
+
     for address in &addresses {
         if addresses.iter().filter(|a| *a == address).count() > 1 {
             errors.push(format!("duplicate attestor address found: '{}'", address));
             break;
         }
     }
-    
+
     if !has_enabled {
-        errors.push("at least one attestor must be enabled (attestors.registry[].enabled = true)".to_string());
+        errors.push(
+            "at least one attestor must be enabled (attestors.registry[].enabled = true)"
+                .to_string(),
+        );
     }
-    
+
     let _ = warnings; // Suppress unused warning
 }
 
-fn validate_sessions_section(sessions: &serde_json::Value, errors: &mut Vec<String>, warnings: &mut Vec<String>) {
+fn validate_sessions_section(
+    sessions: &serde_json::Value,
+    errors: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) {
     let obj = match sessions.as_object() {
         Some(o) => o,
         None => {
@@ -1195,58 +1320,80 @@ fn validate_sessions_section(sessions: &serde_json::Value, errors: &mut Vec<Stri
             return;
         }
     };
-    
+
     // Required fields
-    for required in &["enable_session_tracking", "session_timeout_seconds", "operations_per_session", "audit_log_retention_days"] {
+    for required in &[
+        "enable_session_tracking",
+        "session_timeout_seconds",
+        "operations_per_session",
+        "audit_log_retention_days",
+    ] {
         if !obj.contains_key(*required) {
             errors.push(format!("field 'sessions.{}' is missing", required));
         }
     }
-    
+
     // Validate session_timeout_seconds
     if let Some(timeout) = obj.get("session_timeout_seconds").and_then(|v| v.as_i64()) {
         if timeout < 1 {
             errors.push("field 'sessions.session_timeout_seconds' must be at least 1".to_string());
         } else if timeout < 60 {
-            errors.push("field 'sessions.session_timeout_seconds' must be at least 60 seconds".to_string());
+            errors.push(
+                "field 'sessions.session_timeout_seconds' must be at least 60 seconds".to_string(),
+            );
         } else if timeout > 86400 {
             warnings.push("field 'sessions.session_timeout_seconds' exceeds 24 hours — consider shorter timeouts for security".to_string());
         }
     } else if obj.contains_key("session_timeout_seconds") {
         errors.push("field 'sessions.session_timeout_seconds' must be an integer".to_string());
     }
-    
+
     // Validate operations_per_session
     if let Some(max_ops) = obj.get("operations_per_session").and_then(|v| v.as_i64()) {
         if max_ops < 1 {
             errors.push("field 'sessions.operations_per_session' must be at least 1".to_string());
         } else if max_ops > 10000 {
-            errors.push(format!("field 'sessions.operations_per_session' exceeds maximum of 10000, got {}", max_ops));
+            errors.push(format!(
+                "field 'sessions.operations_per_session' exceeds maximum of 10000, got {}",
+                max_ops
+            ));
         } else if max_ops > 5000 {
             warnings.push("field 'sessions.operations_per_session' is high (>5000) and may impact performance".to_string());
         }
     } else if obj.contains_key("operations_per_session") {
         errors.push("field 'sessions.operations_per_session' must be an integer".to_string());
     }
-    
+
     // Validate audit_log_retention_days
     if let Some(retention) = obj.get("audit_log_retention_days").and_then(|v| v.as_i64()) {
         if retention < 1 {
             errors.push("field 'sessions.audit_log_retention_days' must be at least 1".to_string());
         } else if retention > 3650 {
-            errors.push(format!("field 'sessions.audit_log_retention_days' exceeds maximum of 3650 days, got {}", retention));
+            errors.push(format!(
+                "field 'sessions.audit_log_retention_days' exceeds maximum of 3650 days, got {}",
+                retention
+            ));
         }
     } else if obj.contains_key("audit_log_retention_days") {
         errors.push("field 'sessions.audit_log_retention_days' must be an integer".to_string());
     }
-    
+
     // Validate enable_session_tracking
-    if obj.contains_key("enable_session_tracking") && !obj.get("enable_session_tracking").and_then(|v| v.as_bool()).is_some() {
+    if obj.contains_key("enable_session_tracking")
+        && !obj
+            .get("enable_session_tracking")
+            .and_then(|v| v.as_bool())
+            .is_some()
+    {
         errors.push("field 'sessions.enable_session_tracking' must be a boolean".to_string());
     }
 }
 
-fn validate_deployment_section(deployment: &serde_json::Value, errors: &mut Vec<String>, warnings: &mut Vec<String>) {
+fn validate_deployment_section(
+    deployment: &serde_json::Value,
+    errors: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) {
     let obj = match deployment.as_object() {
         Some(o) => o,
         None => {
@@ -1293,46 +1440,48 @@ fn validate_endpoint_url(url: &str) -> Option<String> {
     if url.is_empty() || url.trim().is_empty() {
         return Some("URL must not be empty".to_string());
     }
-    
+
     if url.len() < 10 {
         return Some("URL too short (minimum 10 characters, e.g. https://a.b)".to_string());
     }
-    
+
     if url.len() > 2048 {
         return Some("URL too long (maximum 2048 characters)".to_string());
     }
-    
+
     // HTTPS is required
     if !url.starts_with("https://") {
         return Some("URL must use HTTPS (http:// and other schemes are not allowed)".to_string());
     }
-    
+
     // Check for forbidden characters
     if url.contains("%00") {
         return Some("URL must not contain a null byte".to_string());
     }
-    
+
     for ch in url.chars() {
         if ch < '\x20' || ch == '\x7f' || "<>{}|\\".contains(ch) {
             return Some(format!("URL contains forbidden character '{}'", ch));
         }
     }
-    
+
     // Extract host
     let after_scheme = &url[8..]; // skip "https://"
-    let host_part = after_scheme.split('/').next()
+    let host_part = after_scheme
+        .split('/')
+        .next()
         .and_then(|s| s.split('?').next())
         .and_then(|s| s.split('#').next())
         .unwrap_or("");
-    
+
     if host_part.is_empty() {
         return Some("URL has no host after scheme".to_string());
     }
-    
+
     if host_part.contains(' ') {
         return Some("URL host must not contain spaces".to_string());
     }
-    
+
     // Handle optional port
     let domain = if let Some(colon_pos) = host_part.rfind(':') {
         let port_str = &host_part[colon_pos + 1..];
@@ -1350,65 +1499,82 @@ fn validate_endpoint_url(url: &str) -> Option<String> {
     } else {
         host_part
     };
-    
+
     if domain.is_empty() {
         return Some("URL has no domain".to_string());
     }
-    
+
     // Reject loopback
     let lower = domain.to_lowercase();
     if lower == "localhost" || lower.starts_with("localhost.") || lower.ends_with(".localhost") {
         return Some("URL must not use loopback address (localhost)".to_string());
     }
-    
+
     // Must have a TLD
     if !domain.contains('.') {
-        return Some("URL domain must have a TLD (e.g. example.com, not just 'example')".to_string());
+        return Some(
+            "URL domain must have a TLD (e.g. example.com, not just 'example')".to_string(),
+        );
     }
-    
+
     if domain.starts_with('.') || domain.ends_with('.') {
         return Some("URL domain must not start or end with a dot".to_string());
     }
-    
+
     if domain.contains("..") {
         return Some("URL domain must not contain consecutive dots".to_string());
     }
-    
+
     let labels: Vec<&str> = domain.split('.').collect();
     let non_empty: Vec<&str> = labels.iter().filter(|l| !l.is_empty()).copied().collect();
-    
+
     if non_empty.len() < 2 {
         return Some("URL domain must have at least two labels (e.g. example.com)".to_string());
     }
-    
+
     // Reject raw IPv4
     if labels.iter().all(|l| l.chars().all(|c| c.is_ascii_digit())) {
         return Some("URL must use a domain name, not a raw IP address".to_string());
     }
-    
+
     for label in &labels {
         if label.is_empty() {
             return Some("URL domain contains an empty label".to_string());
         }
         if label.len() > 63 {
-            return Some(format!("URL domain label '{}' exceeds 63 characters", label));
+            return Some(format!(
+                "URL domain label '{}' exceeds 63 characters",
+                label
+            ));
         }
         if !label.chars().next().unwrap().is_ascii_alphanumeric() {
-            return Some(format!("URL domain label '{}' must start with an alphanumeric character", label));
+            return Some(format!(
+                "URL domain label '{}' must start with an alphanumeric character",
+                label
+            ));
         }
         if !label.chars().last().unwrap().is_ascii_alphanumeric() {
-            return Some(format!("URL domain label '{}' must end with an alphanumeric character", label));
+            return Some(format!(
+                "URL domain label '{}' must end with an alphanumeric character",
+                label
+            ));
         }
         if label.to_lowercase().starts_with("xn--") {
-            return Some(format!("URL domain label '{}' uses Punycode (xn--), which is not allowed", label));
+            return Some(format!(
+                "URL domain label '{}' uses Punycode (xn--), which is not allowed",
+                label
+            ));
         }
         for ch in label.chars() {
             if !ch.is_ascii_alphanumeric() && ch != '-' {
-                return Some(format!("URL domain label '{}' contains invalid character '{}'", label, ch));
+                return Some(format!(
+                    "URL domain label '{}' contains invalid character '{}'",
+                    label, ch
+                ));
             }
         }
     }
-    
+
     None
 }
 
@@ -1548,10 +1714,10 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
             println!("📝 Attestor registration\n");
             let headers = &["Field", "Value"];
             let rows = vec![
-                vec!["Address".to_string(),  address.to_string()],
+                vec!["Address".to_string(), address.to_string()],
                 vec!["Services".to_string(), services_str.to_string()],
                 vec!["Endpoint".to_string(), endpoint_str.to_string()],
-                vec!["Status".to_string(),   status.to_string()],
+                vec!["Status".to_string(), status.to_string()],
             ];
             print_ascii_table(headers, &rows);
             println!("\n💡 Execute with soroban CLI:");
@@ -1564,8 +1730,12 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
         _ => {
             // "text" (default) — preserve original behaviour
             println!("📝 Registering attestor: {}", address);
-            if let Some(s) = services { println!("  Services: {}", s); }
-            if let Some(e) = endpoint { println!("  Endpoint: {}", e); }
+            if let Some(s) = services {
+                println!("  Services: {}", s);
+            }
+            if let Some(e) = endpoint {
+                println!("  Endpoint: {}", e);
+            }
 
             println!("\n📋 Registration steps:");
             println!("  1. Use soroban CLI to register attestor:");
@@ -1602,7 +1772,9 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
             }
 
             println!("\n💡 Note: Replace <CONTRACT_ID> and <ADMIN_ACCOUNT> with actual values");
-            println!("🔗 This will create actual on-chain transactions when executed with soroban CLI");
+            println!(
+                "🔗 This will create actual on-chain transactions when executed with soroban CLI"
+            );
         }
     }
 }
@@ -1611,21 +1783,27 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
 
 fn run_export_audit(format: &str, output: &str) {
     if format != "json" && format != "csv" {
-        eprintln!("error: unsupported format '{}'. Use 'json' or 'csv'", format);
+        eprintln!(
+            "error: unsupported format '{}'. Use 'json' or 'csv'",
+            format
+        );
         std::process::exit(1);
     }
-    
+
     // Validate output path before starting export
     let output_path = std::path::Path::new(output);
-    
+
     // Check if parent directory exists
     if let Some(parent) = output_path.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
-            eprintln!("error: parent directory '{}' does not exist", parent.display());
+            eprintln!(
+                "error: parent directory '{}' does not exist",
+                parent.display()
+            );
             eprintln!("  → Create the directory first or specify a valid path");
             std::process::exit(1);
         }
-        
+
         // Check if parent directory is writable (Unix-specific check)
         #[cfg(unix)]
         {
@@ -1640,7 +1818,7 @@ fn run_export_audit(format: &str, output: &str) {
             }
         }
     }
-    
+
     // Check if file already exists and is writable
     if output_path.exists() {
         if let Err(e) = std::fs::OpenOptions::new().write(true).open(output_path) {
@@ -1649,7 +1827,7 @@ fn run_export_audit(format: &str, output: &str) {
             std::process::exit(1);
         }
     }
-    
+
     println!("Fetching audit log entries...");
     let entries = fetch_audit_entries();
     let total = entries.len();
@@ -1663,7 +1841,10 @@ fn run_export_audit(format: &str, output: &str) {
         "csv" => {
             let mut out = String::from("id,operation,actor,timestamp,result\n");
             for e in &entries {
-                out.push_str(&format!("{},{},{},{},{}\n", e.id, e.operation, e.actor, e.timestamp, e.result));
+                out.push_str(&format!(
+                    "{},{},{},{},{}\n",
+                    e.id, e.operation, e.actor, e.timestamp, e.result
+                ));
             }
             out
         }
@@ -1673,7 +1854,10 @@ fn run_export_audit(format: &str, output: &str) {
         eprintln!("error: cannot write to {}: {}", output, e);
         std::process::exit(1);
     });
-    println!("✔ Exported {} audit log entries to {} ({})", total, output, format);
+    println!(
+        "✔ Exported {} audit log entries to {} ({})",
+        total, output, format
+    );
 }
 
 #[derive(serde::Serialize)]
@@ -1693,11 +1877,15 @@ fn fetch_audit_entries() -> Vec<AuditEntry> {
         let batch = fetch_page(page, page_size);
         let done = batch.len() < page_size as usize;
         entries.extend(batch);
-        if done { break; }
+        if done {
+            break;
+        }
         page += 1;
         eprint!("\r  Fetched {} entries...", entries.len());
     }
-    if !entries.is_empty() { eprintln!(); }
+    if !entries.is_empty() {
+        eprintln!();
+    }
     entries
 }
 
@@ -1753,7 +1941,10 @@ fn fetch_page(page: u64, page_size: u64) -> Vec<AuditEntry> {
             Some(AuditEntry {
                 id: offset + i as u64,
                 operation: ev["topic"].as_str().unwrap_or("unknown").to_string(),
-                actor: ev["value"]["address"].as_str().unwrap_or("unknown").to_string(),
+                actor: ev["value"]["address"]
+                    .as_str()
+                    .unwrap_or("unknown")
+                    .to_string(),
                 timestamp: ev["ledgerClosedAt"]
                     .as_str()
                     .and_then(|s| s.parse::<u64>().ok())
@@ -1787,25 +1978,31 @@ fn run_audit_get(log_id: u64) {
 
 fn run_audit_list(session: u64, from: Option<u64>, to: Option<u64>, format: &str, pretty: bool) {
     println!("◈ Fetching audit logs for session {}", session);
-    
+
     // Validate format
     if !["text", "json", "csv"].contains(&format) {
-        eprintln!("error: unsupported format '{}'. Use 'text', 'json', or 'csv'", format);
+        eprintln!(
+            "error: unsupported format '{}'. Use 'text', 'json', or 'csv'",
+            format
+        );
         std::process::exit(1);
     }
 
     let entries = fetch_audit_logs_by_session(session, from, to);
-    
+
     if entries.is_empty() {
         println!("\n✗ No audit log entries found for session {}", session);
         return;
     }
 
     println!();
-    
+
     match format {
         "text" => {
-            println!("┌─ Audit Log Entries (Session {}) ──────────────────────────────", session);
+            println!(
+                "┌─ Audit Log Entries (Session {}) ──────────────────────────────",
+                session
+            );
             for (idx, entry) in entries.iter().enumerate() {
                 if idx > 0 {
                     println!("├───────────────────────────────────────────────────────────");
@@ -1814,22 +2011,24 @@ fn run_audit_list(session: u64, from: Option<u64>, to: Option<u64>, format: &str
             }
             println!("└───────────────────────────────────────────────────────────────");
             println!();
-            println!("✔ Retrieved {} audit log entr{}", 
-                     entries.len(), 
-                     if entries.len() == 1 { "y" } else { "ies" });
+            println!(
+                "✔ Retrieved {} audit log entr{}",
+                entries.len(),
+                if entries.len() == 1 { "y" } else { "ies" }
+            );
         }
         "json" => {
             let json_output = if pretty {
-                serde_json::to_string_pretty(&entries)
-                    .unwrap_or_else(|_| "[]".to_string())
+                serde_json::to_string_pretty(&entries).unwrap_or_else(|_| "[]".to_string())
             } else {
-                serde_json::to_string(&entries)
-                    .unwrap_or_else(|_| "[]".to_string())
+                serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
             };
             println!("{}", json_output);
         }
         "csv" => {
-            println!("log_id,session_id,actor,operation_type,operation_index,timestamp,status,result");
+            println!(
+                "log_id,session_id,actor,operation_type,operation_index,timestamp,status,result"
+            );
             for entry in &entries {
                 println!(
                     "{},{},{},{},{},{},{},\"{}\"",
@@ -1868,10 +2067,15 @@ fn print_audit_entry(entry: &AuditLogEntry) {
     println!("  Log ID:          {}", entry.log_id);
     println!("  Session ID:      {}", entry.session_id);
     println!("  Actor:           {}", entry.actor);
-    println!("  Operation:       {} (index: {})", entry.operation_type, entry.operation_index);
-    println!("  Timestamp:       {} ({})", 
-             entry.timestamp, 
-             format_timestamp(entry.timestamp));
+    println!(
+        "  Operation:       {} (index: {})",
+        entry.operation_type, entry.operation_index
+    );
+    println!(
+        "  Timestamp:       {} ({})",
+        entry.timestamp,
+        format_timestamp(entry.timestamp)
+    );
     println!("  Status:          {}", entry.status);
     println!("  Result:          {}", entry.result);
 }
@@ -1879,18 +2083,20 @@ fn print_audit_entry(entry: &AuditLogEntry) {
 fn print_audit_entry_compact(entry: &AuditLogEntry) {
     let actor_truncated: String = entry.actor.chars().take(24).collect();
     let result_truncated: String = entry.result.chars().take(50).collect();
-    println!("  │ Log ID:     {} │ Op: {} │ Status: {}", 
-             entry.log_id,
-             entry.operation_type,
-             entry.status);
-    println!("  │ Session:    {} │ Actor: {}", 
-             entry.session_id,
-             actor_truncated);
-    println!("  │ Timestamp:  {} (op_index: {})", 
-             format_timestamp(entry.timestamp),
-             entry.operation_index);
-    println!("  │ Result:     {}", 
-             result_truncated);
+    println!(
+        "  │ Log ID:     {} │ Op: {} │ Status: {}",
+        entry.log_id, entry.operation_type, entry.status
+    );
+    println!(
+        "  │ Session:    {} │ Actor: {}",
+        entry.session_id, actor_truncated
+    );
+    println!(
+        "  │ Timestamp:  {} (op_index: {})",
+        format_timestamp(entry.timestamp),
+        entry.operation_index
+    );
+    println!("  │ Result:     {}", result_truncated);
 }
 
 fn format_timestamp(ts: u64) -> String {
@@ -1898,12 +2104,12 @@ fn format_timestamp(ts: u64) -> String {
     let secs_per_day = 86400;
     let secs_per_hour = 3600;
     let secs_per_minute = 60;
-    
+
     let days = ts / secs_per_day;
     let hours = (ts % secs_per_day) / secs_per_hour;
     let minutes = (ts % secs_per_hour) / secs_per_minute;
     let seconds = ts % secs_per_minute;
-    
+
     format!("{}d {:02}h {:02}m {:02}s", days, hours, minutes, seconds)
 }
 
@@ -1936,7 +2142,7 @@ fn fetch_audit_log_entry(log_id: u64) -> Option<AuditLogEntry> {
     // 4. Submit via /simulateTransaction endpoint
     // 5. Parse result and extract AuditLog structure
     // 6. Map to AuditLogEntry with actor address and operation context
-    
+
     let rpc_url = std::env::var("ANCHORKIT_RPC_URL")
         .or_else(|_| std::env::var("SOROBAN_RPC_URL"))
         .unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string());
@@ -1980,7 +2186,10 @@ fn fetch_audit_log_entry(log_id: u64) -> Option<AuditLogEntry> {
         log_id,
         operation_type: ev["topic"].as_str().unwrap_or("unknown").to_string(),
         operation_index: ev["value"]["operation_index"].as_u64().unwrap_or(0),
-        actor: ev["value"]["address"].as_str().unwrap_or("unknown").to_string(),
+        actor: ev["value"]["address"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string(),
         timestamp: ev["ledgerClosedAt"]
             .as_str()
             .and_then(|s| s.parse::<u64>().ok())
@@ -1993,7 +2202,11 @@ fn fetch_audit_log_entry(log_id: u64) -> Option<AuditLogEntry> {
 
 /// Fetch audit logs filtered by session ID.
 /// Returns entries with optional range filtering [from_id, to_id].
-fn fetch_audit_logs_by_session(session_id: u64, from: Option<u64>, to: Option<u64>) -> Vec<AuditLogEntry> {
+fn fetch_audit_logs_by_session(
+    session_id: u64,
+    from: Option<u64>,
+    to: Option<u64>,
+) -> Vec<AuditLogEntry> {
     // TODO: Implement actual on-chain fetching via Soroban RPC
     // This would invoke contract method: get_audit_log_range(from_id, to_id)
     // and filter results where session_id matches.
@@ -2008,14 +2221,16 @@ fn fetch_audit_logs_by_session(session_id: u64, from: Option<u64>, to: Option<u6
     // 4. Continue: if result set full, fetch next batch
     // 5. Accumulate until complete or limit reached
     // 6. Map AuditLog results to AuditLogEntry with formatted timestamps
-    
+
     let rpc_url = std::env::var("ANCHORKIT_RPC_URL")
         .or_else(|_| std::env::var("SOROBAN_RPC_URL"))
         .unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string());
     let contract_id = std::env::var("ANCHORKIT_CONTRACT_ID").unwrap_or_default();
 
     if contract_id.is_empty() {
-        eprintln!("warning: ANCHORKIT_CONTRACT_ID not set; cannot fetch session audit logs from chain");
+        eprintln!(
+            "warning: ANCHORKIT_CONTRACT_ID not set; cannot fetch session audit logs from chain"
+        );
         return vec![];
     }
 
@@ -2028,7 +2243,9 @@ fn fetch_audit_logs_by_session(session_id: u64, from: Option<u64>, to: Option<u6
 
     loop {
         let limit = batch_size.min(range_end.saturating_sub(offset) + 1);
-        if limit == 0 { break; }
+        if limit == 0 {
+            break;
+        }
 
         let body = serde_json::json!({
             "jsonrpc": "2.0",
@@ -2072,7 +2289,10 @@ fn fetch_audit_logs_by_session(session_id: u64, from: Option<u64>, to: Option<u6
                 log_id: offset + i as u64,
                 operation_type: ev["topic"].as_str().unwrap_or("unknown").to_string(),
                 operation_index: ev["value"]["operation_index"].as_u64().unwrap_or(0),
-                actor: ev["value"]["address"].as_str().unwrap_or("unknown").to_string(),
+                actor: ev["value"]["address"]
+                    .as_str()
+                    .unwrap_or("unknown")
+                    .to_string(),
                 timestamp: ev["ledgerClosedAt"]
                     .as_str()
                     .and_then(|s| s.parse::<u64>().ok())
@@ -2083,9 +2303,13 @@ fn fetch_audit_logs_by_session(session_id: u64, from: Option<u64>, to: Option<u6
             });
         }
 
-        if count < limit { break; }
+        if count < limit {
+            break;
+        }
         offset += count;
-        if offset > range_end { break; }
+        if offset > range_end {
+            break;
+        }
     }
 
     results
@@ -2190,7 +2414,10 @@ fn run_session_list(format: &str, pretty: bool, limit: Option<u64>) {
 
     // Validate format
     if !["text", "json", "csv"].contains(&format) {
-        eprintln!("error: unsupported format '{}'. Use 'text', 'json', or 'csv'", format);
+        eprintln!(
+            "error: unsupported format '{}'. Use 'text', 'json', or 'csv'",
+            format
+        );
         std::process::exit(1);
     }
 
@@ -2220,17 +2447,17 @@ fn run_session_list(format: &str, pretty: bool, limit: Option<u64>) {
             }
             println!("└───────────────────────────────────────────────────────────────────");
             println!();
-            println!("✔ Retrieved {} session{}", 
-                     sessions.len(), 
-                     if sessions.len() == 1 { "" } else { "s" });
+            println!(
+                "✔ Retrieved {} session{}",
+                sessions.len(),
+                if sessions.len() == 1 { "" } else { "s" }
+            );
         }
         "json" => {
             let json_output = if pretty {
-                serde_json::to_string_pretty(&sessions)
-                    .unwrap_or_else(|_| "[]".to_string())
+                serde_json::to_string_pretty(&sessions).unwrap_or_else(|_| "[]".to_string())
             } else {
-                serde_json::to_string(&sessions)
-                    .unwrap_or_else(|_| "[]".to_string())
+                serde_json::to_string(&sessions).unwrap_or_else(|_| "[]".to_string())
             };
             println!("{}", json_output);
         }
@@ -2256,23 +2483,29 @@ fn run_session_list(format: &str, pretty: bool, limit: Option<u64>) {
 fn print_session(session: &SessionRecord) {
     println!("  Session ID:       {}", session.session_id);
     println!("  Initiator:        {}", session.initiator);
-    println!("  Created At:       {} ({})", 
-             session.created_at, 
-             format_timestamp(session.created_at));
+    println!(
+        "  Created At:       {} ({})",
+        session.created_at,
+        format_timestamp(session.created_at)
+    );
     println!("  Operation Count:  {}", session.operation_count);
-    println!("  Expires At:       {} ({})", 
-             session.expires_at,
-             format_timestamp(session.expires_at));
+    println!(
+        "  Expires At:       {} ({})",
+        session.expires_at,
+        format_timestamp(session.expires_at)
+    );
 }
 
 fn print_session_compact(session: &SessionRecord) {
-    println!("│ Session: {}  Initiator: {}...", 
-             session.session_id,
-             &session.initiator.chars().take(16).collect::<String>());
-    println!("│ Created: {}  Operations: {}  Expires: {}", 
-             session.created_at,
-             session.operation_count,
-             session.expires_at);
+    println!(
+        "│ Session: {}  Initiator: {}...",
+        session.session_id,
+        &session.initiator.chars().take(16).collect::<String>()
+    );
+    println!(
+        "│ Created: {}  Operations: {}  Expires: {}",
+        session.created_at, session.operation_count, session.expires_at
+    );
 }
 
 fn create_session_on_chain(initiator: Option<String>) -> Result<u64, String> {
@@ -2353,7 +2586,9 @@ where
 fn is_valid_g_address(addr: &str) -> bool {
     addr.starts_with('G')
         && addr.len() == 56
-        && addr[1..].chars().all(|c| matches!(c, 'A'..='Z' | '2'..='7'))
+        && addr[1..]
+            .chars()
+            .all(|c| matches!(c, 'A'..='Z' | '2'..='7'))
 }
 
 /// Validate a Stellar public key (admin / contract-id format).
@@ -2430,7 +2665,9 @@ fn run_config_init() {
                 return Err(format!("Name is too long ({} chars, max 64)", s.len()));
             }
             if !re.is_match(s) {
-                return Err("Name must contain only lowercase letters, digits, and hyphens".to_string());
+                return Err(
+                    "Name must contain only lowercase letters, digits, and hyphens".to_string(),
+                );
             }
             Ok(s.to_string())
         },
@@ -2464,16 +2701,18 @@ fn run_config_init() {
     println!("  Default RPC for {}: {}", network, default_rpc);
     if network == "stellar-mainnet" {
         println!("  ⚠  Note: This is a third-party RPC endpoint, not operated by the Stellar Development Foundation.");
-        println!("     It will receive your mainnet traffic including session and attestation data.");
-        println!("     Consider using your own RPC node or an SDF-operated endpoint for production use.");
+        println!(
+            "     It will receive your mainnet traffic including session and attestation data."
+        );
+        println!(
+            "     Consider using your own RPC node or an SDF-operated endpoint for production use."
+        );
     }
-    let rpc_endpoint: String = prompt_until_valid(
-        &format!("RPC endpoint URL [{}]: ", default_rpc),
-        |s| {
+    let rpc_endpoint: String =
+        prompt_until_valid(&format!("RPC endpoint URL [{}]: ", default_rpc), |s| {
             let url = if s.is_empty() { default_rpc } else { s };
             validate_rpc_url(url)
-        },
-    );
+        });
 
     // ── 5. Contract ID ─────────────────────────────────────────────────────
     println!();
@@ -2505,7 +2744,13 @@ fn run_config_init() {
     // "deployment" — stored outside the schema-validated sections so that
     // `anchorkit validate` stays happy while the values are preserved for
     // tooling.
-    let config = build_init_config(&anchor_name, &network, &admin_key, &rpc_endpoint, contract_id.as_deref());
+    let config = build_init_config(
+        &anchor_name,
+        &network,
+        &admin_key,
+        &rpc_endpoint,
+        contract_id.as_deref(),
+    );
 
     // ── Write to disk ──────────────────────────────────────────────────────
     let out_path = config_output_path(&anchor_name);
@@ -2556,7 +2801,10 @@ fn run_config_init() {
         println!("      • Adjust session settings if needed");
         if contract_id.is_none() {
             println!("   2. Deploy the contract and add its ID to the config");
-            println!("      • anchorkit deploy --network {}", network.replace("stellar-", ""));
+            println!(
+                "      • anchorkit deploy --network {}",
+                network.replace("stellar-", "")
+            );
         }
         println!("   3. Run `anchorkit doctor` to verify your environment");
     } else {

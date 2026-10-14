@@ -10,8 +10,8 @@ mod audit_log_offset_tests {
     use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
-    use crate::sep10_test_util::{build_sep10_jwt, sign_payload};
     use crate::deterministic_hash::compute_payload_hash;
+    use crate::sep10_test_util::{build_sep10_jwt, sign_payload};
     use soroban_sdk::Bytes;
 
     fn make_env() -> Env {
@@ -34,10 +34,7 @@ mod audit_log_offset_tests {
     }
 
     /// Register an attestor and return its signing key.
-    fn setup_attestor(
-        env: &Env,
-        client: &AnchorKitContractClient,
-    ) -> (Address, SigningKey) {
+    fn setup_attestor(env: &Env, client: &AnchorKitContractClient) -> (Address, SigningKey) {
         let sk = SigningKey::generate(&mut OsRng);
         let attestor = Address::generate(env);
         let issuer = attestor.clone();
@@ -73,7 +70,14 @@ mod audit_log_offset_tests {
         let hash = compute_payload_hash(env, &subject, ts, &data);
         let hash_bytes: Bytes = hash.into();
         let sig = sign_payload(env, sk, &hash_bytes);
-        client.submit_attestation_with_session(&session_id, attestor, &subject, &ts, &hash_bytes, &sig);
+        client.submit_attestation_with_session(
+            &session_id,
+            attestor,
+            &subject,
+            &ts,
+            &hash_bytes,
+            &sig,
+        );
     }
 
     // -----------------------------------------------------------------------

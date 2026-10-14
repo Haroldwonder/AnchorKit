@@ -26,11 +26,17 @@ mod sep6_types_consolidation {
         let cases = vec![
             ("pending", CanonicalTransactionStatus::Pending),
             ("incomplete", CanonicalTransactionStatus::Incomplete),
-            ("pending_external", CanonicalTransactionStatus::PendingExternal),
+            (
+                "pending_external",
+                CanonicalTransactionStatus::PendingExternal,
+            ),
             ("pending_anchor", CanonicalTransactionStatus::PendingAnchor),
             ("pending_trust", CanonicalTransactionStatus::PendingTrust),
             ("pending_user", CanonicalTransactionStatus::PendingUser),
-            ("pending_user_transfer_start", CanonicalTransactionStatus::PendingUser),
+            (
+                "pending_user_transfer_start",
+                CanonicalTransactionStatus::PendingUser,
+            ),
             ("completed", CanonicalTransactionStatus::Completed),
             ("refunded", CanonicalTransactionStatus::Refunded),
             ("expired", CanonicalTransactionStatus::Expired),
@@ -39,11 +45,7 @@ mod sep6_types_consolidation {
 
         for (input, expected) in cases {
             let result = CanonicalTransactionStatus::from_str(input);
-            assert_eq!(
-                result, expected,
-                "Failed to parse '{}' correctly",
-                input
-            );
+            assert_eq!(result, expected, "Failed to parse '{}' correctly", input);
         }
     }
 
@@ -53,7 +55,10 @@ mod sep6_types_consolidation {
         let cases = vec![
             (CanonicalTransactionStatus::Pending, "pending"),
             (CanonicalTransactionStatus::Incomplete, "incomplete"),
-            (CanonicalTransactionStatus::PendingExternal, "pending_external"),
+            (
+                CanonicalTransactionStatus::PendingExternal,
+                "pending_external",
+            ),
             (CanonicalTransactionStatus::PendingAnchor, "pending_anchor"),
             (CanonicalTransactionStatus::PendingTrust, "pending_trust"),
             (CanonicalTransactionStatus::PendingUser, "pending_user"),

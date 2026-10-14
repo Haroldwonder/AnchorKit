@@ -67,7 +67,10 @@ impl TransactionStatus {
     /// All pending and incomplete variants return `false` since they may still
     /// progress to a final state.
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed | Self::Refunded | Self::Expired | Self::Error)
+        matches!(
+            self,
+            Self::Completed | Self::Refunded | Self::Expired | Self::Error
+        )
     }
 }
 
@@ -360,8 +363,16 @@ mod transaction_status_tests {
     #[test]
     fn roundtrip_from_str_as_str() {
         let cases = [
-            "pending", "incomplete", "pending_external", "pending_anchor",
-            "pending_trust", "pending_user", "completed", "refunded", "expired", "error",
+            "pending",
+            "incomplete",
+            "pending_external",
+            "pending_anchor",
+            "pending_trust",
+            "pending_user",
+            "completed",
+            "refunded",
+            "expired",
+            "error",
         ];
         for s in cases {
             assert_eq!(TransactionStatus::from_str(s).as_str(), s);
@@ -389,8 +400,14 @@ mod merged_response_type_tests {
             claimable_balance_supported: true,
         };
 
-        assert_eq!(deposit.how, Some(alloc::string::String::from("bank_transfer")));
-        assert_eq!(deposit.deposit_address, Some(alloc::string::String::from("GDEPOSIT...")));
+        assert_eq!(
+            deposit.how,
+            Some(alloc::string::String::from("bank_transfer"))
+        );
+        assert_eq!(
+            deposit.deposit_address,
+            Some(alloc::string::String::from("GDEPOSIT..."))
+        );
         assert_eq!(deposit.expires_at, Some(42));
         assert!(deposit.claimable_balance_supported);
 
@@ -408,7 +425,10 @@ mod merged_response_type_tests {
             status: TransactionStatus::Completed,
         };
 
-        assert_eq!(withdrawal.account_id, Some(alloc::string::String::from("GDEST...")));
+        assert_eq!(
+            withdrawal.account_id,
+            Some(alloc::string::String::from("GDEST..."))
+        );
         assert_eq!(withdrawal.estimated_completion, Some(99));
     }
 }
@@ -426,10 +446,7 @@ mod jurisdiction_filter_tests {
     fn no_filter_accepts_any_anchor_jurisdiction() {
         let env = soroban_sdk::Env::default();
         assert!(anchor_matches_jurisdiction(&None, &None));
-        assert!(anchor_matches_jurisdiction(
-            &None,
-            &Some(s(&env, "USA")),
-        ));
+        assert!(anchor_matches_jurisdiction(&None, &Some(s(&env, "USA")),));
     }
 
     #[test]
