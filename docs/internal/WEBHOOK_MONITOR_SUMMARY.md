@@ -24,31 +24,7 @@ A real-time webhook event monitoring panel for debugging anchor callbacks with v
 - Accessible UI with proper ARIA labels
 - Mobile-responsive layout
 
-### 2. `src/types.rs` (additions)
-**Purpose**: Type definitions for webhook events
-
-**Types Added**:
-```rust
-pub struct WebhookEvent {
-    pub event_id: u64,
-    pub event_type: WebhookEventType,
-    pub timestamp: u64,
-    pub payload_hash: BytesN<32>,
-}
-
-pub enum WebhookEventType {
-    Deposit = 1,
-    Withdrawal = 2,
-    KycUpdate = 3,
-    QuoteReceived = 4,
-    TransferInitiated = 5,
-    SettlementConfirmed = 6,
-    SessionCreated = 7,
-    AttestationRecorded = 8,
-}
-```
-
-### 3. `WEBHOOK_MONITOR.md` (documentation)
+### 2. `WEBHOOK_MONITOR.md` (documentation)
 **Purpose**: Complete usage guide and integration instructions
 
 **Sections**:
@@ -265,27 +241,6 @@ Potential additions (not implemented to keep code minimal):
 - Multi-anchor monitoring
 - Performance metrics dashboard
 - Advanced filtering (date range, regex)
-
-## Integration with AnchorKit
-
-### Event Emission Example
-```rust
-use crate::types::{WebhookEvent, WebhookEventType};
-
-pub fn emit_deposit_webhook(env: &Env, amount: u64, user: &Address) {
-    let event = WebhookEvent {
-        event_id: generate_id(env),
-        event_type: WebhookEventType::Deposit,
-        timestamp: env.ledger().timestamp(),
-        payload_hash: compute_hash(env, amount, user),
-    };
-    
-    env.events().publish(
-        (symbol_short!("webhook"), symbol_short!("event")),
-        event,
-    );
-}
-```
 
 ## Conclusion
 
