@@ -1,13 +1,13 @@
 #![cfg(test)]
 
 mod capability_detection_tests {
-    use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
+    use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
 
     use crate::contract::{
-        AnchorKitContract, AnchorKitContractClient, ServiceType,
-        SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES,
+        AnchorKitContract, AnchorKitContractClient, ServiceType, SERVICE_DEPOSITS,
+        SERVICE_EXCHANGE_QUOTES, SERVICE_KYC, SERVICE_QUOTES, SERVICE_WITHDRAWALS,
     };
     use crate::sep10_test_util::register_attestor_with_sep10;
 
@@ -83,7 +83,15 @@ mod capability_detection_tests {
 
         client.configure_services(
             &anchor,
-            &services(&env, &[SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC]),
+            &services(
+                &env,
+                &[
+                    SERVICE_DEPOSITS,
+                    SERVICE_WITHDRAWALS,
+                    SERVICE_QUOTES,
+                    SERVICE_KYC,
+                ],
+            ),
         );
 
         assert!(client.supports_service(&anchor, &SERVICE_DEPOSITS));
@@ -102,7 +110,10 @@ mod capability_detection_tests {
         assert!(client.supports_service(&anchor, &SERVICE_DEPOSITS));
         assert!(!client.supports_service(&anchor, &SERVICE_WITHDRAWALS));
 
-        client.configure_services(&anchor, &services(&env, &[SERVICE_DEPOSITS, SERVICE_WITHDRAWALS]));
+        client.configure_services(
+            &anchor,
+            &services(&env, &[SERVICE_DEPOSITS, SERVICE_WITHDRAWALS]),
+        );
         assert!(client.supports_service(&anchor, &SERVICE_DEPOSITS));
         assert!(client.supports_service(&anchor, &SERVICE_WITHDRAWALS));
     }
@@ -122,7 +133,10 @@ mod capability_detection_tests {
         let env = make_env();
         let (client, admin) = setup(&env);
         let anchor = register(&env, &client, &admin);
-        client.configure_services(&anchor, &services(&env, &[SERVICE_DEPOSITS, SERVICE_DEPOSITS]));
+        client.configure_services(
+            &anchor,
+            &services(&env, &[SERVICE_DEPOSITS, SERVICE_DEPOSITS]),
+        );
     }
 
     #[test]

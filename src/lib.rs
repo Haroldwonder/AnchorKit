@@ -9,37 +9,39 @@ mod events;
 mod rate_limiter;
 mod response_validator;
 mod retry;
-pub mod sep10_jwt;
 pub mod sdk_config;
+pub mod sep10_jwt;
+pub mod sep6;
 mod storage;
 mod transaction_state_tracker;
 pub mod transport;
 mod types;
-pub mod sep6;
 
 pub use errors::{AnchorKitError, ErrorCode};
 
+pub use deterministic_hash::{compute_payload_hash, verify_payload_hash};
+pub use domain_validator::validate_anchor_domain;
 pub use errors::Error;
-pub use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitState, RateLimitStatus};
+pub use rate_limiter::{RateLimitConfig, RateLimitState, RateLimitStatus, RateLimiter};
 pub use response_validator::{
     validate_anchor_info_response, validate_deposit_response, validate_quote_response,
     validate_withdraw_response, AnchorInfoResponse, QuoteResponse,
 };
-pub use retry::{retry_with_backoff, is_retryable, RetryConfig, RetryErrorCode};
-pub use deterministic_hash::{compute_payload_hash, verify_payload_hash};
-pub use domain_validator::validate_anchor_domain;
+pub use retry::{is_retryable, retry_with_backoff, RetryConfig, RetryErrorCode};
 
-pub use sep6::{
-    fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
-    deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
-    RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
-    TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
-    AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, TransactionFilters,
+pub use contract::{
+    get_admin, get_attestation_count, get_endpoint, set_endpoint, AnchorKitContract,
 };
-pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
-pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
-pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
 pub use events::EndpointUpdated;
+pub use sep6::{
+    deposit_exchange, fetch_transaction_status, get_fee_estimate, get_transactions,
+    initiate_deposit, initiate_withdrawal, validate_amount, withdraw_exchange, AnchorFeeData,
+    AssetLimits, DepositExchangeResponse, FeeEstimate, FeeOperation, RawDepositExchangeRequest,
+    RawDepositResponse, RawTransactionResponse, RawWithdrawExchangeResponse, RawWithdrawalResponse,
+    TransactionFilters, TransactionKind, TransactionStatusResponse,
+};
+pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
+pub use types::{DepositResponse, TransactionStatus, WithdrawalResponse};
 
 // Generated contract client, re-exported for the criterion benchmark suite
 // (`benches/`, issue #738) which drives the contract through the Soroban test

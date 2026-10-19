@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 mod webhook_middleware_tests {
-    use soroban_sdk::{testutils::{Address as _, Ledger, LedgerInfo}, Address, Bytes, Env, String};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger, LedgerInfo},
+        Address, Bytes, Env, String,
+    };
 
     use ed25519_dalek::{Signer, SigningKey};
     use rand::rngs::OsRng;
@@ -57,7 +60,10 @@ mod webhook_middleware_tests {
         // G-addresses are Stellar account addresses (56 chars), not Soroban contract
         // addresses (C-addresses, 58 chars). Parsing one as Address panics with
         // "unexpected strkey length".
-        let g_address = String::from_str(&env, "GBBD6A7KNZF5WNWQEPZP5DYJD2AYUTLXRB6VXJ4RCX4RTNPPQVNF3GQ");
+        let g_address = String::from_str(
+            &env,
+            "GBBD6A7KNZF5WNWQEPZP5DYJD2AYUTLXRB6VXJ4RCX4RTNPPQVNF3GQ",
+        );
         let _ = Address::from_string(&g_address);
     }
 

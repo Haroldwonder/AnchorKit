@@ -1,12 +1,12 @@
 #![cfg(test)]
 
 mod pause_tests {
+    use ed25519_dalek::SigningKey;
+    use rand::rngs::OsRng;
     use soroban_sdk::{
         testutils::{Address as _, Ledger, LedgerInfo},
         Address, Bytes, Env,
     };
-    use ed25519_dalek::SigningKey;
-    use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
     use crate::sep10_test_util::{register_attestor_with_sep10, sign_payload};
@@ -79,7 +79,9 @@ mod pause_tests {
         let ts = env.ledger().timestamp();
         let hash = {
             let mut b = Bytes::new(&env);
-            for i in 0u8..32 { b.push_back(i); }
+            for i in 0u8..32 {
+                b.push_back(i);
+            }
             b
         };
         let sig = sign_payload(&env, &key, &hash);
@@ -123,7 +125,9 @@ mod pause_tests {
         let ts = env.ledger().timestamp();
         let hash = {
             let mut b = Bytes::new(&env);
-            for i in 0u8..32 { b.push_back(i); }
+            for i in 0u8..32 {
+                b.push_back(i);
+            }
             b
         };
         let sig = sign_payload(&env, &key, &hash);
@@ -150,7 +154,9 @@ mod pause_tests {
         let ts = env.ledger().timestamp();
         let hash = {
             let mut b = Bytes::new(&env);
-            for i in 0u8..32 { b.push_back(i); }
+            for i in 0u8..32 {
+                b.push_back(i);
+            }
             b
         };
         let sig = sign_payload(&env, &key, &hash);

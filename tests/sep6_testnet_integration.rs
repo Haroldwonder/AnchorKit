@@ -87,12 +87,7 @@ macro_rules! alloc_format {
 }
 
 /// Register `anchor` on the contract and configure it for the Deposits (1) service.
-fn register_anchor(
-    env: &Env,
-    client: &AnchorKitContractClient,
-    anchor: &Address,
-    sk: &SigningKey,
-) {
+fn register_anchor(env: &Env, client: &AnchorKitContractClient, anchor: &Address, sk: &SigningKey) {
     // Publish the SEP-10 verifying key so the contract can validate JWTs.
     let vk_bytes = Bytes::from_slice(env, sk.verifying_key().as_bytes());
     client.set_sep10_jwt_verifying_key(anchor, &vk_bytes);
@@ -231,16 +226,29 @@ fn test_full_sep6_deposit_lifecycle() {
     let tx_id = "sep6-testnet-txn-001";
 
     let deposit_result = initiate_deposit(raw_deposit_incomplete(tx_id), "USDC");
-    assert!(deposit_result.is_ok(), "initiate_deposit should succeed: {:?}", deposit_result);
+    assert!(
+        deposit_result.is_ok(),
+        "initiate_deposit should succeed: {:?}",
+        deposit_result
+    );
 
     let deposit = deposit_result.unwrap();
     assert_eq!(deposit.transaction_id, tx_id);
-    assert_eq!(deposit.status, TransactionStatus::Incomplete,
-        "initial status must be Incomplete");
-    assert_eq!(deposit.fee_fixed, Some(1),
-        "fixed fee must be propagated from raw response");
-    assert_eq!(deposit.fee_percent, Some(25),
-        "percentage fee must be propagated from raw response");
+    assert_eq!(
+        deposit.status,
+        TransactionStatus::Incomplete,
+        "initial status must be Incomplete"
+    );
+    assert_eq!(
+        deposit.fee_fixed,
+        Some(1),
+        "fixed fee must be propagated from raw response"
+    );
+    assert_eq!(
+        deposit.fee_percent,
+        Some(25),
+        "percentage fee must be propagated from raw response"
+    );
     assert_eq!(deposit.min_amount, Some(10));
     assert_eq!(deposit.max_amount, Some(50_000));
 
@@ -249,45 +257,68 @@ fn test_full_sep6_deposit_lifecycle() {
     assert!(status_result.is_ok());
     let status = status_result.unwrap();
     assert_eq!(status.transaction_id, tx_id);
-    assert_eq!(status.status, TransactionStatus::PendingExternal,
-        "must transition to PendingExternal after on-chain payment is sent");
+    assert_eq!(
+        status.status,
+        TransactionStatus::PendingExternal,
+        "must transition to PendingExternal after on-chain payment is sent"
+    );
     assert_eq!(status.amount_in, Some(100));
-    assert!(status.message.is_some(), "anchor should provide guidance message");
+    assert!(
+        status.message.is_some(),
+        "anchor should provide guidance message"
+    );
 
     // Simulate a non-200 response (e.g. testnet rate limit) and verify it's
     // handled gracefully before continuing.
     let throttled = get_transaction_status(429, raw_tx_pending_external(tx_id));
-    assert!(throttled.is_err(), "429 must be surfaced as RateLimitExceeded error");
+    assert!(
+        throttled.is_err(),
+        "429 must be surfaced as RateLimitExceeded error"
+    );
 
     // ── Stage 3b: status poll — pending_anchor ───────────────────────────
     let status_result = get_transaction_status(200, raw_tx_pending_anchor(tx_id));
     assert!(status_result.is_ok());
     let status = status_result.unwrap();
-    assert_eq!(status.status, TransactionStatus::PendingAnchor,
-        "must transition to PendingAnchor after payment is detected");
-    assert_eq!(status.amount_fee, Some(1),
-        "fee must be present once the anchor starts processing");
+    assert_eq!(
+        status.status,
+        TransactionStatus::PendingAnchor,
+        "must transition to PendingAnchor after payment is detected"
+    );
+    assert_eq!(
+        status.amount_fee,
+        Some(1),
+        "fee must be present once the anchor starts processing"
+    );
 
     // ── Stage 3c: status poll — pending_user ─────────────────────────────
     let status_result = get_transaction_status(200, raw_tx_pending_user(tx_id));
     assert!(status_result.is_ok());
     let status = status_result.unwrap();
     assert_eq!(status.status, TransactionStatus::PendingUser);
-    assert_eq!(status.amount_out, Some(99),
-        "amount_out must be populated before final confirmation");
+    assert_eq!(
+        status.amount_out,
+        Some(99),
+        "amount_out must be populated before final confirmation"
+    );
 
     // ── Stage 3d: status poll — completed ────────────────────────────────
     let status_result = get_transaction_status(200, raw_tx_completed(tx_id));
     assert!(status_result.is_ok());
     let final_status = status_result.unwrap();
     assert_eq!(final_status.transaction_id, tx_id);
-    assert_eq!(final_status.status, TransactionStatus::Completed,
-        "lifecycle must end in Completed state");
+    assert_eq!(
+        final_status.status,
+        TransactionStatus::Completed,
+        "lifecycle must end in Completed state"
+    );
     assert_eq!(final_status.amount_in, Some(100));
     assert_eq!(final_status.amount_out, Some(99));
     assert_eq!(final_status.amount_fee, Some(1));
-    assert!(final_status.message.is_none(),
-        "completed transactions typically have no pending-action message");
+    assert!(
+        final_status.message.is_none(),
+        "completed transactions typically have no pending-action message"
+    );
 
     // ── Stage 4: transaction history pagination ───────────────────────────
     // Simulate fetching the user's transaction history from the anchor API.
@@ -333,8 +364,10 @@ fn test_full_sep6_deposit_lifecycle() {
     )
     .unwrap();
     assert_eq!(paginated.len(), 1);
-    assert_eq!(paginated[0].transaction_id, "sep6-testnet-txn-000",
-        "cursor must skip the most-recent transaction");
+    assert_eq!(
+        paginated[0].transaction_id, "sep6-testnet-txn-000",
+        "cursor must skip the most-recent transaction"
+    );
 
     // ── Stage 5: 404 for unknown transaction ─────────────────────────────
     let not_found = get_transaction_status(
@@ -377,7 +410,10 @@ fn test_sep6_deposit_with_depositor_account_accepted() {
     };
 
     let result = initiate_deposit(raw, "USDC");
-    assert!(result.is_ok(), "deposit with valid Stellar address must be accepted");
+    assert!(
+        result.is_ok(),
+        "deposit with valid Stellar address must be accepted"
+    );
     let deposit = result.unwrap();
     assert_eq!(deposit.status, TransactionStatus::PendingExternal);
 }
@@ -401,5 +437,8 @@ fn test_sep6_deposit_invalid_depositor_account_rejected() {
     };
 
     let result = initiate_deposit(raw, "USDC");
-    assert!(result.is_err(), "invalid Stellar address must cause initiate_deposit to fail");
+    assert!(
+        result.is_err(),
+        "invalid Stellar address must cause initiate_deposit to fail"
+    );
 }

@@ -392,13 +392,19 @@ fn test_native_path_separator_and_normalize() {
     let normalized = normalize_path_separators(&display);
 
     // After normalization there must be no backslashes.
-    assert!(!normalized.contains('\\'), "normalized path still contains backslash: {normalized}");
+    assert!(
+        !normalized.contains('\\'),
+        "normalized path still contains backslash: {normalized}"
+    );
     assert_eq!(normalized, "configs/subdir/file.json");
 
     // On Windows the original string should have contained backslashes;
     // on Unix it should already have forward slashes.
     #[cfg(target_os = "windows")]
-    assert!(display.contains('\\'), "expected native backslash on Windows");
+    assert!(
+        display.contains('\\'),
+        "expected native backslash on Windows"
+    );
 
     #[cfg(not(target_os = "windows"))]
     assert!(display.contains('/'), "expected forward slash on Unix");

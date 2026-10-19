@@ -127,7 +127,10 @@ mod streaming_flow_tests {
 
         let log = client.get_audit_log(&0);
         assert_eq!(log.session_id, session_id);
-        assert_eq!(log.operation.operation_type, String::from_str(&env, "attest"));
+        assert_eq!(
+            log.operation.operation_type,
+            String::from_str(&env, "attest")
+        );
         assert_eq!(log.operation.status, String::from_str(&env, "success"));
         assert_eq!(log.actor, anchor);
     }

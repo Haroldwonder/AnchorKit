@@ -3,12 +3,11 @@
 //! Verifies the anchor-signed token using a 32-byte Ed25519 public key stored on-chain.
 //! Payload must include integer `exp` (Unix seconds) and string `sub` (Stellar strkey of the client).
 
-
 extern crate alloc;
 
 use alloc::vec::Vec;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use soroban_sdk::{Bytes, Env, String};
-use ed25519_dalek::{Signature, VerifyingKey, Verifier};
 
 /// Maximum JWT character length accepted by the contract (defensive bound).
 ///
@@ -131,10 +130,7 @@ fn parse_json_exp(payload: &[u8]) -> Result<u64, ()> {
         let d = (payload[i] - b'0') as u64;
         // An exp value that overflows u64 is treated as a malformed token
         // and causes verify_sep10_jwt to return Err(()) — this is intentional.
-        n = n
-            .checked_mul(10)
-            .and_then(|x| x.checked_add(d))
-            .ok_or(())?;
+        n = n.checked_mul(10).and_then(|x| x.checked_add(d)).ok_or(())?;
         i += 1;
     }
     if !any {
@@ -474,27 +470,42 @@ pub fn verify_sep10_jwt_multisig(
     let mut dot_count = 0usize;
     for (i, &byte) in first_buf[..first_n].iter().enumerate() {
         if byte == b'.' {
-            if dot_count < 2 { dots[dot_count] = i; dot_count += 1; } else { return Err(()); }
+            if dot_count < 2 {
+                dots[dot_count] = i;
+                dot_count += 1;
+            } else {
+                return Err(());
+            }
         }
     }
-    if dot_count != 2 { return Err(()); }
+    if dot_count != 2 {
+        return Err(());
+    }
     let d0 = dots[0];
     let d1 = dots[1];
-    if d0 == 0 || d1 <= d0 + 1 || d1 + 1 >= first_n { return Err(()); }
+    if d0 == 0 || d1 <= d0 + 1 || d1 + 1 >= first_n {
+        return Err(());
+    }
 
     // Validate alg and payload (exp, sub) using the first token's payload.
     let header_b64 = &first_buf[..d0];
     let payload_b64 = &first_buf[d0 + 1..d1];
     let header_dec = base64url_decode(header_b64).map_err(|_| ())?;
     let alg = parse_json_alg(&header_dec)?;
-    if alg != b"EdDSA" { return Err(()); }
+    if alg != b"EdDSA" {
+        return Err(());
+    }
     let payload_dec = base64url_decode(payload_b64).map_err(|_| ())?;
     let exp = parse_json_exp(&payload_dec)?;
     let now = env.ledger().timestamp();
-    if exp.saturating_add(clock_skew_seconds) <= now { return Err(()); }
+    if exp.saturating_add(clock_skew_seconds) <= now {
+        return Err(());
+    }
     let sub = parse_json_sub(env, &payload_dec)?;
     if let Some(expected) = expected_sub {
-        if sub != *expected { return Err(()); }
+        if sub != *expected {
+            return Err(());
+        }
     }
 
     // Count how many distinct keys produce a valid signature across all tokens.
@@ -506,7 +517,9 @@ pub fn verify_sep10_jwt_multisig(
     for t_idx in 0..tokens.len() {
         let token = tokens.get(t_idx).ok_or(())?;
         let tn = token.len() as usize;
-        if tn == 0 || tn > MAX_JWT_LEN as usize { continue; }
+        if tn == 0 || tn > MAX_JWT_LEN as usize {
+            continue;
+        }
         let mut tbuf = [0u8; MAX_JWT_LEN as usize];
         token.copy_into_slice(&mut tbuf[..tn]);
 
@@ -515,27 +528,50 @@ pub fn verify_sep10_jwt_multisig(
         let mut tdc = 0usize;
         for (i, &byte) in tbuf[..tn].iter().enumerate() {
             if byte == b'.' {
-                if tdc < 2 { tdots[tdc] = i; tdc += 1; } else { break; }
+                if tdc < 2 {
+                    tdots[tdc] = i;
+                    tdc += 1;
+                } else {
+                    break;
+                }
             }
         }
-        if tdc != 2 { continue; }
+        if tdc != 2 {
+            continue;
+        }
         let td1 = tdots[1];
-        if td1 + 1 >= tn { continue; }
+        if td1 + 1 >= tn {
+            continue;
+        }
 
         // Ensure this token's signing input matches the canonical one.
-        if &tbuf[..td1] != signing_input { continue; }
+        if &tbuf[..td1] != signing_input {
+            continue;
+        }
 
         let sig_b64 = &tbuf[td1 + 1..tn];
-        let sig_dec = match base64url_decode(sig_b64) { Ok(s) => s, Err(_) => continue };
-        if sig_dec.len() != 64 { continue; }
-        let sig_arr: [u8; 64] = match sig_dec.as_slice().try_into() { Ok(a) => a, Err(_) => continue };
+        let sig_dec = match base64url_decode(sig_b64) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if sig_dec.len() != 64 {
+            continue;
+        }
+        let sig_arr: [u8; 64] = match sig_dec.as_slice().try_into() {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
         let dalek_sig = Signature::from_bytes(&sig_arr);
 
         for k_idx in 0..keys.len() {
             let k_idx_usize = k_idx as usize;
-            if used_key_indices[k_idx_usize] { continue; }
+            if used_key_indices[k_idx_usize] {
+                continue;
+            }
             let key = keys.get(k_idx).unwrap();
-            if key.len() != 32 { continue; }
+            if key.len() != 32 {
+                continue;
+            }
             let mut pk_arr = [0u8; 32];
             key.copy_into_slice(&mut pk_arr);
             if let Ok(vk) = VerifyingKey::from_bytes(&pk_arr) {
@@ -552,7 +588,11 @@ pub fn verify_sep10_jwt_multisig(
         }
     }
 
-    if valid_sig_count >= threshold { Ok(()) } else { Err(()) }
+    if valid_sig_count >= threshold {
+        Ok(())
+    } else {
+        Err(())
+    }
 }
 
 #[cfg(test)]
@@ -560,8 +600,8 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use alloc::format;
     use crate::alloc::string::ToString;
+    use alloc::format;
     use ed25519_dalek::{Signer, SigningKey};
     use rand::rngs::OsRng;
     use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
@@ -596,8 +636,8 @@ mod tests {
     fn base64url_roundtrip_simple() {
         // "Hello" = SGVsbG8 (unpadded), SGVsbG8= (1-pad), SGVsbG8== (over-padded)
         let expected = b"Hello";
-        assert_eq!(base64url_decode(b"SGVsbG8").unwrap(), expected);   // unpadded
-        assert_eq!(base64url_decode(b"SGVsbG8=").unwrap(), expected);  // standard padded
+        assert_eq!(base64url_decode(b"SGVsbG8").unwrap(), expected); // unpadded
+        assert_eq!(base64url_decode(b"SGVsbG8=").unwrap(), expected); // standard padded
         assert_eq!(base64url_decode(b"SGVsbG8==").unwrap(), expected); // over-padded
         assert_eq!(base64url_decode(b"SGVsbG8===").unwrap(), expected); // extra over-padded
 
@@ -703,10 +743,10 @@ mod tests {
 
         // Malformed payloads should also return Err, not panic
         let malformed_cases: &[&[u8]] = &[
-            b"",                                    // empty payload
-            b"not json at all",                     // bad JSON
+            b"",                                     // empty payload
+            b"not json at all",                      // bad JSON
             b"{\"sub\":\"val\\\"ue\",\"exp\":9999}", // escaped quote in sub value
-            b"{\"sub\":\"unterminated",             // truncated / no closing quote
+            b"{\"sub\":\"unterminated",              // truncated / no closing quote
         ];
         for payload in malformed_cases {
             assert!(
@@ -723,11 +763,11 @@ mod tests {
         ledger(&env, 1_000);
 
         let cases: &[&[u8]] = &[
-            b"",                                          // empty
-            b"{}",                                        // no sub key
-            b"{\"sub\":42}",                              // sub not a string
-            b"{\"sub\":\"unterminated",                   // truncated / no closing quote
-            b"{\"sub\":\"\\",                             // backslash at end (malformed escape)
+            b"",                        // empty
+            b"{}",                      // no sub key
+            b"{\"sub\":42}",            // sub not a string
+            b"{\"sub\":\"unterminated", // truncated / no closing quote
+            b"{\"sub\":\"\\",           // backslash at end (malformed escape)
         ];
 
         for payload in cases {
@@ -739,7 +779,12 @@ mod tests {
         }
     }
 
-    fn build_jwt_with_scope(signing_key: &SigningKey, sub: &str, exp: u64, scope: &str) -> std::string::String {
+    fn build_jwt_with_scope(
+        signing_key: &SigningKey,
+        sub: &str,
+        exp: u64,
+        scope: &str,
+    ) -> std::string::String {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         let header = r#"{"alg":"EdDSA","typ":"JWT"}"#;
         let payload = format!(r#"{{"sub":"{}","exp":{},"scp":"{}"}}"#, sub, exp, scope);
@@ -751,7 +796,12 @@ mod tests {
         format!("{}.{}", signing_input, sig_b64)
     }
 
-    fn build_jwt_with_custom_alg(signing_key: &SigningKey, sub: &str, exp: u64, alg: &str) -> std::string::String {
+    fn build_jwt_with_custom_alg(
+        signing_key: &SigningKey,
+        sub: &str,
+        exp: u64,
+        alg: &str,
+    ) -> std::string::String {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         let header = format!(r#"{{"alg":"{}","typ":"JWT"}}"#, alg);
         let payload = format!(r#"{{"sub":"{}","exp":{}}}"#, sub, exp);
@@ -897,7 +947,11 @@ mod tests {
         let parts: std::vec::Vec<&str> = jwt1.split('.').collect();
         let signing_input = format!("{}.{}", parts[0], parts[1]);
         let sig2 = sk2.sign(signing_input.as_bytes());
-        let jwt2 = format!("{}.{}", signing_input, URL_SAFE_NO_PAD.encode(sig2.to_bytes()));
+        let jwt2 = format!(
+            "{}.{}",
+            signing_input,
+            URL_SAFE_NO_PAD.encode(sig2.to_bytes())
+        );
 
         let mut keys = soroban_sdk::Vec::new(&env);
         keys.push_back(Bytes::from_slice(&env, sk1.verifying_key().as_bytes()));

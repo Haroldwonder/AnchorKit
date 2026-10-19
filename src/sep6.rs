@@ -3,7 +3,6 @@
 //! Provides normalized service functions for initiating deposits, withdrawals,
 //! and fetching transaction status across different anchors.
 
-
 extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -299,14 +298,17 @@ fn is_valid_stellar_address(s: &str) -> bool {
 
 fn is_valid_asset_code(s: &str) -> bool {
     let len = s.len();
-    len >= 1 && len <= 12 && s.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    len >= 1
+        && len <= 12
+        && s.chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
 /// Classifies whether an HTTP status code represents a retryable error.
 ///
 /// Returns `true` for transient errors (5xx server errors, timeouts, connection errors).
 /// Returns `false` for client errors (4xx), which are not retryable.
-/// 
+///
 /// - 5xx: Server errors (retryable)
 /// - 4xx: Client errors like 400, 401, 403, 404 (not retryable — don't retry bad requests)
 /// - Network timeouts and connection errors (represented externally) are retryable
@@ -371,7 +373,10 @@ where
 ///
 /// Returns `Err(Error::invalid_transaction_intent())` if required fields are missing.
 /// Returns `Err(Error::ValidationError)` if asset_code is invalid.
-pub fn initiate_deposit(raw: RawDepositResponse, asset_code: &str) -> Result<DepositResponse, Error> {
+pub fn initiate_deposit(
+    raw: RawDepositResponse,
+    asset_code: &str,
+) -> Result<DepositResponse, Error> {
     if !is_valid_asset_code(asset_code) {
         return Err(Error::with_context(
             ErrorCode::ValidationError,
@@ -415,7 +420,10 @@ pub fn initiate_deposit(raw: RawDepositResponse, asset_code: &str) -> Result<Dep
 ///
 /// Returns `Err(Error::invalid_transaction_intent())` if required fields are missing.
 /// Returns `Err(Error::ValidationError)` if asset_code is invalid.
-pub fn initiate_withdrawal(raw: RawWithdrawalResponse, asset_code: &str) -> Result<WithdrawalResponse, Error> {
+pub fn initiate_withdrawal(
+    raw: RawWithdrawalResponse,
+    asset_code: &str,
+) -> Result<WithdrawalResponse, Error> {
     if !is_valid_asset_code(asset_code) {
         return Err(Error::with_context(
             ErrorCode::ValidationError,
@@ -662,7 +670,11 @@ pub fn deposit_exchange(
         extra_info: raw.extra_info,
         fee_fixed: raw.fee_fixed,
         fee_percent: raw.fee_percent,
-        status: raw.status.as_deref().map(TransactionStatus::from_str).unwrap_or(TransactionStatus::Pending),
+        status: raw
+            .status
+            .as_deref()
+            .map(TransactionStatus::from_str)
+            .unwrap_or(TransactionStatus::Pending),
     })
 }
 
@@ -720,7 +732,11 @@ pub fn get_fee_estimate(
     fee_data: &AnchorFeeData,
 ) -> Result<FeeEstimate, Error> {
     if !is_valid_asset_code(asset_code) {
-        return Err(Error::with_context(ErrorCode::ValidationError, "Invalid asset code", asset_code));
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "Invalid asset code",
+            asset_code,
+        ));
     }
     if amount == 0 {
         return Err(Error::invalid_amount());
@@ -735,7 +751,11 @@ pub fn get_fee_estimate(
     let _ = operation;
     let percent_fee = (amount as u128 * fee_data.fee_percent_bps as u128 / 10_000) as u64;
     let total_fee = fee_data.fee_fixed.saturating_add(percent_fee);
-    Ok(FeeEstimate { total_fee, fee_fixed: fee_data.fee_fixed, fee_percent_bps: fee_data.fee_percent_bps })
+    Ok(FeeEstimate {
+        total_fee,
+        fee_fixed: fee_data.fee_fixed,
+        fee_percent_bps: fee_data.fee_percent_bps,
+    })
 }
 
 // ── #653 get_transactions ─────────────────────────────────────────────────────
@@ -867,7 +887,10 @@ mod tests {
     fn test_initiate_deposit_missing_fields_returns_error() {
         let mut raw = raw_deposit();
         raw.transaction_id = "".to_string();
-        assert_eq!(initiate_deposit(raw, "USDC"), Err(Error::invalid_transaction_intent()));
+        assert_eq!(
+            initiate_deposit(raw, "USDC"),
+            Err(Error::invalid_transaction_intent())
+        );
     }
 
     #[test]
@@ -894,7 +917,8 @@ mod tests {
         // transposed, which flips the CRC16 checksum without changing the length
         // or the (still-valid) Base32 alphabet.
         let mut raw = raw_deposit();
-        raw.depositor_account = Some("GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZY".to_string());
+        raw.depositor_account =
+            Some("GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZY".to_string());
         let err = initiate_deposit(raw, "USDC").unwrap_err();
         assert_eq!(err.code, ErrorCode::ValidationError);
     }
@@ -903,7 +927,8 @@ mod tests {
     fn test_initiate_deposit_valid_stellar_address_accepted() {
         let mut raw = raw_deposit();
         // 56-char G-address with a valid Base32 encoding and CRC16 checksum
-        raw.depositor_account = Some("GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZX".to_string());
+        raw.depositor_account =
+            Some("GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZX".to_string());
         assert!(initiate_deposit(raw, "USDC").is_ok());
     }
 
@@ -975,7 +1000,10 @@ mod tests {
         let mut raw = raw_tx_status();
         raw.status = "some_unknown_status".to_string();
         let resp = fetch_transaction_status(raw).unwrap();
-        assert_eq!(resp.status, TransactionStatus::Unknown("some_unknown_status".to_string()));
+        assert_eq!(
+            resp.status,
+            TransactionStatus::Unknown("some_unknown_status".to_string())
+        );
     }
 
     #[test]
@@ -995,14 +1023,22 @@ mod tests {
         for s in &["Withdrawal", "WITHDRAWAL", "Withdraw", "WITHDRAW"] {
             let mut r = raw_tx_status();
             r.kind = Some(s.to_string());
-            assert_eq!(fetch_transaction_status(r).unwrap().kind, TransactionKind::Withdrawal, "failed for {s}");
+            assert_eq!(
+                fetch_transaction_status(r).unwrap().kind,
+                TransactionKind::Withdrawal,
+                "failed for {s}"
+            );
         }
 
         // Mixed-case deposit variants
         for s in &["Deposit", "DEPOSIT", "deposit"] {
             let mut r = raw_tx_status();
             r.kind = Some(s.to_string());
-            assert_eq!(fetch_transaction_status(r).unwrap().kind, TransactionKind::Deposit, "failed for {s}");
+            assert_eq!(
+                fetch_transaction_status(r).unwrap().kind,
+                TransactionKind::Deposit,
+                "failed for {s}"
+            );
         }
     }
 
@@ -1016,9 +1052,18 @@ mod tests {
 
     #[test]
     fn test_transaction_kind_from_str_roundtrip() {
-        assert_eq!(TransactionKind::from_str("deposit"), TransactionKind::Deposit);
-        assert_eq!(TransactionKind::from_str("withdrawal"), TransactionKind::Withdrawal);
-        assert_eq!(TransactionKind::from_str("withdraw"), TransactionKind::Withdrawal);
+        assert_eq!(
+            TransactionKind::from_str("deposit"),
+            TransactionKind::Deposit
+        );
+        assert_eq!(
+            TransactionKind::from_str("withdrawal"),
+            TransactionKind::Withdrawal
+        );
+        assert_eq!(
+            TransactionKind::from_str("withdraw"),
+            TransactionKind::Withdrawal
+        );
         assert_eq!(
             TransactionKind::from_str("future_value"),
             TransactionKind::Unknown("future_value".to_string())
@@ -1118,10 +1163,7 @@ mod tests {
 
     #[test]
     fn test_list_transactions_returns_all_items() {
-        let items = alloc::vec![
-            make_raw_tx("t1", "completed"),
-            make_raw_tx("t2", "pending"),
-        ];
+        let items = alloc::vec![make_raw_tx("t1", "completed"), make_raw_tx("t2", "pending"),];
         let result = list_transactions(base_req(), items).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].transaction_id, "t1");
@@ -1258,10 +1300,10 @@ mod tests {
         // Test that custom retry config is respected
         let raw = raw_tx_status();
         let custom_config = RetryConfig::new(
-            5,      // max_attempts
-            50,     // base_delay_ms
-            2000,   // max_delay_ms
-            2,      // backoff_multiplier
+            5,    // max_attempts
+            50,   // base_delay_ms
+            2000, // max_delay_ms
+            2,    // backoff_multiplier
         );
         let mut sleep_calls = 0;
 
@@ -1326,7 +1368,10 @@ mod tests {
         );
 
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, ErrorCode::InvalidTransactionIntent);
+        assert_eq!(
+            result.unwrap_err().code,
+            ErrorCode::InvalidTransactionIntent
+        );
         assert_eq!(attempt_count, 1); // Normalization errors don't retry
     }
 
@@ -1406,72 +1451,114 @@ mod tests {
     fn test_deposit_exchange_invalid_source_asset() {
         let mut req = exchange_req();
         req.source_asset = "".to_string();
-        assert_eq!(deposit_exchange(req, raw_deposit()).unwrap_err().code, ErrorCode::ValidationError);
+        assert_eq!(
+            deposit_exchange(req, raw_deposit()).unwrap_err().code,
+            ErrorCode::ValidationError
+        );
     }
 
     #[test]
     fn test_deposit_exchange_invalid_destination_asset() {
         let mut req = exchange_req();
         req.destination_asset = "toolongassetcode".to_string();
-        assert_eq!(deposit_exchange(req, raw_deposit()).unwrap_err().code, ErrorCode::ValidationError);
+        assert_eq!(
+            deposit_exchange(req, raw_deposit()).unwrap_err().code,
+            ErrorCode::ValidationError
+        );
     }
 
     #[test]
     fn test_deposit_exchange_zero_amount_returns_invalid_amount() {
         let mut req = exchange_req();
         req.amount = 0;
-        assert_eq!(deposit_exchange(req, raw_deposit()).unwrap_err().code, ErrorCode::InvalidAmount);
+        assert_eq!(
+            deposit_exchange(req, raw_deposit()).unwrap_err().code,
+            ErrorCode::InvalidAmount
+        );
     }
 
     #[test]
     fn test_deposit_exchange_missing_transaction_id() {
         let mut raw = raw_deposit();
         raw.transaction_id = "".to_string();
-        assert_eq!(deposit_exchange(exchange_req(), raw).unwrap_err().code, ErrorCode::InvalidTransactionIntent);
+        assert_eq!(
+            deposit_exchange(exchange_req(), raw).unwrap_err().code,
+            ErrorCode::InvalidTransactionIntent
+        );
     }
 
     // ── validate_amount tests (#651) ─────────────────────────────────────────
 
     #[test]
     fn test_validate_amount_within_limits() {
-        let limits = AssetLimits { min_amount: 10, max_amount: 1000 };
+        let limits = AssetLimits {
+            min_amount: 10,
+            max_amount: 1000,
+        };
         assert!(validate_amount(100, &limits).is_ok());
     }
 
     #[test]
     fn test_validate_amount_at_min() {
-        let limits = AssetLimits { min_amount: 10, max_amount: 1000 };
+        let limits = AssetLimits {
+            min_amount: 10,
+            max_amount: 1000,
+        };
         assert!(validate_amount(10, &limits).is_ok());
     }
 
     #[test]
     fn test_validate_amount_at_max() {
-        let limits = AssetLimits { min_amount: 10, max_amount: 1000 };
+        let limits = AssetLimits {
+            min_amount: 10,
+            max_amount: 1000,
+        };
         assert!(validate_amount(1000, &limits).is_ok());
     }
 
     #[test]
     fn test_validate_amount_below_min() {
-        let limits = AssetLimits { min_amount: 10, max_amount: 1000 };
-        assert_eq!(validate_amount(5, &limits).unwrap_err().code, ErrorCode::InvalidAmount);
+        let limits = AssetLimits {
+            min_amount: 10,
+            max_amount: 1000,
+        };
+        assert_eq!(
+            validate_amount(5, &limits).unwrap_err().code,
+            ErrorCode::InvalidAmount
+        );
     }
 
     #[test]
     fn test_validate_amount_above_max() {
-        let limits = AssetLimits { min_amount: 10, max_amount: 1000 };
-        assert_eq!(validate_amount(2000, &limits).unwrap_err().code, ErrorCode::InvalidAmount);
+        let limits = AssetLimits {
+            min_amount: 10,
+            max_amount: 1000,
+        };
+        assert_eq!(
+            validate_amount(2000, &limits).unwrap_err().code,
+            ErrorCode::InvalidAmount
+        );
     }
 
     #[test]
     fn test_validate_amount_zero() {
-        let limits = AssetLimits { min_amount: 10, max_amount: 1000 };
-        assert_eq!(validate_amount(0, &limits).unwrap_err().code, ErrorCode::InvalidAmount);
+        let limits = AssetLimits {
+            min_amount: 10,
+            max_amount: 1000,
+        };
+        assert_eq!(
+            validate_amount(0, &limits).unwrap_err().code,
+            ErrorCode::InvalidAmount
+        );
     }
 
     // ── get_fee_estimate tests (#652) ────────────────────────────────────────
 
     fn fee_data() -> AnchorFeeData {
-        AnchorFeeData { fee_fixed: 5, fee_percent_bps: 100 } // 1%
+        AnchorFeeData {
+            fee_fixed: 5,
+            fee_percent_bps: 100,
+        } // 1%
     }
 
     #[test]
@@ -1491,7 +1578,9 @@ mod tests {
     #[test]
     fn test_get_fee_estimate_zero_amount() {
         assert_eq!(
-            get_fee_estimate("USDC", 0, FeeOperation::Deposit, &fee_data()).unwrap_err().code,
+            get_fee_estimate("USDC", 0, FeeOperation::Deposit, &fee_data())
+                .unwrap_err()
+                .code,
             ErrorCode::InvalidAmount
         );
     }
@@ -1499,7 +1588,9 @@ mod tests {
     #[test]
     fn test_get_fee_estimate_invalid_asset_code() {
         assert_eq!(
-            get_fee_estimate("", 100, FeeOperation::Deposit, &fee_data()).unwrap_err().code,
+            get_fee_estimate("", 100, FeeOperation::Deposit, &fee_data())
+                .unwrap_err()
+                .code,
             ErrorCode::ValidationError
         );
     }
@@ -1534,7 +1625,9 @@ mod tests {
         f.status = Some(TransactionStatus::Completed);
         let result = get_transactions(f, items).unwrap();
         assert_eq!(result.len(), 2);
-        assert!(result.iter().all(|tx| tx.status == TransactionStatus::Completed));
+        assert!(result
+            .iter()
+            .all(|tx| tx.status == TransactionStatus::Completed));
     }
 
     #[test]
@@ -1546,7 +1639,10 @@ mod tests {
             limit: 10,
             cursor: None,
         };
-        assert_eq!(get_transactions(f, alloc::vec![]).unwrap_err().code, ErrorCode::ValidationError);
+        assert_eq!(
+            get_transactions(f, alloc::vec![]).unwrap_err().code,
+            ErrorCode::ValidationError
+        );
     }
 
     #[test]

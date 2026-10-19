@@ -5,7 +5,6 @@
 //! - HTTPS-only connections
 //! - Rejection of malformed domains
 
-
 extern crate alloc;
 use alloc::vec::Vec;
 
@@ -72,8 +71,12 @@ pub fn validate_anchor_domain(domain: &str) -> Result<(), AnchorKitError> {
 
     // Remove query parameters and fragments from host
     let host_with_port = host_with_query
-        .split('?').next().unwrap_or(host_with_query)
-        .split('#').next().unwrap_or(host_with_query);
+        .split('?')
+        .next()
+        .unwrap_or(host_with_query)
+        .split('#')
+        .next()
+        .unwrap_or(host_with_query);
 
     // Parse host and port separately — extract just the host for validation
     let host = if let Some(colon_pos) = host_with_port.rfind(':') {
@@ -158,7 +161,9 @@ fn validate_host(host: &str) -> Result<(), AnchorKitError> {
         let db = d.as_bytes();
         let is_localhost = d.eq_ignore_ascii_case("localhost")
             || d.len() > 9 && db[..9].eq_ignore_ascii_case(b"localhost") && db[9] == b'.'
-            || d.len() > 9 && db[db.len()-9..].eq_ignore_ascii_case(b"localhost") && db[db.len()-10] == b'.';
+            || d.len() > 9
+                && db[db.len() - 9..].eq_ignore_ascii_case(b"localhost")
+                && db[db.len() - 10] == b'.';
         if is_localhost {
             return Err(AnchorKitError::invalid_endpoint_format());
         }
@@ -305,8 +310,11 @@ fn validate_path_traversal(url: &str) -> Result<(), AnchorKitError> {
         return Err(AnchorKitError::path_traversal_detected());
     }
 
-    if path.contains("%2F..%2F") || path.contains("%2f..%2f") ||
-       path.contains("%2F..%2f") || path.contains("%2f..%2F") {
+    if path.contains("%2F..%2F")
+        || path.contains("%2f..%2f")
+        || path.contains("%2F..%2f")
+        || path.contains("%2f..%2F")
+    {
         return Err(AnchorKitError::path_traversal_detected());
     }
 
@@ -337,7 +345,7 @@ fn percent_decode_simple(s: &str) -> alloc::string::String {
 
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(hex_str) = core::str::from_utf8(&bytes[i+1..i+3]) {
+            if let Ok(hex_str) = core::str::from_utf8(&bytes[i + 1..i + 3]) {
                 if let Ok(byte_val) = u8::from_str_radix(hex_str, 16) {
                     result.push(byte_val as char);
                     i += 3;
@@ -362,19 +370,19 @@ mod tests {
         assert!(validate_anchor_domain("https://example.com").is_ok());
         assert!(validate_anchor_domain("https://api.example.com").is_ok());
         assert!(validate_anchor_domain("https://sub.domain.example.com").is_ok());
-        
+
         // With paths
         assert!(validate_anchor_domain("https://example.com/path").is_ok());
         assert!(validate_anchor_domain("https://example.com/path/to/resource").is_ok());
-        
+
         // With ports
         assert!(validate_anchor_domain("https://example.com:8080").is_ok());
         assert!(validate_anchor_domain("https://example.com:443").is_ok());
-        
+
         // With query parameters
         assert!(validate_anchor_domain("https://example.com?param=value").is_ok());
         assert!(validate_anchor_domain("https://example.com/path?param=value").is_ok());
-        
+
         // With hyphens in domain
         assert!(validate_anchor_domain("https://my-domain.com").is_ok());
         assert!(validate_anchor_domain("https://api-v2.example.com").is_ok());
@@ -385,7 +393,7 @@ mod tests {
         // HTTP should be rejected
         assert!(validate_anchor_domain("http://example.com").is_err());
         assert!(validate_anchor_domain("http://secure.example.com").is_err());
-        
+
         // Other protocols should be rejected
         assert!(validate_anchor_domain("ftp://example.com").is_err());
         assert!(validate_anchor_domain("ws://example.com").is_err());
@@ -397,19 +405,19 @@ mod tests {
         // Empty or whitespace
         assert!(validate_anchor_domain("").is_err());
         assert!(validate_anchor_domain("   ").is_err());
-        
+
         // Missing protocol
         assert!(validate_anchor_domain("example.com").is_err());
         assert!(validate_anchor_domain("www.example.com").is_err());
-        
+
         // Protocol only
         assert!(validate_anchor_domain("https://").is_err());
-        
+
         // Invalid domain structure
         assert!(validate_anchor_domain("https://.example.com").is_err());
         assert!(validate_anchor_domain("https://example.com.").is_err());
         assert!(validate_anchor_domain("https://example..com").is_err());
-        
+
         // Issue #275: single-label domains (no TLD) must be rejected — they are
         // internal hostnames and not valid anchor endpoints
         assert!(validate_anchor_domain("https://localhost").is_err());
@@ -417,15 +425,15 @@ mod tests {
         assert!(validate_anchor_domain("https://anchor").is_err());
         assert!(validate_anchor_domain("https://anchor/sep6").is_err());
         assert!(validate_anchor_domain("https://intranet/path").is_err());
-        
+
         // Spaces in domain
         assert!(validate_anchor_domain("https://example .com").is_err());
         assert!(validate_anchor_domain("https://exam ple.com").is_err());
-        
+
         // Invalid characters
         assert!(validate_anchor_domain("https://example$.com").is_err());
         assert!(validate_anchor_domain("https://example@.com").is_err());
-        
+
         // Too short
         assert!(validate_anchor_domain("https://a").is_err());
         assert!(validate_anchor_domain("https://a.").is_err());
@@ -454,7 +462,7 @@ mod tests {
         // Too long
         let long_domain = format!("https://{}.com", "a".repeat(2048));
         assert!(validate_anchor_domain(&long_domain).is_err());
-        
+
         // Maximum acceptable length: use a path to reach near-2048 without violating label limits
         let max_domain = format!("https://example.com/{}", "a".repeat(2020));
         assert!(validate_anchor_domain(&max_domain).is_ok());
@@ -472,13 +480,16 @@ mod tests {
         assert!(validate_anchor_domain("https://example.com/path%00/resource").is_err());
         assert!(validate_anchor_domain("https://example.com?q=%00").is_err());
         // #890: percent-encoded CRLF / other C0 controls must also be rejected
-        assert!(validate_anchor_domain("https://example.com/path%0D%0AInjected-Header:%20evil").is_err());
+        assert!(
+            validate_anchor_domain("https://example.com/path%0D%0AInjected-Header:%20evil")
+                .is_err()
+        );
         assert!(validate_anchor_domain("https://example.com/path%0d%0aInjected").is_err());
         assert!(validate_anchor_domain("https://example.com/%0A").is_err());
         assert!(validate_anchor_domain("https://example.com/%0D").is_err());
         assert!(validate_anchor_domain("https://example.com/%09").is_err()); // TAB
         assert!(validate_anchor_domain("https://example.com/%7F").is_err()); // DEL
-        // Benign percent-encoding (non-control) remains accepted
+                                                                             // Benign percent-encoding (non-control) remains accepted
         assert!(validate_anchor_domain("https://example.com/path%20resource").is_ok());
         assert!(validate_anchor_domain("https://example.com/path%2Fok").is_ok());
     }
@@ -495,14 +506,14 @@ mod tests {
     fn test_edge_cases() {
         // Minimum valid domain
         assert!(validate_anchor_domain("https://a.b").is_ok());
-        
+
         // Multiple subdomains
         assert!(validate_anchor_domain("https://a.b.c.d.example.com").is_ok());
-        
+
         // Numbers in domain
         assert!(validate_anchor_domain("https://api2.example.com").is_ok());
         assert!(validate_anchor_domain("https://123.example.com").is_ok());
-        
+
         // Hyphens at various positions (but not at start/end of label)
         assert!(validate_anchor_domain("https://my-api.example.com").is_ok());
         assert!(validate_anchor_domain("https://-example.com").is_err());
@@ -535,7 +546,7 @@ mod tests {
         assert!(validate_anchor_domain("https://192.168.1.1").is_err());
         assert!(validate_anchor_domain("https://10.0.0.1").is_err());
         assert!(validate_anchor_domain("https://127.0.0.1").is_err());
-        
+
         // IPv6 addresses should be rejected
         assert!(validate_anchor_domain("https://[::1]").is_err());
         assert!(validate_anchor_domain("https://[2001:db8::1]").is_err());
@@ -566,7 +577,7 @@ mod tests {
         assert!(validate_anchor_domain("https://example.com/").is_ok());
         assert!(validate_anchor_domain("https://example.com/path/").is_ok());
         assert!(validate_anchor_domain("https://example.com/path/to/resource/").is_ok());
-        
+
         // Multiple trailing slashes
         assert!(validate_anchor_domain("https://example.com//").is_ok());
     }
@@ -586,7 +597,7 @@ mod tests {
         assert!(validate_anchor_domain("https://ab.cd").is_ok());
 
         // DNS limits: 63 per label, 253 for full domain
-        
+
         // 63-char label (valid)
         let label_63 = "a".repeat(63);
         let domain_63 = format!("https://{}.com", label_63);
@@ -599,12 +610,24 @@ mod tests {
 
         // 253-char domain (valid): use multiple ≤63-char labels
         // 63 + "." + 63 + "." + 63 + "." + 57 + "." + "com" = 63+1+63+1+63+1+57+1+3 = 253
-        let domain_part_253 = format!("{}.{}.{}.{}.com", "a".repeat(63), "a".repeat(63), "a".repeat(63), "a".repeat(57));
+        let domain_part_253 = format!(
+            "{}.{}.{}.{}.com",
+            "a".repeat(63),
+            "a".repeat(63),
+            "a".repeat(63),
+            "a".repeat(57)
+        );
         let full_url_253 = format!("https://{}", domain_part_253);
         assert!(validate_anchor_domain(&full_url_253).is_ok());
 
         // 254-char domain (invalid)
-        let domain_part_254 = format!("{}.{}.{}.{}.com", "a".repeat(63), "a".repeat(63), "a".repeat(63), "a".repeat(58));
+        let domain_part_254 = format!(
+            "{}.{}.{}.{}.com",
+            "a".repeat(63),
+            "a".repeat(63),
+            "a".repeat(63),
+            "a".repeat(58)
+        );
         let full_url_254 = format!("https://{}", domain_part_254);
         assert!(validate_anchor_domain(&full_url_254).is_err());
     }
@@ -614,11 +637,11 @@ mod tests {
         // Query parameters should be allowed
         assert!(validate_anchor_domain("https://example.com?param=value").is_ok());
         assert!(validate_anchor_domain("https://example.com?param1=value1&param2=value2").is_ok());
-        
+
         // Fragments should be allowed
         assert!(validate_anchor_domain("https://example.com#section").is_ok());
         assert!(validate_anchor_domain("https://example.com/path#section").is_ok());
-        
+
         // Both query and fragment
         assert!(validate_anchor_domain("https://example.com?param=value#section").is_ok());
     }
@@ -631,7 +654,7 @@ mod tests {
         assert!(validate_anchor_domain("https://example.com/path.with.dot").is_ok());
         assert!(validate_anchor_domain("https://example.com/path~tilde").is_ok());
         assert!(validate_anchor_domain("https://example.com/path%20encoded").is_ok());
-        
+
         // Invalid characters in paths
         assert!(validate_anchor_domain("https://example.com/path<invalid>").is_err());
         assert!(validate_anchor_domain("https://example.com/path{invalid}").is_err());
@@ -664,12 +687,12 @@ mod tests {
         assert!(validate_anchor_domain("https://example.com:443").is_ok());
         assert!(validate_anchor_domain("https://example.com:8080").is_ok());
         assert!(validate_anchor_domain("https://example.com:65535").is_ok());
-        
+
         // Invalid port ranges
         assert!(validate_anchor_domain("https://example.com:0").is_err());
         assert!(validate_anchor_domain("https://example.com:65536").is_err());
         assert!(validate_anchor_domain("https://example.com:99999").is_err());
-        
+
         // Port with path
         assert!(validate_anchor_domain("https://example.com:8080/path").is_ok());
         assert!(validate_anchor_domain("https://example.com:8080/path?query=value").is_ok());
@@ -681,7 +704,7 @@ mod tests {
         assert!(validate_anchor_domain(" https://example.com").is_err());
         assert!(validate_anchor_domain("https://example.com ").is_err());
         assert!(validate_anchor_domain("  https://example.com  ").is_err());
-        
+
         // Internal whitespace should be rejected
         assert!(validate_anchor_domain("https://example .com").is_err());
         assert!(validate_anchor_domain("https://exam ple.com").is_err());
@@ -691,7 +714,7 @@ mod tests {
     fn test_protocol_variations() {
         // Only HTTPS should be allowed
         assert!(validate_anchor_domain("https://example.com").is_ok());
-        
+
         // All other protocols should be rejected
         assert!(validate_anchor_domain("http://example.com").is_err());
         assert!(validate_anchor_domain("ftp://example.com").is_err());
@@ -714,11 +737,14 @@ mod tests {
         let results = validate_anchor_domain_batch(&urls);
 
         assert_eq!(results.len(), 5);
-        assert!(results[0].is_ok(),  "valid HTTPS domain should pass");
+        assert!(results[0].is_ok(), "valid HTTPS domain should pass");
         assert!(results[1].is_err(), "HTTP domain should fail");
-        assert!(results[2].is_ok(),  "valid HTTPS with path should pass");
+        assert!(results[2].is_ok(), "valid HTTPS with path should pass");
         assert!(results[3].is_err(), "bare non-URL string should fail");
-        assert!(results[4].is_ok(),  "valid HTTPS with non-80 port should pass");
+        assert!(
+            results[4].is_ok(),
+            "valid HTTPS with non-80 port should pass"
+        );
     }
 
     #[test]
@@ -788,7 +814,10 @@ mod tests {
         let encoded = "hello%20world";
         let result = percent_decode_simple(encoded);
         // Should properly decode %20 as space
-        assert!(result.len() > 0, "Should decode ASCII percent-encoded strings");
+        assert!(
+            result.len() > 0,
+            "Should decode ASCII percent-encoded strings"
+        );
     }
 
     #[test]
@@ -824,7 +853,10 @@ mod tests {
         let encoded = "..%2F.."; // "../.." with slash encoded
         let result = percent_decode_simple(encoded);
         // Should decode %2F to / correctly, not corrupt it
-        assert!(result.contains('/') || result.len() > 0, "Should handle directory traversal detection");
+        assert!(
+            result.contains('/') || result.len() > 0,
+            "Should handle directory traversal detection"
+        );
     }
 
     #[test]
@@ -842,7 +874,10 @@ mod tests {
         let encoded = "test%GG%ZZ"; // Invalid hex values
         let result = percent_decode_simple(encoded);
         // Should handle gracefully (either skip or leave as-is)
-        assert!(result.len() > 0, "Should handle invalid encoding gracefully");
+        assert!(
+            result.len() > 0,
+            "Should handle invalid encoding gracefully"
+        );
     }
 
     #[test]

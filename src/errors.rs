@@ -154,10 +154,14 @@ impl ErrorCode {
             ErrorCode::SessionExpired => "Session has expired",
             ErrorCode::MissingSigningKey => "Anchor TOML does not publish a signing key",
             ErrorCode::InvalidStrategy => "Routing strategy symbol is not recognized",
-            ErrorCode::AttestationLimitReached => "Attestation ID counter has reached its maximum value",
+            ErrorCode::AttestationLimitReached => {
+                "Attestation ID counter has reached its maximum value"
+            }
             ErrorCode::AttestorCapExceeded => "Maximum number of attestors has been reached",
             ErrorCode::PathTraversalDetected => "URL contains a path traversal sequence",
-            ErrorCode::InvalidAmount => "Amount is outside the allowed min/max range for this asset",
+            ErrorCode::InvalidAmount => {
+                "Amount is outside the allowed min/max range for this asset"
+            }
             ErrorCode::AttestationRevoked => "Attestation has been revoked",
             ErrorCode::AttestationExpired => "Attestation has expired",
             ErrorCode::ContractPaused => "Contract is paused",
@@ -165,7 +169,6 @@ impl ErrorCode {
             ErrorCode::NotInitialized => "Contract is not initialized",
         }
     }
-
 }
 
 // ---------------------------------------------------------------------------
@@ -230,53 +233,131 @@ impl AnchorKitError {
         AnchorKitError::new(code, message)
     }
 
-    pub fn already_initialized() -> Self { Self::from_code(ErrorCode::AlreadyInitialized) }
-    pub fn attestor_already_registered() -> Self { Self::from_code(ErrorCode::AttestorAlreadyRegistered) }
-    pub fn attestor_not_registered() -> Self { Self::from_code(ErrorCode::AttestorNotRegistered) }
-    pub fn unauthorized_attestor() -> Self { Self::from_code(ErrorCode::UnauthorizedAttestor) }
-    pub fn invalid_timestamp() -> Self { Self::from_code(ErrorCode::InvalidTimestamp) }
-    pub fn replay_attack() -> Self { Self::from_code(ErrorCode::ReplayAttack) }
-    pub fn invalid_quote() -> Self { Self::from_code(ErrorCode::InvalidQuote) }
-    pub fn invalid_service_type() -> Self { Self::from_code(ErrorCode::InvalidServiceType) }
-    pub fn invalid_transaction_intent() -> Self { Self::from_code(ErrorCode::InvalidTransactionIntent) }
-    pub fn stale_quote() -> Self { Self::from_code(ErrorCode::StaleQuote) }
-    pub fn compliance_not_met() -> Self { Self::from_code(ErrorCode::ComplianceNotMet) }
-    pub fn invalid_endpoint_format() -> Self { Self::from_code(ErrorCode::InvalidEndpointFormat) }
-    pub fn no_quotes_available() -> Self { Self::from_code(ErrorCode::NoQuotesAvailable) }
-    pub fn services_not_configured() -> Self { Self::from_code(ErrorCode::ServicesNotConfigured) }
-    pub fn not_initialized() -> Self { Self::from_code(ErrorCode::NotInitialized) }
-    pub fn attestation_not_found() -> Self { Self::from_code(ErrorCode::AttestationNotFound) }
-    pub fn invalid_sep10_token() -> Self { Self::from_code(ErrorCode::InvalidSep10Token) }
-    pub fn rate_limit_exceeded() -> Self { Self::from_code(ErrorCode::RateLimitExceeded) }
-    pub fn storage_corrupted() -> Self { Self::from_code(ErrorCode::StorageCorrupted) }
-    pub fn cache_expired() -> Self { Self::from_code(ErrorCode::CacheExpired) }
-    pub fn cache_not_found() -> Self { Self::from_code(ErrorCode::CacheNotFound) }
-    pub fn missing_signing_key() -> Self { Self::from_code(ErrorCode::MissingSigningKey) }
-    pub fn not_pending_admin() -> Self { Self::from_code(ErrorCode::NotPendingAdmin) }
-    pub fn unauthorized_propose_admin() -> Self { Self::from_code(ErrorCode::UnauthorizedProposeAdmin) }
-    pub fn audit_log_max_size_invalid() -> Self { Self::from_code(ErrorCode::AuditLogMaxSizeInvalid) }
-    pub fn no_pending_admin() -> Self { Self::from_code(ErrorCode::NoPendingAdmin) }
-    pub fn path_traversal_detected() -> Self { Self::from_code(ErrorCode::PathTraversalDetected) }
-    pub fn attestation_expired() -> Self { Self::from_code(ErrorCode::AttestationExpired) }
-    pub fn contract_paused() -> Self { Self::from_code(ErrorCode::ContractPaused) }
-    pub fn admin_transfer_pending() -> Self { Self::from_code(ErrorCode::AdminTransferPending) }
+    pub fn already_initialized() -> Self {
+        Self::from_code(ErrorCode::AlreadyInitialized)
+    }
+    pub fn attestor_already_registered() -> Self {
+        Self::from_code(ErrorCode::AttestorAlreadyRegistered)
+    }
+    pub fn attestor_not_registered() -> Self {
+        Self::from_code(ErrorCode::AttestorNotRegistered)
+    }
+    pub fn unauthorized_attestor() -> Self {
+        Self::from_code(ErrorCode::UnauthorizedAttestor)
+    }
+    pub fn invalid_timestamp() -> Self {
+        Self::from_code(ErrorCode::InvalidTimestamp)
+    }
+    pub fn replay_attack() -> Self {
+        Self::from_code(ErrorCode::ReplayAttack)
+    }
+    pub fn invalid_quote() -> Self {
+        Self::from_code(ErrorCode::InvalidQuote)
+    }
+    pub fn invalid_service_type() -> Self {
+        Self::from_code(ErrorCode::InvalidServiceType)
+    }
+    pub fn invalid_transaction_intent() -> Self {
+        Self::from_code(ErrorCode::InvalidTransactionIntent)
+    }
+    pub fn stale_quote() -> Self {
+        Self::from_code(ErrorCode::StaleQuote)
+    }
+    pub fn compliance_not_met() -> Self {
+        Self::from_code(ErrorCode::ComplianceNotMet)
+    }
+    pub fn invalid_endpoint_format() -> Self {
+        Self::from_code(ErrorCode::InvalidEndpointFormat)
+    }
+    pub fn no_quotes_available() -> Self {
+        Self::from_code(ErrorCode::NoQuotesAvailable)
+    }
+    pub fn services_not_configured() -> Self {
+        Self::from_code(ErrorCode::ServicesNotConfigured)
+    }
+    pub fn not_initialized() -> Self {
+        Self::from_code(ErrorCode::NotInitialized)
+    }
+    pub fn attestation_not_found() -> Self {
+        Self::from_code(ErrorCode::AttestationNotFound)
+    }
+    pub fn invalid_sep10_token() -> Self {
+        Self::from_code(ErrorCode::InvalidSep10Token)
+    }
+    pub fn rate_limit_exceeded() -> Self {
+        Self::from_code(ErrorCode::RateLimitExceeded)
+    }
+    pub fn storage_corrupted() -> Self {
+        Self::from_code(ErrorCode::StorageCorrupted)
+    }
+    pub fn cache_expired() -> Self {
+        Self::from_code(ErrorCode::CacheExpired)
+    }
+    pub fn cache_not_found() -> Self {
+        Self::from_code(ErrorCode::CacheNotFound)
+    }
+    pub fn missing_signing_key() -> Self {
+        Self::from_code(ErrorCode::MissingSigningKey)
+    }
+    pub fn not_pending_admin() -> Self {
+        Self::from_code(ErrorCode::NotPendingAdmin)
+    }
+    pub fn unauthorized_propose_admin() -> Self {
+        Self::from_code(ErrorCode::UnauthorizedProposeAdmin)
+    }
+    pub fn audit_log_max_size_invalid() -> Self {
+        Self::from_code(ErrorCode::AuditLogMaxSizeInvalid)
+    }
+    pub fn no_pending_admin() -> Self {
+        Self::from_code(ErrorCode::NoPendingAdmin)
+    }
+    pub fn path_traversal_detected() -> Self {
+        Self::from_code(ErrorCode::PathTraversalDetected)
+    }
+    pub fn attestation_expired() -> Self {
+        Self::from_code(ErrorCode::AttestationExpired)
+    }
+    pub fn contract_paused() -> Self {
+        Self::from_code(ErrorCode::ContractPaused)
+    }
+    pub fn admin_transfer_pending() -> Self {
+        Self::from_code(ErrorCode::AdminTransferPending)
+    }
 
-    pub fn invalid_amount() -> Self { Self::from_code(ErrorCode::InvalidAmount) }
+    pub fn invalid_amount() -> Self {
+        Self::from_code(ErrorCode::InvalidAmount)
+    }
 
     pub fn validation_error(context: &str) -> Self {
-        Self::with_context(ErrorCode::ValidationError, ErrorCode::ValidationError.default_message(), context)
+        Self::with_context(
+            ErrorCode::ValidationError,
+            ErrorCode::ValidationError.default_message(),
+            context,
+        )
     }
 
     pub fn invalid_config() -> Self {
-        Self::with_context(ErrorCode::ValidationError, "Invalid SDK configuration", "config")
+        Self::with_context(
+            ErrorCode::ValidationError,
+            "Invalid SDK configuration",
+            "config",
+        )
     }
 
     pub fn endpoint_not_found() -> Self {
-        Self::with_context(ErrorCode::ServicesNotConfigured, "Endpoint not found", "endpoint")
+        Self::with_context(
+            ErrorCode::ServicesNotConfigured,
+            "Endpoint not found",
+            "endpoint",
+        )
     }
 
     pub fn transport_timeout() -> Self {
-        Self::with_context(ErrorCode::RateLimitExceeded, "Transport request timed out", "timeout")
+        Self::with_context(
+            ErrorCode::RateLimitExceeded,
+            "Transport request timed out",
+            "timeout",
+        )
     }
 }
 
@@ -305,40 +386,103 @@ impl AnchorKitError {
         }
     }
 
-    pub fn already_initialized() -> Self { Self::from_code(ErrorCode::AlreadyInitialized) }
-    pub fn attestor_already_registered() -> Self { Self::from_code(ErrorCode::AttestorAlreadyRegistered) }
-    pub fn attestor_not_registered() -> Self { Self::from_code(ErrorCode::AttestorNotRegistered) }
-    pub fn unauthorized_attestor() -> Self { Self::from_code(ErrorCode::UnauthorizedAttestor) }
-    pub fn invalid_timestamp() -> Self { Self::from_code(ErrorCode::InvalidTimestamp) }
-    pub fn replay_attack() -> Self { Self::from_code(ErrorCode::ReplayAttack) }
-    pub fn invalid_quote() -> Self { Self::from_code(ErrorCode::InvalidQuote) }
-    pub fn invalid_service_type() -> Self { Self::from_code(ErrorCode::InvalidServiceType) }
-    pub fn invalid_transaction_intent() -> Self { Self::from_code(ErrorCode::InvalidTransactionIntent) }
-    pub fn stale_quote() -> Self { Self::from_code(ErrorCode::StaleQuote) }
-    pub fn compliance_not_met() -> Self { Self::from_code(ErrorCode::ComplianceNotMet) }
-    pub fn invalid_endpoint_format() -> Self { Self::from_code(ErrorCode::InvalidEndpointFormat) }
-    pub fn no_quotes_available() -> Self { Self::from_code(ErrorCode::NoQuotesAvailable) }
-    pub fn services_not_configured() -> Self { Self::from_code(ErrorCode::ServicesNotConfigured) }
-    pub fn not_initialized() -> Self { Self::from_code(ErrorCode::NotInitialized) }
-    pub fn attestation_not_found() -> Self { Self::from_code(ErrorCode::AttestationNotFound) }
-    pub fn invalid_sep10_token() -> Self { Self::from_code(ErrorCode::InvalidSep10Token) }
-    pub fn rate_limit_exceeded() -> Self { Self::from_code(ErrorCode::RateLimitExceeded) }
-    pub fn storage_corrupted() -> Self { Self::from_code(ErrorCode::StorageCorrupted) }
-    pub fn cache_expired() -> Self { Self::from_code(ErrorCode::CacheExpired) }
-    pub fn cache_not_found() -> Self { Self::from_code(ErrorCode::CacheNotFound) }
-    pub fn missing_signing_key() -> Self { Self::from_code(ErrorCode::MissingSigningKey) }
-    pub fn not_pending_admin() -> Self { Self::from_code(ErrorCode::NotPendingAdmin) }
-    pub fn unauthorized_propose_admin() -> Self { Self::from_code(ErrorCode::UnauthorizedProposeAdmin) }
-    pub fn audit_log_max_size_invalid() -> Self { Self::from_code(ErrorCode::AuditLogMaxSizeInvalid) }
-    pub fn no_pending_admin() -> Self { Self::from_code(ErrorCode::NoPendingAdmin) }
-    pub fn path_traversal_detected() -> Self { Self::from_code(ErrorCode::PathTraversalDetected) }
-    pub fn attestation_expired() -> Self { Self::from_code(ErrorCode::AttestationExpired) }
-    pub fn contract_paused() -> Self { Self::from_code(ErrorCode::ContractPaused) }
-    pub fn admin_transfer_pending() -> Self { Self::from_code(ErrorCode::AdminTransferPending) }
-    pub fn invalid_amount() -> Self { Self::from_code(ErrorCode::InvalidAmount) }
-    pub fn validation_error(_context: &str) -> Self { Self::from_code(ErrorCode::ValidationError) }
+    pub fn already_initialized() -> Self {
+        Self::from_code(ErrorCode::AlreadyInitialized)
+    }
+    pub fn attestor_already_registered() -> Self {
+        Self::from_code(ErrorCode::AttestorAlreadyRegistered)
+    }
+    pub fn attestor_not_registered() -> Self {
+        Self::from_code(ErrorCode::AttestorNotRegistered)
+    }
+    pub fn unauthorized_attestor() -> Self {
+        Self::from_code(ErrorCode::UnauthorizedAttestor)
+    }
+    pub fn invalid_timestamp() -> Self {
+        Self::from_code(ErrorCode::InvalidTimestamp)
+    }
+    pub fn replay_attack() -> Self {
+        Self::from_code(ErrorCode::ReplayAttack)
+    }
+    pub fn invalid_quote() -> Self {
+        Self::from_code(ErrorCode::InvalidQuote)
+    }
+    pub fn invalid_service_type() -> Self {
+        Self::from_code(ErrorCode::InvalidServiceType)
+    }
+    pub fn invalid_transaction_intent() -> Self {
+        Self::from_code(ErrorCode::InvalidTransactionIntent)
+    }
+    pub fn stale_quote() -> Self {
+        Self::from_code(ErrorCode::StaleQuote)
+    }
+    pub fn compliance_not_met() -> Self {
+        Self::from_code(ErrorCode::ComplianceNotMet)
+    }
+    pub fn invalid_endpoint_format() -> Self {
+        Self::from_code(ErrorCode::InvalidEndpointFormat)
+    }
+    pub fn no_quotes_available() -> Self {
+        Self::from_code(ErrorCode::NoQuotesAvailable)
+    }
+    pub fn services_not_configured() -> Self {
+        Self::from_code(ErrorCode::ServicesNotConfigured)
+    }
+    pub fn not_initialized() -> Self {
+        Self::from_code(ErrorCode::NotInitialized)
+    }
+    pub fn attestation_not_found() -> Self {
+        Self::from_code(ErrorCode::AttestationNotFound)
+    }
+    pub fn invalid_sep10_token() -> Self {
+        Self::from_code(ErrorCode::InvalidSep10Token)
+    }
+    pub fn rate_limit_exceeded() -> Self {
+        Self::from_code(ErrorCode::RateLimitExceeded)
+    }
+    pub fn storage_corrupted() -> Self {
+        Self::from_code(ErrorCode::StorageCorrupted)
+    }
+    pub fn cache_expired() -> Self {
+        Self::from_code(ErrorCode::CacheExpired)
+    }
+    pub fn cache_not_found() -> Self {
+        Self::from_code(ErrorCode::CacheNotFound)
+    }
+    pub fn missing_signing_key() -> Self {
+        Self::from_code(ErrorCode::MissingSigningKey)
+    }
+    pub fn not_pending_admin() -> Self {
+        Self::from_code(ErrorCode::NotPendingAdmin)
+    }
+    pub fn unauthorized_propose_admin() -> Self {
+        Self::from_code(ErrorCode::UnauthorizedProposeAdmin)
+    }
+    pub fn audit_log_max_size_invalid() -> Self {
+        Self::from_code(ErrorCode::AuditLogMaxSizeInvalid)
+    }
+    pub fn no_pending_admin() -> Self {
+        Self::from_code(ErrorCode::NoPendingAdmin)
+    }
+    pub fn path_traversal_detected() -> Self {
+        Self::from_code(ErrorCode::PathTraversalDetected)
+    }
+    pub fn attestation_expired() -> Self {
+        Self::from_code(ErrorCode::AttestationExpired)
+    }
+    pub fn contract_paused() -> Self {
+        Self::from_code(ErrorCode::ContractPaused)
+    }
+    pub fn admin_transfer_pending() -> Self {
+        Self::from_code(ErrorCode::AdminTransferPending)
+    }
+    pub fn invalid_amount() -> Self {
+        Self::from_code(ErrorCode::InvalidAmount)
+    }
+    pub fn validation_error(_context: &str) -> Self {
+        Self::from_code(ErrorCode::ValidationError)
+    }
 }
-
 
 #[cfg(not(feature = "std"))]
 impl core::fmt::Display for AnchorKitError {
@@ -392,27 +536,87 @@ mod tests {
 
     #[test]
     fn test_named_constructors() {
-        assert_eq!(AnchorKitError::already_initialized().code, ErrorCode::AlreadyInitialized);
-        assert_eq!(AnchorKitError::attestor_already_registered().code, ErrorCode::AttestorAlreadyRegistered);
-        assert_eq!(AnchorKitError::attestor_not_registered().code, ErrorCode::AttestorNotRegistered);
-        assert_eq!(AnchorKitError::unauthorized_attestor().code, ErrorCode::UnauthorizedAttestor);
-        assert_eq!(AnchorKitError::invalid_timestamp().code, ErrorCode::InvalidTimestamp);
-        assert_eq!(AnchorKitError::replay_attack().code, ErrorCode::ReplayAttack);
-        assert_eq!(AnchorKitError::invalid_quote().code, ErrorCode::InvalidQuote);
-        assert_eq!(AnchorKitError::invalid_service_type().code, ErrorCode::InvalidServiceType);
-        assert_eq!(AnchorKitError::invalid_transaction_intent().code, ErrorCode::InvalidTransactionIntent);
+        assert_eq!(
+            AnchorKitError::already_initialized().code,
+            ErrorCode::AlreadyInitialized
+        );
+        assert_eq!(
+            AnchorKitError::attestor_already_registered().code,
+            ErrorCode::AttestorAlreadyRegistered
+        );
+        assert_eq!(
+            AnchorKitError::attestor_not_registered().code,
+            ErrorCode::AttestorNotRegistered
+        );
+        assert_eq!(
+            AnchorKitError::unauthorized_attestor().code,
+            ErrorCode::UnauthorizedAttestor
+        );
+        assert_eq!(
+            AnchorKitError::invalid_timestamp().code,
+            ErrorCode::InvalidTimestamp
+        );
+        assert_eq!(
+            AnchorKitError::replay_attack().code,
+            ErrorCode::ReplayAttack
+        );
+        assert_eq!(
+            AnchorKitError::invalid_quote().code,
+            ErrorCode::InvalidQuote
+        );
+        assert_eq!(
+            AnchorKitError::invalid_service_type().code,
+            ErrorCode::InvalidServiceType
+        );
+        assert_eq!(
+            AnchorKitError::invalid_transaction_intent().code,
+            ErrorCode::InvalidTransactionIntent
+        );
         assert_eq!(AnchorKitError::stale_quote().code, ErrorCode::StaleQuote);
-        assert_eq!(AnchorKitError::compliance_not_met().code, ErrorCode::ComplianceNotMet);
-        assert_eq!(AnchorKitError::invalid_endpoint_format().code, ErrorCode::InvalidEndpointFormat);
-        assert_eq!(AnchorKitError::no_quotes_available().code, ErrorCode::NoQuotesAvailable);
-        assert_eq!(AnchorKitError::services_not_configured().code, ErrorCode::ServicesNotConfigured);
-        assert_eq!(AnchorKitError::invalid_sep10_token().code, ErrorCode::InvalidSep10Token);
-        assert_eq!(AnchorKitError::cache_expired().code, ErrorCode::CacheExpired);
-        assert_eq!(AnchorKitError::cache_not_found().code, ErrorCode::CacheNotFound);
-        assert_eq!(AnchorKitError::audit_log_max_size_invalid().code, ErrorCode::AuditLogMaxSizeInvalid);
-        assert_eq!(AnchorKitError::unauthorized_propose_admin().code, ErrorCode::UnauthorizedProposeAdmin);
-        assert_eq!(AnchorKitError::no_pending_admin().code, ErrorCode::NoPendingAdmin);
-        assert_eq!(AnchorKitError::not_pending_admin().code, ErrorCode::NotPendingAdmin);
+        assert_eq!(
+            AnchorKitError::compliance_not_met().code,
+            ErrorCode::ComplianceNotMet
+        );
+        assert_eq!(
+            AnchorKitError::invalid_endpoint_format().code,
+            ErrorCode::InvalidEndpointFormat
+        );
+        assert_eq!(
+            AnchorKitError::no_quotes_available().code,
+            ErrorCode::NoQuotesAvailable
+        );
+        assert_eq!(
+            AnchorKitError::services_not_configured().code,
+            ErrorCode::ServicesNotConfigured
+        );
+        assert_eq!(
+            AnchorKitError::invalid_sep10_token().code,
+            ErrorCode::InvalidSep10Token
+        );
+        assert_eq!(
+            AnchorKitError::cache_expired().code,
+            ErrorCode::CacheExpired
+        );
+        assert_eq!(
+            AnchorKitError::cache_not_found().code,
+            ErrorCode::CacheNotFound
+        );
+        assert_eq!(
+            AnchorKitError::audit_log_max_size_invalid().code,
+            ErrorCode::AuditLogMaxSizeInvalid
+        );
+        assert_eq!(
+            AnchorKitError::unauthorized_propose_admin().code,
+            ErrorCode::UnauthorizedProposeAdmin
+        );
+        assert_eq!(
+            AnchorKitError::no_pending_admin().code,
+            ErrorCode::NoPendingAdmin
+        );
+        assert_eq!(
+            AnchorKitError::not_pending_admin().code,
+            ErrorCode::NotPendingAdmin
+        );
     }
 
     #[test]
@@ -493,9 +697,12 @@ mod tests {
 
     #[test]
     fn test_display_format_with_context() {
-        let err = AnchorKitError::with_context(ErrorCode::ValidationError, "Schema mismatch", "field: transaction_id");
+        let err = AnchorKitError::with_context(
+            ErrorCode::ValidationError,
+            "Schema mismatch",
+            "field: transaction_id",
+        );
         let formatted = alloc::format!("{}", err);
         assert_eq!(formatted, "[E15] Schema mismatch (field: transaction_id)");
     }
 }
-

@@ -3,11 +3,10 @@
 //! Validates that anchor API responses contain all required fields before
 //! returning them to the SDK consumer. Throws [`Error::ValidationError`] on mismatch.
 
-
 extern crate alloc;
 
 use crate::errors::Error;
-use crate::types::{DepositResponse, WithdrawalResponse, TransactionStatus};
+use crate::types::{DepositResponse, TransactionStatus, WithdrawalResponse};
 
 /// A validated quote response.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -156,7 +155,10 @@ mod tests {
         let r = result.unwrap();
         assert_eq!(r.transaction_id, "dep_123");
         assert_eq!(r.status, TransactionStatus::Pending);
-        assert_eq!(r.deposit_address, Some(alloc::string::String::from("GDEPOSIT...")));
+        assert_eq!(
+            r.deposit_address,
+            Some(alloc::string::String::from("GDEPOSIT..."))
+        );
         assert_eq!(r.expires_at, Some(9999));
     }
 
@@ -164,21 +166,30 @@ mod tests {
     fn test_deposit_missing_transaction_id() {
         let result = validate_deposit_response("", "pending", "GDEPOSIT...", 9999, 1000);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     #[test]
     fn test_deposit_missing_status() {
         let result = validate_deposit_response("dep_123", "", "GDEPOSIT...", 9999, 1000);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     #[test]
     fn test_deposit_missing_deposit_address() {
         let result = validate_deposit_response("dep_123", "pending", "", 9999, 1000);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     #[test]
@@ -225,7 +236,10 @@ mod tests {
         assert!(result.is_ok());
         let r = result.unwrap();
         assert_eq!(r.transaction_id, "wd_456");
-        assert_eq!(r.status, TransactionStatus::Unknown(alloc::string::String::from("processing")));
+        assert_eq!(
+            r.status,
+            TransactionStatus::Unknown(alloc::string::String::from("processing"))
+        );
         assert_eq!(r.estimated_completion, Some(2000));
     }
 
@@ -233,14 +247,20 @@ mod tests {
     fn test_withdraw_missing_transaction_id() {
         let result = validate_withdraw_response("", "processing", 2000);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     #[test]
     fn test_withdraw_missing_status() {
         let result = validate_withdraw_response("wd_456", "", 2000);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     // --- validate_quote_response ---
@@ -261,21 +281,30 @@ mod tests {
     fn test_quote_missing_id() {
         let result = validate_quote_response("", "quoted", 100_0000000, "USDC", 500000);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     #[test]
     fn test_quote_missing_status() {
         let result = validate_quote_response("quote_789", "", 100_0000000, "USDC", 500000);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     #[test]
     fn test_quote_missing_asset() {
         let result = validate_quote_response("quote_789", "quoted", 100_0000000, "", 500000);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     #[test]
@@ -285,7 +314,11 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code, crate::errors::ErrorCode::ValidationError);
-        assert!(err.context.as_deref().unwrap_or("").contains("amount must be greater than zero"));
+        assert!(err
+            .context
+            .as_deref()
+            .unwrap_or("")
+            .contains("amount must be greater than zero"));
     }
 
     #[test]
@@ -315,14 +348,20 @@ mod tests {
         let assets = alloc::vec![alloc::string::String::from("USDC")];
         let result = validate_anchor_info_response("", assets);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     #[test]
     fn test_anchor_info_empty_assets() {
         let result = validate_anchor_info_response("MyAnchor", alloc::vec![]);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
+        assert_eq!(
+            result.unwrap_err().code,
+            crate::errors::ErrorCode::ValidationError
+        );
     }
 
     // --- Issue #1048: validate_withdraw_response time validation ---
@@ -359,7 +398,10 @@ mod tests {
         let result = validate_withdraw_response("wd_123", "pending", 9999);
         // Currently passes (no validation)
         // After fix: must continue to pass for valid future times
-        assert!(result.is_ok(), "Valid withdrawal with future completion should pass");
+        assert!(
+            result.is_ok(),
+            "Valid withdrawal with future completion should pass"
+        );
     }
 
     #[test]
@@ -396,7 +438,8 @@ mod tests {
         // Simulates SDK consumer handling the error gracefully
         let result = validate_deposit_response("", "", "", 0, 1000);
         match result {
-            Err(e) if e.code == crate::errors::ErrorCode::ValidationError => { /* handled, no crash */ }
+            Err(e) if e.code == crate::errors::ErrorCode::ValidationError => { /* handled, no crash */
+            }
             _ => panic!("Expected ValidationError"),
         }
     }

@@ -1,9 +1,11 @@
 #[cfg(test)]
 mod transport_integration_tests {
-    use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString, Bytes};
-    use anchorkit::transport::{AnchorTransport, MockTransport, TransportRequest, TransportResponse};
-    use anchorkit::types::{HealthStatus, Quote};
     use anchorkit::errors::Error;
+    use anchorkit::transport::{
+        AnchorTransport, MockTransport, TransportRequest, TransportResponse,
+    };
+    use anchorkit::types::{HealthStatus, Quote};
+    use soroban_sdk::{testutils::Address as _, Address, Bytes, Env, String as SorobanString};
 
     #[test]
     fn test_transport_with_contract_communication_flow() {
@@ -60,7 +62,10 @@ mod transport_integration_tests {
             endpoint: endpoint.clone(),
         };
 
-        transport.add_response(health_request.clone(), TransportResponse::Health(health_status));
+        transport.add_response(
+            health_request.clone(),
+            TransportResponse::Health(health_status),
+        );
 
         let result = transport.send_request(&env, health_request);
         assert!(result.is_ok());
@@ -133,7 +138,9 @@ mod transport_integration_tests {
         transport2.set_simulate_timeout(true, 3);
 
         let endpoint2 = SorobanString::from_str(&env, "https://fast-anchor.example.com/api");
-        let request2 = TransportRequest::CheckHealth { endpoint: endpoint2 };
+        let request2 = TransportRequest::CheckHealth {
+            endpoint: endpoint2,
+        };
 
         let health = HealthStatus {
             anchor: Address::generate(&env),

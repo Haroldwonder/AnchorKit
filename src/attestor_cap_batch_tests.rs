@@ -8,7 +8,9 @@ mod attestor_cap_batch_tests {
         Address, Bytes, Env,
     };
 
-    use crate::contract::{AnchorKitContract, AnchorKitContractClient, AttestationInput, MAX_ATTESTORS};
+    use crate::contract::{
+        AnchorKitContract, AnchorKitContractClient, AttestationInput, MAX_ATTESTORS,
+    };
     use crate::errors::ErrorCode;
     use crate::sep10_test_util::register_attestor_with_sep10;
 
@@ -243,7 +245,9 @@ mod attestor_cap_batch_tests {
             window_length: 100,
             burst: 0,
         };
-        client.set_attestor_rate_limit(&admin, &issuer, &rate_config).unwrap();
+        client
+            .set_attestor_rate_limit(&admin, &issuer, &rate_config)
+            .unwrap();
 
         let subject = Address::generate(&env);
         let ts = env.ledger().timestamp();
@@ -251,8 +255,20 @@ mod attestor_cap_batch_tests {
         // Use up both slots via the plain submit_attestation path.
         let ph0 = payload(&env, 0xA0);
         let ph1 = payload(&env, 0xA1);
-        client.submit_attestation(&issuer, &subject, &ts, &ph0, &sign_payload(&env, &signing_key, &ph0));
-        client.submit_attestation(&issuer, &subject, &ts, &ph1, &sign_payload(&env, &signing_key, &ph1));
+        client.submit_attestation(
+            &issuer,
+            &subject,
+            &ts,
+            &ph0,
+            &sign_payload(&env, &signing_key, &ph0),
+        );
+        client.submit_attestation(
+            &issuer,
+            &subject,
+            &ts,
+            &ph1,
+            &sign_payload(&env, &signing_key, &ph1),
+        );
 
         // The third submission — routed through submit_attestation_batch —
         // must be rejected with RateLimitExceeded, not silently accepted.
@@ -267,7 +283,10 @@ mod attestor_cap_batch_tests {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             client.submit_attestation_batch(&issuer, &inputs);
         }));
-        assert!(result.is_err(), "batch path should be throttled when rate limit is exhausted");
+        assert!(
+            result.is_err(),
+            "batch path should be throttled when rate limit is exhausted"
+        );
     }
 
     /// Filling the rate limit via the plain path must also throttle submit_attestation_with_session.
@@ -289,7 +308,9 @@ mod attestor_cap_batch_tests {
             window_length: 100,
             burst: 0,
         };
-        client.set_attestor_rate_limit(&admin, &issuer, &rate_config).unwrap();
+        client
+            .set_attestor_rate_limit(&admin, &issuer, &rate_config)
+            .unwrap();
 
         let subject = Address::generate(&env);
         let ts = env.ledger().timestamp();
@@ -297,8 +318,20 @@ mod attestor_cap_batch_tests {
         // Use up both slots via the plain submit_attestation path.
         let ph0 = payload(&env, 0xB0);
         let ph1 = payload(&env, 0xB1);
-        client.submit_attestation(&issuer, &subject, &ts, &ph0, &sign_payload(&env, &signing_key, &ph0));
-        client.submit_attestation(&issuer, &subject, &ts, &ph1, &sign_payload(&env, &signing_key, &ph1));
+        client.submit_attestation(
+            &issuer,
+            &subject,
+            &ts,
+            &ph0,
+            &sign_payload(&env, &signing_key, &ph0),
+        );
+        client.submit_attestation(
+            &issuer,
+            &subject,
+            &ts,
+            &ph1,
+            &sign_payload(&env, &signing_key, &ph1),
+        );
 
         // Open a session for the issuer.
         let session_id = client.create_session(&issuer);
@@ -317,6 +350,9 @@ mod attestor_cap_batch_tests {
                 &sig2,
             );
         }));
-        assert!(result.is_err(), "session path should be throttled when rate limit is exhausted");
+        assert!(
+            result.is_err(),
+            "session path should be throttled when rate limit is exhausted"
+        );
     }
 }

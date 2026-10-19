@@ -27,13 +27,13 @@ fn main() {
 
     // Invalid domains
     let invalid_domains = vec![
-        "http://insecure.com",           // Not HTTPS
-        "example.com",                    // Missing protocol
-        "https://",                       // No domain
-        "https://example",                // No TLD
-        "https://.example.com",           // Leading dot
-        "https://example..com",           // Double dots
-        "https://example.com:99999",      // Invalid port
+        "http://insecure.com",       // Not HTTPS
+        "example.com",               // Missing protocol
+        "https://",                  // No domain
+        "https://example",           // No TLD
+        "https://.example.com",      // Leading dot
+        "https://example..com",      // Double dots
+        "https://example.com:99999", // Invalid port
     ];
 
     println!("\nInvalid domains:");

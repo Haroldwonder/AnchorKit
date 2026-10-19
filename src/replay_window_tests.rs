@@ -1,12 +1,12 @@
 #![cfg(test)]
 
 mod replay_window_tests {
+    use ed25519_dalek::SigningKey;
+    use rand::rngs::OsRng;
     use soroban_sdk::{
         testutils::{Address as _, Ledger, LedgerInfo},
         Address, Bytes, Env,
     };
-    use ed25519_dalek::SigningKey;
-    use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
     use crate::sep10_test_util::{register_attestor_with_sep10, sign_payload};

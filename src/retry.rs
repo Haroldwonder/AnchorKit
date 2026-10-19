@@ -366,12 +366,18 @@ mod retry_tests {
     fn test_budget_ms_stops_retries_early() {
         // With jitter_seed=0: attempt 0 seed = 0*31 + 3 = 3, delay = 3 % 101 = 3
         // budget_ms=2 means cumulative (3) >= budget (2) on first retry → stops after 2 calls
-        let config = RetryConfig { budget_ms: 2, ..RetryConfig::new(5, 100, 5000, 2) };
+        let config = RetryConfig {
+            budget_ms: 2,
+            ..RetryConfig::new(5, 100, 5000, 2)
+        };
         let mut calls = 0u32;
         let result = retry_with_backoff(
             &config,
             0,
-            |_| { calls += 1; Err::<i32, _>(TestError::Transient) },
+            |_| {
+                calls += 1;
+                Err::<i32, _>(TestError::Transient)
+            },
             is_retryable_test,
             |_| {},
         );
@@ -386,7 +392,10 @@ mod retry_tests {
         let _ = retry_with_backoff(
             &config,
             0,
-            |_| { calls += 1; Err::<i32, _>(TestError::Transient) },
+            |_| {
+                calls += 1;
+                Err::<i32, _>(TestError::Transient)
+            },
             is_retryable_test,
             |_| {},
         );

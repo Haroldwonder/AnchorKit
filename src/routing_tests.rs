@@ -2,17 +2,18 @@
 
 mod routing_tests {
     use soroban_sdk::{
+        symbol_short,
         testutils::{Address as _, Events, Ledger, LedgerInfo},
-        Address, Env, String, Symbol, Vec, symbol_short,
+        Address, Env, String, Symbol, Vec,
     };
 
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
-    use crate::types::{RoutingOptions, RoutingRequest};
-    use crate::sep10_test_util::register_attestor_with_sep10;
     use crate::events::RoutingDecisionEvent;
+    use crate::sep10_test_util::register_attestor_with_sep10;
+    use crate::types::{RoutingOptions, RoutingRequest};
 
     fn make_env() -> Env {
         let env = Env::default();
@@ -48,7 +49,15 @@ mod routing_tests {
         services.push_back(1u32);
         services.push_back(3u32);
         client.configure_services(anchor, &services);
-        client.set_anchor_metadata(anchor, &5000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None);
+        client.set_anchor_metadata(
+            anchor,
+            &5000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None,
+        );
     }
 
     fn make_request(env: &Env) -> RoutingRequest {
@@ -97,13 +106,21 @@ mod routing_tests {
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &50u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &50u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
         client.submit_quote(
             &anchor2,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &20u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let q1 = client.get_quote(&anchor1, &1u64).unwrap();
@@ -125,21 +142,45 @@ mod routing_tests {
         let anchor1 = Address::generate(&env);
         let anchor2 = Address::generate(&env);
         register_anchor(&env, &client, &anchor1);
-        client.set_anchor_metadata(&anchor1, &8000u32, &600u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor1,
+            &8000u32,
+            &600u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         register_anchor(&env, &client, &anchor2);
-        client.set_anchor_metadata(&anchor2, &8000u32, &200u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor2,
+            &8000u32,
+            &200u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor2,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let mut strategy = Vec::new(&env);
@@ -169,22 +210,46 @@ mod routing_tests {
         let anchor2 = Address::generate(&env);
         register_anchor(&env, &client, &anchor1);
         // anchor1: reputation 3000 — below the threshold we will set
-        client.set_anchor_metadata(&anchor1, &3000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor1,
+            &3000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &9900u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+            &9900u64,
+            &20u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         register_anchor(&env, &client, &anchor2);
         // anchor2: reputation 8000 — above the threshold
-        client.set_anchor_metadata(&anchor2, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor2,
+            &8000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor2,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let mut strategy = Vec::new(&env);
@@ -217,12 +282,24 @@ mod routing_tests {
 
         for (anchor, rep) in [(&low, 1000u32), (&mid, 5000u32), (&high, 9000u32)] {
             register_anchor(&env, &client, anchor);
-            client.set_anchor_metadata(anchor, &rep, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+            client.set_anchor_metadata(
+                anchor,
+                &rep,
+                &300u64,
+                &7500u32,
+                &9900u32,
+                &1_000_000u64,
+                &None::<soroban_sdk::String>,
+            );
             client.submit_quote(
                 anchor,
                 &String::from_str(&env, "USD"),
                 &String::from_str(&env, "USDC"),
-                &10000u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+                &10000u64,
+                &20u32,
+                &100u64,
+                &100000u64,
+                &1_003_600u64,
             );
         }
 
@@ -256,12 +333,24 @@ mod routing_tests {
         let anchor = Address::generate(&env);
         register_anchor(&env, &client, &anchor);
         // reputation_score = 0 (minimum possible)
-        client.set_anchor_metadata(&anchor, &0u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor,
+            &0u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &20u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let mut strategy = Vec::new(&env);
@@ -295,14 +384,22 @@ mod routing_tests {
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &9900u64, &15u32, &100u64, &100000u64, &1_000_100u64,
+            &9900u64,
+            &15u32,
+            &100u64,
+            &100000u64,
+            &1_000_100u64,
         );
         // Second quote: valid for longer
         client.submit_quote(
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let q1 = client.get_quote(&anchor1, &1u64).unwrap();
@@ -329,22 +426,46 @@ mod routing_tests {
         register_anchor(&env, &client, &anchor_expired);
         register_anchor(&env, &client, &anchor_valid);
 
-        client.set_anchor_metadata(&anchor_expired, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
-        client.set_anchor_metadata(&anchor_valid, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor_expired,
+            &8000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
+        client.set_anchor_metadata(
+            &anchor_valid,
+            &8000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
 
         // anchor_expired: quote valid_until = 1_000_050 (expires before routing)
         client.submit_quote(
             &anchor_expired,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &10u32, &100u64, &100000u64, &1_000_050u64,
+            &10000u64,
+            &10u32,
+            &100u64,
+            &100000u64,
+            &1_000_050u64,
         );
         // anchor_valid: quote valid_until = 1_003_600 (still valid)
         client.submit_quote(
             &anchor_valid,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &30u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &30u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         // Advance time past anchor_expired's expiry — now exactly one valid quote remains
@@ -398,13 +519,21 @@ mod routing_tests {
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
         client.submit_quote(
             &anchor2,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10050u64, &30u32, &100u64, &100000u64, &1_003_600u64,
+            &10050u64,
+            &30u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let q1 = client.get_quote(&anchor1, &1u64).unwrap();
@@ -431,7 +560,11 @@ mod routing_tests {
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let q = client.get_quote(&anchor1, &1u64).unwrap();
@@ -458,28 +591,64 @@ mod routing_tests {
         register_anchor(&env, &client, &anchor3);
 
         // Explicit metadata so all three anchors participate in routing
-        client.set_anchor_metadata(&anchor1, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
-        client.set_anchor_metadata(&anchor2, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
-        client.set_anchor_metadata(&anchor3, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor1,
+            &8000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
+        client.set_anchor_metadata(
+            &anchor2,
+            &8000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
+        client.set_anchor_metadata(
+            &anchor3,
+            &8000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
 
         // Fees: anchor1=50, anchor2=25, anchor3=30 — all distinct, so winner is deterministic
         client.submit_quote(
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10100u64, &50u32, &100u64, &100000u64, &1_003_600u64,
+            &10100u64,
+            &50u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
         client.submit_quote(
             &anchor2,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
         client.submit_quote(
             &anchor3,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10050u64, &30u32, &100u64, &100000u64, &1_003_600u64,
+            &10050u64,
+            &30u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let mut strategy = Vec::new(&env);
@@ -508,12 +677,24 @@ mod routing_tests {
 
         let anchor = Address::generate(&env);
         register_anchor(&env, &client, &anchor);
-        client.set_anchor_metadata(&anchor, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor,
+            &8000u32,
+            &300u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &20u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         // Set threshold to 3 consecutive failures
@@ -560,12 +741,24 @@ mod routing_tests {
         //   score = 4630
         let anchor_a = Address::generate(&env);
         register_anchor(&env, &client, &anchor_a);
-        client.set_anchor_metadata(&anchor_a, &2000u32, &1000u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor_a,
+            &2000u32,
+            &1000u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor_a,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &10u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &10u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         // Anchor B: high fee (50), fast (100s), high reputation (9000)
@@ -575,12 +768,24 @@ mod routing_tests {
         //   score = 3800
         let anchor_b = Address::generate(&env);
         register_anchor(&env, &client, &anchor_b);
-        client.set_anchor_metadata(&anchor_b, &9000u32, &100u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor_b,
+            &9000u32,
+            &100u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor_b,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &50u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &50u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         // Anchor C: medium fee (20), medium speed (200s), medium reputation (6000)
@@ -590,12 +795,24 @@ mod routing_tests {
         //   score = 3950
         let anchor_c = Address::generate(&env);
         register_anchor(&env, &client, &anchor_c);
-        client.set_anchor_metadata(&anchor_c, &6000u32, &200u64, &7500u32, &9900u32, &1_000_000u64, &None::<soroban_sdk::String>);
+        client.set_anchor_metadata(
+            &anchor_c,
+            &6000u32,
+            &200u64,
+            &7500u32,
+            &9900u32,
+            &1_000_000u64,
+            &None::<soroban_sdk::String>,
+        );
         client.submit_quote(
             &anchor_c,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &20u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &20u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let mut strategy = Vec::new(&env);
@@ -628,7 +845,11 @@ mod routing_tests {
             &anchor,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &1_003_600u64,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
         );
 
         let mut strategy = Vec::new(&env);
@@ -675,13 +896,21 @@ mod routing_tests {
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &valid_until,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &valid_until,
         );
         client.submit_quote(
             &anchor2,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &30u32, &100u64, &100000u64, &valid_until,
+            &10000u64,
+            &30u32,
+            &100u64,
+            &100000u64,
+            &valid_until,
         );
 
         // Move time forward so quote expires
@@ -721,7 +950,11 @@ mod routing_tests {
             &anchor1,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &50u32, &100u64, &100000u64, &expired_until,
+            &10000u64,
+            &50u32,
+            &100u64,
+            &100000u64,
+            &expired_until,
         );
 
         // anchor2 has a valid quote
@@ -730,7 +963,11 @@ mod routing_tests {
             &anchor2,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &25u32, &100u64, &100000u64, &valid_until,
+            &10000u64,
+            &25u32,
+            &100u64,
+            &100000u64,
+            &valid_until,
         );
 
         // Move time forward
@@ -966,7 +1203,11 @@ mod routing_tests {
             &expired_anchor,
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
-            &10000u64, &10u32, &100u64, &100000u64, &valid_until,
+            &10000u64,
+            &10u32,
+            &100u64,
+            &100000u64,
+            &valid_until,
         );
         submit_standard_quote(&env, &client, &valid_anchor, 30);
 
@@ -1045,68 +1286,68 @@ mod routing_tests {
     }
 }
 
-    #[test]
-    fn test_single_anchor_routing_returns_that_anchor() {
-        // Edge case: only one anchor is registered; routing must select it regardless of strategy.
-        let env = make_env();
-        set_ledger(&env, 1_000_000);
-        let (client, _) = setup(&env);
+#[test]
+fn test_single_anchor_routing_returns_that_anchor() {
+    // Edge case: only one anchor is registered; routing must select it regardless of strategy.
+    let env = make_env();
+    set_ledger(&env, 1_000_000);
+    let (client, _) = setup(&env);
 
-        let only_anchor = Address::generate(&env);
-        register_anchor(&env, &client, &only_anchor);
-        submit_standard_quote(&env, &client, &only_anchor, 30);
+    let only_anchor = Address::generate(&env);
+    register_anchor(&env, &client, &only_anchor);
+    submit_standard_quote(&env, &client, &only_anchor, 30);
 
-        let mut strategy = Vec::new(&env);
-        strategy.push_back(Symbol::new(&env, "LowestFee"));
-        let options = RoutingOptions {
-            request: make_request(&env),
-            strategy,
-            min_reputation: 0,
-            max_anchors: 1,
-            require_kyc: false,
-            jurisdiction: None,
-            fallback_chain: Vec::new(&env),
-        };
+    let mut strategy = Vec::new(&env);
+    strategy.push_back(Symbol::new(&env, "LowestFee"));
+    let options = RoutingOptions {
+        request: make_request(&env),
+        strategy,
+        min_reputation: 0,
+        max_anchors: 1,
+        require_kyc: false,
+        jurisdiction: None,
+        fallback_chain: Vec::new(&env),
+    };
 
-        let best = client.route_transaction(&options);
-        assert_eq!(best.anchor, only_anchor);
-    }
+    let best = client.route_transaction(&options);
+    assert_eq!(best.anchor, only_anchor);
+}
 
-    #[test]
-    #[should_panic(expected = "HostError")]
-    fn test_all_anchors_below_health_threshold_panics() {
-        // Edge case: all anchors are deactivated by the failure threshold;
-        // route_transaction must panic rather than silently returning a bad anchor.
-        let env = make_env();
-        set_ledger(&env, 1_000_000);
-        let (client, _) = setup(&env);
+#[test]
+#[should_panic(expected = "HostError")]
+fn test_all_anchors_below_health_threshold_panics() {
+    // Edge case: all anchors are deactivated by the failure threshold;
+    // route_transaction must panic rather than silently returning a bad anchor.
+    let env = make_env();
+    set_ledger(&env, 1_000_000);
+    let (client, _) = setup(&env);
 
-        let anchor1 = Address::generate(&env);
-        let anchor2 = Address::generate(&env);
-        register_anchor(&env, &client, &anchor1);
-        register_anchor(&env, &client, &anchor2);
-        submit_standard_quote(&env, &client, &anchor1, 20);
-        submit_standard_quote(&env, &client, &anchor2, 25);
+    let anchor1 = Address::generate(&env);
+    let anchor2 = Address::generate(&env);
+    register_anchor(&env, &client, &anchor1);
+    register_anchor(&env, &client, &anchor2);
+    submit_standard_quote(&env, &client, &anchor1, 20);
+    submit_standard_quote(&env, &client, &anchor2, 25);
 
-        // Set failure threshold to 2 consecutive failures
-        client.set_health_failure_threshold(&2u32);
+    // Set failure threshold to 2 consecutive failures
+    client.set_health_failure_threshold(&2u32);
 
-        // Push both anchors past the threshold — they become inactive
-        client.update_health_status(&anchor1, &200u64, &2u32, &5000u32);
-        client.update_health_status(&anchor2, &200u64, &2u32, &5000u32);
+    // Push both anchors past the threshold — they become inactive
+    client.update_health_status(&anchor1, &200u64, &2u32, &5000u32);
+    client.update_health_status(&anchor2, &200u64, &2u32, &5000u32);
 
-        let mut strategy = Vec::new(&env);
-        strategy.push_back(Symbol::new(&env, "LowestFee"));
-        let options = RoutingOptions {
-            request: make_request(&env),
-            strategy,
-            min_reputation: 0,
-            max_anchors: 2,
-            require_kyc: false,
-            jurisdiction: None,
-            fallback_chain: Vec::new(&env),
-        };
+    let mut strategy = Vec::new(&env);
+    strategy.push_back(Symbol::new(&env, "LowestFee"));
+    let options = RoutingOptions {
+        request: make_request(&env),
+        strategy,
+        min_reputation: 0,
+        max_anchors: 2,
+        require_kyc: false,
+        jurisdiction: None,
+        fallback_chain: Vec::new(&env),
+    };
 
-        // Must panic — no active anchors remain
-        client.route_transaction(&options);
-    }
+    // Must panic — no active anchors remain
+    client.route_transaction(&options);
+}

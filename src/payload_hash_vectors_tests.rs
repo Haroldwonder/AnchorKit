@@ -41,7 +41,10 @@ mod payload_hash_vectors {
 
         let h_base = compute_payload_hash(&env, &subject, 1_700_000_000, &data);
         let h_diff = compute_payload_hash(&env, &subject, 1, &data);
-        assert_ne!(h_base, h_diff, "different timestamps must produce different hashes");
+        assert_ne!(
+            h_base, h_diff,
+            "different timestamps must produce different hashes"
+        );
     }
 
     /// Vector 3 — empty data (edge case).
@@ -68,7 +71,10 @@ mod payload_hash_vectors {
         let h_max = compute_payload_hash(&env, &subject, u64::MAX, &data);
         let h_normal = compute_payload_hash(&env, &subject, 1_700_000_000, &data);
         assert_eq!(h_max.len(), 32);
-        assert_ne!(h_max, h_normal, "max timestamp must produce a different hash");
+        assert_ne!(
+            h_max, h_normal,
+            "max timestamp must produce a different hash"
+        );
     }
 
     /// Vector 5 — different subject produces a different hash.

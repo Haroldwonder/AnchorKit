@@ -1,7 +1,7 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env};
 use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 fn setup() -> (Env, AnchorKitContractClient<'static>) {
     let env = Env::default();
