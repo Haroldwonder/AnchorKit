@@ -10,7 +10,7 @@ use crate::storage::{
     StorageKey,
     key_admin, key_counter, key_session_counter, key_quote_counter,
     key_audit_counter, key_anchor_list, key_health_threshold, key_replay_window,
-    key_audit_log_offset,
+    key_audit_log_offset, key_total_count,
 };
 
 // ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ pub struct AnchorKitContract;
 #[allow(clippy::too_many_arguments)]
 impl AnchorKitContract {
     pub fn get_attestation_count(env: Env) -> u64 {
-        env.storage().instance().get(&symbol_short!("TOTALCNT")).unwrap_or(0)
+        env.storage().instance().get(&key_total_count(&env)).unwrap_or(0)
     }
     // -----------------------------------------------------------------------
     // Initialization
@@ -2112,7 +2112,7 @@ impl AnchorKitContract {
         env.storage().persistent().extend_ttl(&subj_att_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         env.storage().persistent().set(&count_key, &(count + 1));
-        let total_key = symbol_short!("TOTALCNT");
+        let total_key = key_total_count(env);
         let total: u64 = env.storage().instance().get(&total_key).unwrap_or(0);
         env.storage().instance().set(&total_key, &(total + 1));
         env.storage()
