@@ -697,14 +697,34 @@ impl AnchorKitContract {
     // -----------------------------------------------------------------------
 
     pub fn get_attestation(env: Env, id: u64) -> Option<Attestation> {
+        let key = StorageKey::Attest(id);
         let mut attestation = env.storage()
             .persistent()
-            .get::<_, Attestation>(&StorageKey::Attest(id))?;
-        // Reflect current revocation status without rewriting every stored attestation.
+            .get::<_, Attestation>(&key)?;
+        // Check revocation before extending TTL — do not pay rent for revoked entries.
         if env.storage().persistent().has(&StorageKey::AttestorRevoked(attestation.issuer.clone())) {
             attestation.issuer_revoked = true;
+            return Some(attestation);
         }
+        // Only extend TTL for valid (non-revoked) attestations.
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
         Some(attestation)
+    }
+
+    pub fn get_attestation_or_panic(env: Env, id: u64) -> Attestation {
+        let key = StorageKey::Attest(id);
+        let mut attestation = env.storage()
+            .persistent()
+            .get::<_, Attestation>(&key)
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
+        // Check revocation before extending TTL — do not pay rent for revoked entries.
+        if env.storage().persistent().has(&StorageKey::AttestorRevoked(attestation.issuer.clone())) {
+            attestation.issuer_revoked = true;
+            panic_with_error!(&env, ErrorCode::UnauthorizedAttestor);
+        }
+        // Only extend TTL for valid (non-revoked) attestations.
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        attestation
     }
 
     pub fn list_attestations(env: Env, subject: Address, offset: u64, limit: u32) -> Vec<Attestation> {
