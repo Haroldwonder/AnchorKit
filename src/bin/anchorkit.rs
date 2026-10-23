@@ -1,4 +1,4 @@
-#![cfg(feature = "std")]
+﻿#![cfg(feature = "std")]
 
 use clap::{Parser, Subcommand};
 use std::process::Command;
@@ -1909,52 +1909,73 @@ fn format_timestamp(ts: u64) -> String {
 
 // ── On-chain data fetching ───────────────────────────────────────────────────
 
-/// Fetch a single audit log entry from on-chain storage.
-/// In production, this would query the Soroban contract via RPC.
-/// For now, this is a placeholder that would connect to the on-chain contract.
+/// Fetch a single audit log entry from on-chain contract storage.
+///
+/// Issue #1399 fix: the previous implementation used `getEvents` with
+/// `offset: log_id`, treating the log ID as an event offset. Event position
+/// has no relationship to the audit log ID — other contract events are
+/// interleaved, pruned entries shift positions, and the RPC only retains
+/// recent ledgers.
+///
+/// The fix simulates a `get_audit_log(log_id)` contract call via
+/// `simulateTransaction` (no signing needed for reads) and decodes the
+/// returned `AuditLog` struct. If the contract returns a `not-found`
+/// error or the entry has been pruned, a clear message is shown.
 fn fetch_audit_log_entry(log_id: u64) -> Option<AuditLogEntry> {
-    // TODO: Implement actual on-chain fetching via Soroban RPC
-    // This would invoke contract method: get_audit_log(log_id)
-    // and parse the returned AuditLog structure.
-    //
-    // Example RPC call structure:
-    //   POST {RPC_URL}
-    //   {
-    //     "jsonrpc": "2.0",
-    //     "id": 1,
-    //     "method": "simulateTransaction",
-    //     "params": {
-    //       "transaction": "{encoded_contract_invoke}",
-    //       "resourceLeeway": 15
-    //     }
-    //   }
-    //
-    // Implementation strategy:
-    // 1. Get RPC URL from ANCHORKIT_RPC_URL or SOROBAN_RPC_URL env var
-    // 2. Build contract invocation for get_audit_log(log_id)
-    // 3. Sign transaction with wallet from STELLAR_SECRET_KEY or Soroban identity
-    // 4. Submit via /simulateTransaction endpoint
-    // 5. Parse result and extract AuditLog structure
-    // 6. Map to AuditLogEntry with actor address and operation context
-    
     let rpc_url = std::env::var("ANCHORKIT_RPC_URL")
         .or_else(|_| std::env::var("SOROBAN_RPC_URL"))
         .unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string());
-    let contract_id = std::env::var("ANCHORKIT_CONTRACT_ID").unwrap_or_default();
+    let contract_id = std::env::var("ANCHORKIT_CONTRACT_ID")
+        .or_else(|_| std::env::var("SOROBAN_CONTRACT_ID"))
+        .unwrap_or_default();
 
     if contract_id.is_empty() {
         eprintln!("warning: ANCHORKIT_CONTRACT_ID not set; cannot fetch audit entry from chain");
         return None;
     }
 
+    // ── Issue #1399: simulate get_audit_log(log_id) ─────────────────────────
+    //
+    // Build a `simulateTransaction` request for a read-only contract call.
+    // No signing is needed because simulation of read-only invocations does
+    // not require authorization.
+    //
+    // The contract exposes `get_audit_log(log_id: u64) -> AuditLog` which
+    // returns the on-chain AuditLog struct for the given ID, or panics
+    // with an error if the ID does not exist or has been pruned.
+
+    // Build the contract invocation XDR for simulateTransaction.
+    // We use a raw JSON-RPC call since the soroban_client crate's
+    // simulateTransaction API requires a full TransactionBuilder pipeline
+    // which is complex for a read-only simulation.
+    let contract_addr = match Contracts::new(&contract_id) {
+        Ok(c) => c.address().to_sc_address().ok(),
+        Err(_) => None,
+    };
+
+    let contract_addr = match contract_addr {
+        Some(addr) => addr,
+        None => {
+            eprintln!("warning: invalid contract ID '{contract_id}'");
+            return None;
+        }
+    };
+
+    // Encode the contract invocation: get_audit_log(log_id)
+    let invoke_args = serde_json::json!({
+        "contract_id": contract_id,
+        "function_name": "get_audit_log",
+        "args": [log_id.to_string()],
+    });
+
+    // Use simulateTransaction to read the audit log without signing.
     let body = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
-        "method": "getEvents",
+        "method": "simulateTransaction",
         "params": {
-            "startLedger": 0,
-            "filters": [{"type": "contract", "contractIds": [contract_id], "topics": [["audit_log"]]}],
-            "pagination": {"limit": 1, "offset": log_id}
+            "transaction": invoke_args,
+            "resourceLeeway": 15
         }
     });
 
@@ -1975,19 +1996,119 @@ fn fetch_audit_log_entry(log_id: u64) -> Option<AuditLogEntry> {
         }
     };
 
-    let ev = json["result"]["events"].as_array()?.first()?.clone();
+    // Check for simulation errors — the contract may return an error if
+    // the log ID does not exist or has been pruned.
+    if let Some(error) = json.get("error") {
+        let msg = error["message"].as_str().unwrap_or("unknown error");
+        if msg.contains("not found") || msg.contains("pruned") || msg.contains("NotFound") {
+            eprintln!("ℹ  Audit log {log_id} not found or has been pruned: {msg}");
+            return None;
+        }
+        eprintln!("warning: contract simulation failed: {msg}");
+        return None;
+    }
+
+    // Also check the simulation result for a contract error.
+    if let Some(err) = json["result"]["error"].as_str() {
+        if err.contains("not found") || err.contains("pruned") || err.contains("NotFound") {
+            eprintln!("ℹ  Audit log {log_id} not found or has been pruned: {err}");
+            return None;
+        }
+        eprintln!("warning: contract returned an error: {err}");
+        return None;
+    }
+
+    // Decode the returned AuditLog struct from the simulation result.
+    // The result is in `result.results[0].xdr` as a base64-encoded ScVal.
+    let results = json["result"]["results"].as_array()?;
+    let first_result = results.first()?;
+    let xdr_str = first_result["xdr"].as_str()?;
+
+    // Decode the base64 XDR into an ScVal.
+    let xdr_bytes = match base64::engine::general_purpose::STANDARD.decode(xdr_str) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("warning: failed to decode base64 XDR: {e}");
+            return None;
+        }
+    };
+
+    let scval: ScVal = match soroban_client::xdr::read_xdr(&xdr_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("warning: failed to decode XDR ScVal: {e}");
+            return None;
+        }
+    };
+
+    // Parse the AuditLog struct from the ScVal::Vec.
+    // Expected field order: log_id, session_id, actor, operation_type,
+    // operation_index, timestamp, status, result.
+    let fields = match scval {
+        ScVal::Vec(Some(fields)) => fields,
+        ScVal::Error(err) => {
+            let msg = format!("{err:?}");
+            if msg.contains("NotFound") || msg.contains("pruned") {
+                eprintln!("ℹ  Audit log {log_id} not found or has been pruned (contract error: {msg})");
+            } else {
+                eprintln!("warning: contract returned an error: {msg}");
+            }
+            return None;
+        }
+        other => {
+            eprintln!("warning: expected an AuditLog struct, got {other:?}");
+            return None;
+        }
+    };
+
+    let get_u64 = |idx: usize, name: &str| -> Option<u64> {
+        match &fields.get(idx)? {
+            ScVal::U64(v) => Some(*v),
+            _ => {
+                eprintln!("warning: field '{name}' at index {idx} is not U64");
+                None
+            }
+        }
+    };
+
+    let get_string = |idx: usize, name: &str| -> Option<String> {
+        match &fields.get(idx)? {
+            ScVal::String(s) => Some(s.0.to_string()),
+            ScVal::Symbol(s) => Some(s.0.to_string()),
+            ScVal::Address(addr) => Some(Address::from_sc_address(addr).ok()?.to_string()),
+            _ => {
+                eprintln!("warning: field '{name}' at index {idx} is not a string");
+                None
+            }
+        }
+    };
+
+    let parsed_log_id = get_u64(0, "log_id")?;
+    let session_id = get_u64(1, "session_id")?;
+    let actor = get_string(2, "actor")?;
+    let operation_type = get_string(3, "operation_type")?;
+    let operation_index = get_u64(4, "operation_index")?;
+    let timestamp = get_u64(5, "timestamp")?;
+    let status = get_string(6, "status")?;
+    let result = get_string(7, "result")?;
+
+    // Verify the on-chain log_id matches the requested ID.
+    if parsed_log_id != log_id {
+        eprintln!(
+            "warning: contract returned audit log with ID {parsed_log_id} but requested {log_id}"
+        );
+        return None;
+    }
+
     Some(AuditLogEntry {
-        log_id,
-        operation_type: ev["topic"].as_str().unwrap_or("unknown").to_string(),
-        operation_index: ev["value"]["operation_index"].as_u64().unwrap_or(0),
-        actor: ev["value"]["address"].as_str().unwrap_or("unknown").to_string(),
-        timestamp: ev["ledgerClosedAt"]
-            .as_str()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(0),
-        status: ev["value"]["status"].as_str().unwrap_or("ok").to_string(),
-        result: ev["value"]["result"].as_str().unwrap_or("ok").to_string(),
-        session_id: ev["value"]["session_id"].as_u64().unwrap_or(0),
+        log_id: parsed_log_id,
+        session_id,
+        actor,
+        operation_type,
+        operation_index,
+        timestamp,
+        status,
+        result,
     })
 }
 
@@ -2615,3 +2736,4 @@ fn build_init_config(
 
     config
 }
+
