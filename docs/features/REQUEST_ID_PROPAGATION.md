@@ -30,11 +30,11 @@ let req_id = contract.generate_request_id(&env);
 ```rust
 let attestation_id = contract.submit_with_request_id(
     &req_id,
-    &issuer,
+    &attestor,
     &subject,
-    &timestamp,
     &payload_hash,
-    &signature,
+    &timestamp,
+    &nonce,
 );
 ```
 
@@ -44,10 +44,10 @@ let attestation_id = contract.submit_with_request_id(
 contract.quote_with_request_id(
     &req_id,
     &anchor,
-    &from_asset,
-    &to_asset,
-    &amount,
-    &fee_bps,
+    &base_asset,
+    &quote_asset,
+    &rate,
+    &fee,
     &min_amount,
     &max_amount,
     &expires_at,
