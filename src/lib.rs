@@ -34,7 +34,7 @@ pub use sep6::{
     deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
     RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
-    AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, TransactionFilters,
+    AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
 };
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};

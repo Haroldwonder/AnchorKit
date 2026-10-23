@@ -42,7 +42,7 @@ jobs:
             ${{ runner.os }}-cargo-testnet-
 
       - name: Run testnet-integration tests
-        run: cargo test --features testnet-integration --verbose
+        run: cargo test --locked --features testnet-integration --verbose
 
       - name: Run clippy on testnet-integration
-        run: cargo clippy --features testnet-integration -- -D warnings
+        run: cargo clippy --locked --features testnet-integration -- -D warnings

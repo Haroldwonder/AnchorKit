@@ -5,8 +5,6 @@
 *.rlib
 *.rmeta
 
-# Cargo.lock is intentionally not tracked (library crate)
-
 # Node / UI
 ui/node_modules/
 test_snapshots/

@@ -234,4 +234,17 @@ mod tests {
         );
         assert!(config.is_err(), "garbage anchor string must be rejected by format validation");
     }
+
+    #[test]
+    fn test_futurenet_config_valid() {
+        let env = Env::default();
+        let config = SdkConfig::new(
+            Network::Futurenet,
+            30,
+            3,
+            String::from_str(&env, "https://testanchor.stellar.org"),
+        );
+        assert!(config.is_ok());
+        assert_eq!(config.unwrap().network, Network::Futurenet);
+    }
 }
