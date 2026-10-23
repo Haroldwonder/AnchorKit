@@ -76,6 +76,9 @@ use alloc::string::String;
 /// | 121  | AttestationExpired          |
 /// | 122  | ContractPaused              |
 /// | 123  | AdminTransferPending        |
+/// | 124  | ServerError                 |
+/// | 125  | TransportTimeout            |
+/// | 126  | TransactionNotFound         |
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -120,6 +123,9 @@ pub enum ErrorCode {
     AttestationExpired = 121,
     ContractPaused = 122,
     AdminTransferPending = 123,
+    ServerError = 124,
+    TransportTimeout = 125,
+    TransactionNotFound = 126,
 }
 
 impl ErrorCode {
@@ -165,6 +171,9 @@ impl ErrorCode {
             ErrorCode::AttestationExpired => "Attestation has expired",
             ErrorCode::ContractPaused => "Contract is paused",
             ErrorCode::AdminTransferPending => "Admin transfer is already pending",
+            ErrorCode::ServerError => "Server error",
+            ErrorCode::TransportTimeout => "Transport timeout",
+            ErrorCode::TransactionNotFound => "Transaction not found",
             ErrorCode::NotInitialized => "Contract is not initialized",
         }
     }
