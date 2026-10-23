@@ -450,7 +450,11 @@ impl AnchorKitContract {
             .extend_ttl(&storage_key, PERSISTENT_TTL, PERSISTENT_TTL);
     }
 
-    pub fn remove_sep10_verifying_key(env: Env, issuer: Address, public_key: Bytes) {
+    pub fn remove_sep10_verifying_key(
+        env: Env,
+        issuer: Address,
+        public_key: Bytes,
+    ) -> Result<(), ErrorCode> {
         Self::require_admin(&env);
         let storage_key = StorageKey::Sep10Key(issuer.clone());
         let keys: Vec<Bytes> = env
@@ -465,10 +469,18 @@ impl AnchorKitContract {
                 new_keys.push_back(k);
             }
         }
-        env.storage().persistent().set(&storage_key, &new_keys);
-        env.storage()
-            .persistent()
-            .extend_ttl(&storage_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        if new_keys.len() == keys.len() {
+            return Err(ErrorCode::ValidationError);
+        }
+        if new_keys.is_empty() {
+            env.storage().persistent().remove(&storage_key);
+        } else {
+            env.storage().persistent().set(&storage_key, &new_keys);
+            env.storage()
+                .persistent()
+                .extend_ttl(&storage_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        }
+        Ok(())
     }
 
     // -----------------------------------------------------------------------
