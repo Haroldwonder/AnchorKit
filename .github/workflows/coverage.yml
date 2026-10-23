@@ -34,7 +34,7 @@ jobs:
         run: cargo install cargo-tarpaulin --locked
 
       - name: Generate coverage report
-        run: cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml
+        run: cargo tarpaulin --locked --verbose --all-features --workspace --timeout 120 --out Xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
