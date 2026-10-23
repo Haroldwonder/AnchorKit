@@ -26,6 +26,14 @@ pub enum TransactionStatus {
     Refunded,
     Expired,
     Error,
+    PendingStellar,
+    PendingCustomerInfoUpdate,
+    PendingTransactionInfoUpdate,
+    PendingUserTransferComplete,
+    NoMarket,
+    TooSmall,
+    TooLarge,
+    OnHold,
     Unknown(String),
 }
 
@@ -43,8 +51,42 @@ impl TransactionStatus {
             "incomplete" => Self::Incomplete,
             "pending" => Self::Pending,
             "error" => Self::Error,
+            "pending_stellar" => Self::PendingStellar,
+            "pending_customer_info_update" => Self::PendingCustomerInfoUpdate,
+            "pending_transaction_info_update" => Self::PendingTransactionInfoUpdate,
+            "pending_user_transfer_complete" => Self::PendingUserTransferComplete,
+            "no_market" => Self::NoMarket,
+            "too_small" => Self::TooSmall,
+            "too_large" => Self::TooLarge,
+            "on_hold" => Self::OnHold,
             _ => Self::Unknown(String::from(s)),
         }
+    }
+
+    /// True when the user (or customer) must act before the transaction can proceed.
+    pub fn requires_user_action(&self) -> bool {
+        matches!(
+            self,
+            Self::PendingUser
+                | Self::PendingCustomerInfoUpdate
+                | Self::PendingTransactionInfoUpdate
+                | Self::PendingUserTransferComplete
+                | Self::PendingTrust
+        )
+    }
+
+    /// True when no further status changes are expected.
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            Self::Completed
+                | Self::Refunded
+                | Self::Expired
+                | Self::Error
+                | Self::NoMarket
+                | Self::TooSmall
+                | Self::TooLarge
+        )
     }
 
     pub fn as_str(&self) -> &str {
@@ -59,6 +101,14 @@ impl TransactionStatus {
             Self::Refunded => "refunded",
             Self::Expired => "expired",
             Self::Error => "error",
+            Self::PendingStellar => "pending_stellar",
+            Self::PendingCustomerInfoUpdate => "pending_customer_info_update",
+            Self::PendingTransactionInfoUpdate => "pending_transaction_info_update",
+            Self::PendingUserTransferComplete => "pending_user_transfer_complete",
+            Self::NoMarket => "no_market",
+            Self::TooSmall => "too_small",
+            Self::TooLarge => "too_large",
+            Self::OnHold => "on_hold",
             Self::Unknown(s) => s.as_str(),
         }
     }
@@ -774,6 +824,27 @@ pub fn get_transactions(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn all_sep6_statuses_round_trip() {
+        let all = [
+            "pending_user_transfer_start", "pending_user_transfer_complete",
+            "pending_external", "pending_anchor", "pending_stellar", "pending_trust",
+            "pending_user", "pending_customer_info_update",
+            "pending_transaction_info_update", "incomplete", "no_market", "too_small",
+            "too_large", "completed", "refunded", "expired", "error", "on_hold", "pending",
+        ];
+        for s in all {
+            let st = TransactionStatus::from_str(s);
+            assert!(!matches!(st, TransactionStatus::Unknown(_)), "{s}");
+            // `pending_user_transfer_start` is a legacy alias for `pending_user`.
+            let expected = if s == "pending_user_transfer_start" { "pending_user" } else { s };
+            assert_eq!(st.as_str(), expected);
+        }
+        assert!(TransactionStatus::TooSmall.is_terminal());
+        assert!(TransactionStatus::PendingCustomerInfoUpdate.requires_user_action());
+        assert!(!TransactionStatus::OnHold.is_terminal());
+    }
+
     use super::*;
     use alloc::string::ToString;
 
