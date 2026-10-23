@@ -72,7 +72,6 @@ pub struct TransactionStateRecord {
 /// during its lifecycle, but state is not persisted to or queryable from the
 /// Soroban contract.
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct TransactionStateTracker {
     cache: alloc::vec::Vec<TransactionStateRecord>,
     /// Per-state counters indexed by TransactionState discriminant (1-based).
@@ -80,7 +79,6 @@ pub struct TransactionStateTracker {
     state_counts: [u64; 6],
 }
 
-#[allow(dead_code)]
 impl TransactionStateTracker {
     /// Create a new transaction state tracker
     pub fn new() -> Self {
