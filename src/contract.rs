@@ -11,7 +11,7 @@ use crate::storage::{
     StorageKey,
     key_admin, key_counter, key_session_counter, key_quote_counter,
     key_audit_counter, key_anchor_list, key_health_threshold, key_replay_window,
-    key_clock_skew, key_attestor_count, key_audit_log_offset, key_attestor_list,
+    key_audit_log_offset, key_total_count,
 };
 
 // ---------------------------------------------------------------------------
@@ -149,30 +149,8 @@ pub struct AnchorKitContract;
 #[contractimpl]
 #[allow(clippy::too_many_arguments)]
 impl AnchorKitContract {
-    /// Deploy-time constructor — runs atomically with contract creation so no
-    /// other account can front-run `initialize` and claim the admin slot.
-    ///
-    /// The `admin` address is written to instance storage here; `initialize`
-    /// then reads it back and completes the rest of the setup (#1346).
-    pub fn __constructor(env: Env, admin: Address) {
-        if admin == env.current_contract_address() {
-            panic_with_error!(&env, ErrorCode::ValidationError);
-        }
-        admin.require_auth();
-        env.storage()
-            .instance()
-            .set(&key_admin(&env), &admin);
-    }
-
-    pub fn get_version(env: Env) -> String {
-        String::from_str(&env, env!("CARGO_PKG_VERSION"))
-    }
-
-    pub fn get_attestation_count(env: Env, attestor: Address) -> u64 {
-        env.storage()
-            .persistent()
-            .get::<_, u64>(&StorageKey::PerAttestorCount(attestor))
-            .unwrap_or(0)
+    pub fn get_attestation_count(env: Env) -> u64 {
+        env.storage().instance().get(&key_total_count(&env)).unwrap_or(0)
     }
     // -----------------------------------------------------------------------
     // Initialization
@@ -1289,61 +1267,30 @@ impl AnchorKitContract {
         let mut attestation = env.storage()
             .persistent()
             .get::<_, Attestation>(&key)?;
-        // Bump TTL on read so actively-queried attestations don't expire (#630).
-        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
-        // Reflect current revocation status without rewriting every stored attestation.
-        if Self::is_attestation_issuer_revoked(&env, &attestation) {
+        // Check revocation before extending TTL — do not pay rent for revoked entries.
+        if env.storage().persistent().has(&StorageKey::AttestorRevoked(attestation.issuer.clone())) {
             attestation.issuer_revoked = true;
+            return Some(attestation);
         }
-        if env.storage().persistent().has(&StorageKey::AttestationRevoked(id)) {
-            return None;
-        }
-        if let Some(expires_at) = attestation.expires_at {
-            if env.ledger().timestamp() > expires_at {
-                return None;
-            }
-        }
+        // Only extend TTL for valid (non-revoked) attestations.
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
         Some(attestation)
     }
 
-    /// Like `get_attestation`, but panics if the attestation does not exist,
-    /// has been revoked, or has expired.
     pub fn get_attestation_or_panic(env: Env, id: u64) -> Attestation {
         let key = StorageKey::Attest(id);
-        let mut attestation = env
-            .storage()
+        let mut attestation = env.storage()
             .persistent()
             .get::<_, Attestation>(&key)
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
-        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
-        if Self::is_attestation_issuer_revoked(&env, &attestation) {
+        // Check revocation before extending TTL — do not pay rent for revoked entries.
+        if env.storage().persistent().has(&StorageKey::AttestorRevoked(attestation.issuer.clone())) {
             attestation.issuer_revoked = true;
+            panic_with_error!(&env, ErrorCode::UnauthorizedAttestor);
         }
-        if env.storage().persistent().has(&StorageKey::AttestationRevoked(id)) {
-            panic_with_error!(&env, ErrorCode::AttestationRevoked);
-        }
-        if let Some(expires_at) = attestation.expires_at {
-            if env.ledger().timestamp() > expires_at {
-                panic_with_error!(&env, ErrorCode::AttestationExpired);
-            }
-        }
+        // Only extend TTL for valid (non-revoked) attestations.
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
         attestation
-    }
-
-    /// Convenience check combining revocation, expiry, and attestor status (#627).
-    ///
-    /// Returns `true` only when the attestation exists (i.e. its storage entry
-    /// has not expired), its issuer has not been revoked, and the issuer is
-    /// still a registered attestor.
-    pub fn is_attestation_valid(env: Env, id: u64) -> bool {
-        let attestation = match Self::get_attestation(env.clone(), id) {
-            Some(a) => a,
-            None => return false,
-        };
-        if attestation.issuer_revoked {
-            return false;
-        }
-        env.storage().persistent().has(&StorageKey::Attestor(attestation.issuer))
     }
 
     pub fn list_attestations(env: Env, subject: Address, offset: u64, limit: u32) -> Vec<Attestation> {
@@ -3315,7 +3262,7 @@ impl AnchorKitContract {
         env.storage().persistent().extend_ttl(&subj_att_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         env.storage().persistent().set(&count_key, &(count + 1));
-        let total_key = symbol_short!("TOTALCNT");
+        let total_key = key_total_count(env);
         let total: u64 = env.storage().instance().get(&total_key).unwrap_or(0);
         env.storage().instance().set(&total_key, &(total + 1));
         env.storage()

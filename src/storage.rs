@@ -107,6 +107,9 @@ pub fn key_quote_counter(env: &Env) -> Vec<Symbol> {
 pub fn key_audit_counter(env: &Env) -> Vec<Symbol> {
     soroban_sdk::vec![env, symbol_short!("AUD_CNT")]
 }
+pub fn key_total_count(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("TOTALCNT")]
+}
 pub fn key_audit_log_offset(env: &Env) -> Vec<Symbol> {
     soroban_sdk::vec![env, symbol_short!("AUD_OFF")]
 }
