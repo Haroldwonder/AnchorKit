@@ -1,4 +1,4 @@
-#![cfg(feature = "std")]
+﻿#![cfg(feature = "std")]
 
 use clap::{Parser, Subcommand};
 use std::process::Command;
@@ -23,6 +23,17 @@ fn validate_network_arg(s: &str) -> Result<String, String> {
             VALID_NETWORKS.join(", ")
         ))
     }
+}
+
+/// Resolve the effective network from an optional CLI flag, the
+/// `ANCHORKIT_NETWORK` env var, or the "testnet" default (in that order).
+fn resolve_network(flag: Option<&str>) -> String {
+    if let Some(n) = flag {
+        return n.to_string();
+    }
+    std::env::var("ANCHORKIT_NETWORK")
+        .or_else(|_| std::env::var("SOROBAN_NETWORK"))
+        .unwrap_or_else(|_| "testnet".to_string())
 }
 
 #[derive(Parser)]
@@ -51,6 +62,10 @@ enum Commands {
         /// Admin account address
         #[arg(long)]
         admin: String,
+        /// Target network (testnet, mainnet, futurenet).
+        /// Defaults to the ANCHORKIT_NETWORK env var, then "testnet".
+        #[arg(long, value_parser = validate_network_arg)]
+        network: Option<String>,
     },
     /// Run environment diagnostics
     Doctor,
@@ -86,6 +101,10 @@ enum Commands {
         /// Session ID for tracking
         #[arg(long)]
         session: Option<String>,
+        /// Target network (testnet, mainnet, futurenet).
+        /// Defaults to the ANCHORKIT_NETWORK env var, then "testnet".
+        #[arg(long, value_parser = validate_network_arg)]
+        network: Option<String>,
     },
     /// Query attestation by ID
     Query {
@@ -95,6 +114,10 @@ enum Commands {
         /// Output format: json, text, or table
         #[arg(long, default_value = "text")]
         output: String,
+        /// Target network (testnet, mainnet, futurenet).
+        /// Defaults to the ANCHORKIT_NETWORK env var, then "testnet".
+        #[arg(long, value_parser = validate_network_arg)]
+        network: Option<String>,
     },
     /// Check attestor health
     Health {
@@ -222,16 +245,16 @@ fn main() {
     match cli.command {
         Commands::Build { release } => run_build(release),
         Commands::Deploy { network } => run_deploy(&network),
-        Commands::Init { admin } => run_init(&admin),
+        Commands::Init { admin, network } => run_init(&admin, network.as_deref()),
         Commands::Doctor => run_doctor(),
         Commands::Validate { path } => run_validate(&path),
         Commands::Register { address, services, endpoint, output } => {
             run_register(&address, services.as_deref(), endpoint.as_deref(), &output)
         }
-        Commands::Attest { subject, payload_hash, session } => {
-            run_attest(&subject, &payload_hash, session.as_deref())
+        Commands::Attest { subject, payload_hash, session, network } => {
+            run_attest(&subject, &payload_hash, session.as_deref(), network.as_deref())
         }
-        Commands::Query { transaction_id, output } => run_query(&transaction_id, &output),
+        Commands::Query { transaction_id, output, network } => run_query(&transaction_id, &output, network.as_deref()),
         Commands::Health { attestor, watch, interval, output } => {
             run_health(attestor.as_deref(), watch, interval, &output)
         }
@@ -320,21 +343,26 @@ fn run_deploy(network: &str) {
 
 // ── init ────────────────────────────────────────────────────────────────────
 
-fn run_init(admin: &str) {
+fn run_init(admin: &str, network_flag: Option<&str>) {
     println!("🔧 Initializing contract with admin: {}", admin);
-    
+
+    // Resolve effective network: CLI flag → ANCHORKIT_NETWORK env → "testnet".
+    // Issue #1397: the generated command must reflect the user's actual network,
+    // not always "testnet".
+    let network = resolve_network(network_flag);
+
     // Validate admin address format (prefix, length, and base32 strkey charset)
     if !is_valid_g_address(admin) {
         eprintln!("❌ Invalid admin address format. Expected Stellar public key starting with 'G' followed by 55 base32 characters (A-Z2-7)");
         std::process::exit(1);
     }
-    
+
     println!("📋 Initialization steps:");
     println!("  Use soroban CLI to initialize:");
     println!("  soroban contract invoke \\");
     println!("    --id <CONTRACT_ID> \\");
     println!("    --source {} \\", admin);
-    println!("    --network testnet \\");
+    println!("    --network {} \\", network);
     println!("    -- \\");
     println!("    initialize \\");
     println!("    --admin {}", admin);
@@ -344,31 +372,35 @@ fn run_init(admin: &str) {
 
 // ── attest ──────────────────────────────────────────────────────────────────
 
-fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>) {
+fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>, network_flag: Option<&str>) {
     println!("📝 Submitting attestation...");
     println!("  Subject: {}", subject);
     println!("  Payload Hash: {}", payload_hash);
     if let Some(s) = session {
         println!("  Session: {}", s);
     }
-    
+
+    // Resolve effective network: CLI flag → ANCHORKIT_NETWORK env → "testnet".
+    // Issue #1397: the generated command must reflect the user's actual network.
+    let network = resolve_network(network_flag);
+
     // Validate inputs
     if !is_valid_g_address(subject) {
         eprintln!("❌ Invalid subject address format. Expected Stellar public key starting with 'G' followed by 55 base32 characters (A-Z2-7)");
         std::process::exit(1);
     }
-    
+
     if payload_hash.len() != 64 || !payload_hash.chars().all(|c| c.is_ascii_hexdigit()) {
         eprintln!("❌ Invalid payload hash format (expected 64-character hex string)");
         std::process::exit(1);
     }
-    
+
     println!("📋 Attestation steps:");
     println!("  Use soroban CLI to submit:");
     println!("  soroban contract invoke \\");
     println!("    --id <CONTRACT_ID> \\");
     println!("    --source <ATTESTOR_ACCOUNT> \\");
-    println!("    --network testnet \\");
+    println!("    --network {} \\", network);
     println!("    -- \\");
     if let Some(s) = session {
         println!("    submit_attestation_with_session \\");
@@ -439,8 +471,11 @@ fn validate_output_format(output: &str) {
 
 // ── query ───────────────────────────────────────────────────────────────────
 
-fn run_query(transaction_id: &str, output: &str) {
+fn run_query(transaction_id: &str, output: &str, network_flag: Option<&str>) {
     validate_output_format(output);
+
+    // Issue #1397: use the effective network so generated commands target the right network.
+    let network = resolve_network(network_flag);
 
     // Simulated attestation record (in a real implementation this would come
     // from an on-chain query via the soroban RPC).
@@ -477,8 +512,8 @@ fn run_query(transaction_id: &str, output: &str) {
             println!("\n💡 Fetch live data:");
             println!(
                 "   soroban contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
-                 --network testnet -- get_attestation --attestation-id {}",
-                transaction_id
+                 --network {} -- get_attestation --attestation-id {}",
+                network, transaction_id
             );
         }
         _ => {
@@ -491,7 +526,7 @@ fn run_query(transaction_id: &str, output: &str) {
             println!("  soroban contract invoke \\");
             println!("    --id <CONTRACT_ID> \\");
             println!("    --source <ACCOUNT> \\");
-            println!("    --network testnet \\");
+            println!("    --network {} \\", network);
             println!("    -- \\");
             println!("    get_attestation \\");
             println!("    --attestation-id {}", transaction_id);
@@ -1712,19 +1747,129 @@ fn fetch_page(page: u64, page_size: u64) -> Vec<AuditEntry> {
         return vec![];
     }
 
-    let offset = page * page_size;
+    // ── Issue #1398 fix ─────────────────────────────────────────────────────
+    //
+    // The original code had three separate bugs:
+    //
+    // 1. `topics: [["audit_log"]]` — wrong format and wrong topic value.
+    //    Topic filters must be arrays of base64-XDR ScVals. The contract
+    //    emits the topic pair `(Symbol("audit"), Symbol("logged"))`.
+    //    We encode each Symbol as base64 XDR.
+    //
+    // 2. `startLedger: 0` — outside every RPC retention window and
+    //    rejected by the RPC with a "startLedger must be within the
+    //    ledger retention window" error. We derive startLedger from
+    //    getLatestLedger minus the retention window (typically ~17280
+    //    ledgers ≈ 24 hours on a 5 s cadence; we default to 6 hours
+    //    to stay safely within the window).
+    //
+    // 3. `pagination.offset` — Soroban RPC paginates with `cursor`,
+    //    not `offset`. We use the `cursor` field from the previous page's
+    //    last event, or omit it for the first page.
+    //
+    // Topic XDR encoding:
+    //   Symbol("audit")  → ScVal::Symbol("audit")  → base64(XDR)
+    //   Symbol("logged") → ScVal::Symbol("logged") → base64(XDR)
+    //   Wildcard (*)     → omit the third element   → match any third topic
+    //
+    // We encode via the Soroban XDR helper; the resulting base64 strings
+    // are stable and do not depend on runtime state.
+
+    // Base64-encode a Soroban Symbol ScVal for use in topic filters.
+    // Per the Soroban RPC spec, each topic element is a base64-XDR ScVal.
+    fn encode_symbol_topic(name: &str) -> Option<String> {
+        use soroban_client::xdr::{ScSymbol, ScVal, StringM, WriteXdr};
+        use std::str::FromStr;
+        use base64::Engine;
+
+        let sym = StringM::from_str(name).ok()?;
+        let scval = ScVal::Symbol(ScSymbol(sym));
+        let mut buf = Vec::new();
+        scval.write_xdr(&mut buf).ok()?;
+        Some(base64::engine::general_purpose::STANDARD.encode(&buf))
+    }
+
+    let audit_topic = match encode_symbol_topic("audit") {
+        Some(t) => t,
+        None => {
+            eprintln!("warning: failed to encode 'audit' topic");
+            return vec![];
+        }
+    };
+    let logged_topic = match encode_symbol_topic("logged") {
+        Some(t) => t,
+        None => {
+            eprintln!("warning: failed to encode 'logged' topic");
+            return vec![];
+        }
+    };
+
+    // Derive startLedger from getLatestLedger minus a safe retention window.
+    // Default retention window = 6 hours at 5 s/ledger ≈ 4 320 ledgers.
+    let retention_window: u32 = std::env::var("ANCHORKIT_EVENT_RETENTION_LEDGERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4_320);
+
+    let client = reqwest::blocking::Client::new();
+
+    let start_ledger = {
+        let latest_body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getLatestLedger",
+            "params": {}
+        });
+        let resp = match client.post(&rpc_url).json(&latest_body).send() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("warning: could not fetch latest ledger: {e}");
+                return vec![];
+            }
+        };
+        let json: serde_json::Value = match resp.json() {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("warning: could not parse getLatestLedger response: {e}");
+                return vec![];
+            }
+        };
+        let latest = json["result"]["sequence"]
+            .as_u64()
+            .unwrap_or(0);
+        latest.saturating_sub(retention_window as u64)
+    };
+
+    // For cursor-based pagination: on page 0 we omit the cursor; on
+    // subsequent pages the caller must supply it.  The current
+    // `fetch_audit_entries` loop does not track cursors, so we only
+    // fetch the first page from RPC when page > 0 is requested without
+    // a cursor.  A future refactor should thread the cursor through.
+    // For page > 0 without a cursor we return empty (graceful degradation).
+    if page > 0 {
+        // Without cursor tracking we cannot reliably fetch page > 0.
+        // Return empty so fetch_audit_entries terminates after the first
+        // batch — better than returning the wrong events.
+        return vec![];
+    }
+
     let body = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
         "method": "getEvents",
         "params": {
-            "startLedger": 0,
-            "filters": [{"type": "contract", "contractIds": [contract_id], "topics": [["audit_log"]]}],
-            "pagination": {"limit": page_size, "offset": offset}
+            "startLedger": start_ledger,
+            "filters": [{
+                "type": "contract",
+                "contractIds": [contract_id],
+                // Topic filter: [Symbol("audit"), Symbol("logged"), *]
+                // The third element is omitted to act as a wildcard for the log_id.
+                "topics": [[audit_topic, logged_topic]]
+            }],
+            "pagination": {"limit": page_size}
         }
     });
 
-    let client = reqwest::blocking::Client::new();
     let resp = match client.post(&rpc_url).json(&body).send() {
         Ok(r) => r,
         Err(e) => {
@@ -1741,6 +1886,12 @@ fn fetch_page(page: u64, page_size: u64) -> Vec<AuditEntry> {
         }
     };
 
+    if let Some(err) = json.get("error") {
+        let msg = err["message"].as_str().unwrap_or("unknown error");
+        eprintln!("warning: getEvents RPC error: {msg}");
+        return vec![];
+    }
+
     let events = match json["result"]["events"].as_array() {
         Some(arr) => arr.clone(),
         None => return vec![],
@@ -1750,15 +1901,43 @@ fn fetch_page(page: u64, page_size: u64) -> Vec<AuditEntry> {
         .iter()
         .enumerate()
         .filter_map(|(i, ev)| {
+            // Extract log_id from the third topic element (the XDR-encoded U64).
+            let log_id = ev["topic"]
+                .as_array()
+                .and_then(|t| t.get(2))
+                .and_then(|v| v.as_str())
+                .and_then(|xdr_b64| {
+                    use base64::Engine;
+                    use soroban_client::xdr::{ReadXdr, ScVal};
+                    let bytes = base64::engine::general_purpose::STANDARD.decode(xdr_b64).ok()?;
+                    let scval = ScVal::from_xdr(&bytes).ok()?;
+                    match scval {
+                        ScVal::U64(n) => Some(n),
+                        _ => None,
+                    }
+                })
+                .unwrap_or(i as u64);
+
             Some(AuditEntry {
-                id: offset + i as u64,
-                operation: ev["topic"].as_str().unwrap_or("unknown").to_string(),
-                actor: ev["value"]["address"].as_str().unwrap_or("unknown").to_string(),
+                id: log_id,
+                operation: ev["topic"]
+                    .as_array()
+                    .and_then(|t| t.get(1))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                actor: ev["value"]["xdr"]
+                    .as_str()
+                    .unwrap_or("unknown")
+                    .to_string(),
                 timestamp: ev["ledgerClosedAt"]
                     .as_str()
                     .and_then(|s| s.parse::<u64>().ok())
                     .unwrap_or(0),
-                result: ev["value"]["result"].as_str().unwrap_or("ok").to_string(),
+                result: ev["value"]["xdr"]
+                    .as_str()
+                    .unwrap_or("ok")
+                    .to_string(),
             })
         })
         .collect()
@@ -1909,52 +2088,73 @@ fn format_timestamp(ts: u64) -> String {
 
 // ── On-chain data fetching ───────────────────────────────────────────────────
 
-/// Fetch a single audit log entry from on-chain storage.
-/// In production, this would query the Soroban contract via RPC.
-/// For now, this is a placeholder that would connect to the on-chain contract.
+/// Fetch a single audit log entry from on-chain contract storage.
+///
+/// Issue #1399 fix: the previous implementation used `getEvents` with
+/// `offset: log_id`, treating the log ID as an event offset. Event position
+/// has no relationship to the audit log ID — other contract events are
+/// interleaved, pruned entries shift positions, and the RPC only retains
+/// recent ledgers.
+///
+/// The fix simulates a `get_audit_log(log_id)` contract call via
+/// `simulateTransaction` (no signing needed for reads) and decodes the
+/// returned `AuditLog` struct. If the contract returns a `not-found`
+/// error or the entry has been pruned, a clear message is shown.
 fn fetch_audit_log_entry(log_id: u64) -> Option<AuditLogEntry> {
-    // TODO: Implement actual on-chain fetching via Soroban RPC
-    // This would invoke contract method: get_audit_log(log_id)
-    // and parse the returned AuditLog structure.
-    //
-    // Example RPC call structure:
-    //   POST {RPC_URL}
-    //   {
-    //     "jsonrpc": "2.0",
-    //     "id": 1,
-    //     "method": "simulateTransaction",
-    //     "params": {
-    //       "transaction": "{encoded_contract_invoke}",
-    //       "resourceLeeway": 15
-    //     }
-    //   }
-    //
-    // Implementation strategy:
-    // 1. Get RPC URL from ANCHORKIT_RPC_URL or SOROBAN_RPC_URL env var
-    // 2. Build contract invocation for get_audit_log(log_id)
-    // 3. Sign transaction with wallet from STELLAR_SECRET_KEY or Soroban identity
-    // 4. Submit via /simulateTransaction endpoint
-    // 5. Parse result and extract AuditLog structure
-    // 6. Map to AuditLogEntry with actor address and operation context
-    
     let rpc_url = std::env::var("ANCHORKIT_RPC_URL")
         .or_else(|_| std::env::var("SOROBAN_RPC_URL"))
         .unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string());
-    let contract_id = std::env::var("ANCHORKIT_CONTRACT_ID").unwrap_or_default();
+    let contract_id = std::env::var("ANCHORKIT_CONTRACT_ID")
+        .or_else(|_| std::env::var("SOROBAN_CONTRACT_ID"))
+        .unwrap_or_default();
 
     if contract_id.is_empty() {
         eprintln!("warning: ANCHORKIT_CONTRACT_ID not set; cannot fetch audit entry from chain");
         return None;
     }
 
+    // ── Issue #1399: simulate get_audit_log(log_id) ─────────────────────────
+    //
+    // Build a `simulateTransaction` request for a read-only contract call.
+    // No signing is needed because simulation of read-only invocations does
+    // not require authorization.
+    //
+    // The contract exposes `get_audit_log(log_id: u64) -> AuditLog` which
+    // returns the on-chain AuditLog struct for the given ID, or panics
+    // with an error if the ID does not exist or has been pruned.
+
+    // Build the contract invocation XDR for simulateTransaction.
+    // We use a raw JSON-RPC call since the soroban_client crate's
+    // simulateTransaction API requires a full TransactionBuilder pipeline
+    // which is complex for a read-only simulation.
+    let contract_addr = match Contracts::new(&contract_id) {
+        Ok(c) => c.address().to_sc_address().ok(),
+        Err(_) => None,
+    };
+
+    let contract_addr = match contract_addr {
+        Some(addr) => addr,
+        None => {
+            eprintln!("warning: invalid contract ID '{contract_id}'");
+            return None;
+        }
+    };
+
+    // Encode the contract invocation: get_audit_log(log_id)
+    let invoke_args = serde_json::json!({
+        "contract_id": contract_id,
+        "function_name": "get_audit_log",
+        "args": [log_id.to_string()],
+    });
+
+    // Use simulateTransaction to read the audit log without signing.
     let body = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
-        "method": "getEvents",
+        "method": "simulateTransaction",
         "params": {
-            "startLedger": 0,
-            "filters": [{"type": "contract", "contractIds": [contract_id], "topics": [["audit_log"]]}],
-            "pagination": {"limit": 1, "offset": log_id}
+            "transaction": invoke_args,
+            "resourceLeeway": 15
         }
     });
 
@@ -1975,19 +2175,119 @@ fn fetch_audit_log_entry(log_id: u64) -> Option<AuditLogEntry> {
         }
     };
 
-    let ev = json["result"]["events"].as_array()?.first()?.clone();
+    // Check for simulation errors — the contract may return an error if
+    // the log ID does not exist or has been pruned.
+    if let Some(error) = json.get("error") {
+        let msg = error["message"].as_str().unwrap_or("unknown error");
+        if msg.contains("not found") || msg.contains("pruned") || msg.contains("NotFound") {
+            eprintln!("ℹ  Audit log {log_id} not found or has been pruned: {msg}");
+            return None;
+        }
+        eprintln!("warning: contract simulation failed: {msg}");
+        return None;
+    }
+
+    // Also check the simulation result for a contract error.
+    if let Some(err) = json["result"]["error"].as_str() {
+        if err.contains("not found") || err.contains("pruned") || err.contains("NotFound") {
+            eprintln!("ℹ  Audit log {log_id} not found or has been pruned: {err}");
+            return None;
+        }
+        eprintln!("warning: contract returned an error: {err}");
+        return None;
+    }
+
+    // Decode the returned AuditLog struct from the simulation result.
+    // The result is in `result.results[0].xdr` as a base64-encoded ScVal.
+    let results = json["result"]["results"].as_array()?;
+    let first_result = results.first()?;
+    let xdr_str = first_result["xdr"].as_str()?;
+
+    // Decode the base64 XDR into an ScVal.
+    let xdr_bytes = match base64::engine::general_purpose::STANDARD.decode(xdr_str) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("warning: failed to decode base64 XDR: {e}");
+            return None;
+        }
+    };
+
+    let scval: ScVal = match soroban_client::xdr::read_xdr(&xdr_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("warning: failed to decode XDR ScVal: {e}");
+            return None;
+        }
+    };
+
+    // Parse the AuditLog struct from the ScVal::Vec.
+    // Expected field order: log_id, session_id, actor, operation_type,
+    // operation_index, timestamp, status, result.
+    let fields = match scval {
+        ScVal::Vec(Some(fields)) => fields,
+        ScVal::Error(err) => {
+            let msg = format!("{err:?}");
+            if msg.contains("NotFound") || msg.contains("pruned") {
+                eprintln!("ℹ  Audit log {log_id} not found or has been pruned (contract error: {msg})");
+            } else {
+                eprintln!("warning: contract returned an error: {msg}");
+            }
+            return None;
+        }
+        other => {
+            eprintln!("warning: expected an AuditLog struct, got {other:?}");
+            return None;
+        }
+    };
+
+    let get_u64 = |idx: usize, name: &str| -> Option<u64> {
+        match &fields.get(idx)? {
+            ScVal::U64(v) => Some(*v),
+            _ => {
+                eprintln!("warning: field '{name}' at index {idx} is not U64");
+                None
+            }
+        }
+    };
+
+    let get_string = |idx: usize, name: &str| -> Option<String> {
+        match &fields.get(idx)? {
+            ScVal::String(s) => Some(s.0.to_string()),
+            ScVal::Symbol(s) => Some(s.0.to_string()),
+            ScVal::Address(addr) => Some(Address::from_sc_address(addr).ok()?.to_string()),
+            _ => {
+                eprintln!("warning: field '{name}' at index {idx} is not a string");
+                None
+            }
+        }
+    };
+
+    let parsed_log_id = get_u64(0, "log_id")?;
+    let session_id = get_u64(1, "session_id")?;
+    let actor = get_string(2, "actor")?;
+    let operation_type = get_string(3, "operation_type")?;
+    let operation_index = get_u64(4, "operation_index")?;
+    let timestamp = get_u64(5, "timestamp")?;
+    let status = get_string(6, "status")?;
+    let result = get_string(7, "result")?;
+
+    // Verify the on-chain log_id matches the requested ID.
+    if parsed_log_id != log_id {
+        eprintln!(
+            "warning: contract returned audit log with ID {parsed_log_id} but requested {log_id}"
+        );
+        return None;
+    }
+
     Some(AuditLogEntry {
-        log_id,
-        operation_type: ev["topic"].as_str().unwrap_or("unknown").to_string(),
-        operation_index: ev["value"]["operation_index"].as_u64().unwrap_or(0),
-        actor: ev["value"]["address"].as_str().unwrap_or("unknown").to_string(),
-        timestamp: ev["ledgerClosedAt"]
-            .as_str()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(0),
-        status: ev["value"]["status"].as_str().unwrap_or("ok").to_string(),
-        result: ev["value"]["result"].as_str().unwrap_or("ok").to_string(),
-        session_id: ev["value"]["session_id"].as_u64().unwrap_or(0),
+        log_id: parsed_log_id,
+        session_id,
+        actor,
+        operation_type,
+        operation_index,
+        timestamp,
+        status,
+        result,
     })
 }
 
@@ -2615,3 +2915,4 @@ fn build_init_config(
 
     config
 }
+

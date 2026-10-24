@@ -3,13 +3,13 @@
 ## Quick Start
 
 ```rust
-use anchorkit::retry::{RetryConfig, RetryEngine};
+use anchorkit::retry::{retry_with_backoff, RetryConfig};
 
 // Use default config (3 attempts, 100ms initial delay)
-let engine = RetryEngine::with_default_config();
+let config = RetryConfig::default();
 
 // Execute with retry
-let result = engine.execute(|attempt| {
+let result = retry_with_backoff(config, |attempt| {
     make_network_request()
 });
 ```
@@ -60,7 +60,7 @@ RetryConfig::new(4, 200, 10000, 2)
 
 ### Basic Retry
 ```rust
-let result = engine.execute(|_| {
+let result = retry_with_backoff(config, |_| {
     operation()
 });
 
@@ -71,7 +71,7 @@ if result.is_success() {
 
 ### With Logging
 ```rust
-let result = engine.execute(|attempt| {
+let result = retry_with_backoff(config, |attempt| {
     println!("Attempt {}", attempt + 1);
     operation()
 });
@@ -82,7 +82,7 @@ println!("Total delay: {}ms", result.total_delay_ms);
 
 ### Error Handling
 ```rust
-let result = engine.execute(|_| {
+let result = retry_with_backoff(config, |_| {
     match operation() {
         Ok(v) => Ok(v),
         Err(Error::TransportTimeout) => {

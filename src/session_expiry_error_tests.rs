@@ -80,7 +80,7 @@ mod session_expiry_error_tests {
         let hash_bytes: Bytes = hash.into();
         let sig = sign_attestation(&env, &sk, &client.address, &attestor, &subject, ts, &hash_bytes);
 
-        let result = client.try_submit_attestation_with_session(&nonexistent_session_id, &attestor, &subject, &ts, &hash_bytes, &sig);
+        let result = client.try_submit_attestation_with_session(&nonexistent_session_id, &attestor, &subject, &ts, &hash_bytes, &sig, &None);
         assert!(result.is_err());
         let err = result.unwrap_err().unwrap();
         assert_eq!(err, soroban_sdk::Error::from_contract_error(ErrorCode::SessionNotFound as u32));
@@ -110,7 +110,7 @@ mod session_expiry_error_tests {
         let hash_bytes: Bytes = hash.into();
         let sig = sign_attestation(&env, &sk, &client.address, &attestor, &subject, ts, &hash_bytes);
 
-        let result = client.try_submit_attestation_with_session(&session_id, &attestor, &subject, &ts, &hash_bytes, &sig);
+        let result = client.try_submit_attestation_with_session(&session_id, &attestor, &subject, &ts, &hash_bytes, &sig, &None);
         assert!(result.is_err());
         let err = result.unwrap_err().unwrap();
         assert_eq!(err, soroban_sdk::Error::from_contract_error(ErrorCode::SessionExpired as u32));
@@ -137,7 +137,7 @@ mod session_expiry_error_tests {
         let sig = sign_attestation(&env, &sk, &client.address, &attestor, &subject, ts, &hash_bytes);
 
         // Should succeed without panic
-        let result = client.try_submit_attestation_with_session(&session_id, &attestor, &subject, &ts, &hash_bytes, &sig);
+        let result = client.try_submit_attestation_with_session(&session_id, &attestor, &subject, &ts, &hash_bytes, &sig, &None);
         assert!(result.is_ok());
     }
 }

@@ -20,6 +20,7 @@ Every public method on the `AnchorKitContract` Soroban contract. Methods are gro
 12. [Request ID & Tracing](#request-id--tracing)
 13. [Payload Hash Utilities](#payload-hash-utilities)
 14. [Audit Log](#audit-log)
+15. [Property Token Distributions](#property-token-distributions)
 
 ---
 
@@ -886,6 +887,150 @@ fn get_audit_log_offset(env: Env) -> u64
 ```
 
 Returns the ID of the oldest retained audit log entry. Entries below this offset have been pruned.
+
+---
+
+## Property Token Distributions
+
+This section explains how the contract handles integer precision for periodic distributions (rent income, capital returns) credited to property-token holders, and what happens to residual amounts that cannot be divided evenly — commonly called **dust**.
+
+---
+
+### Precision and the Scale Factor
+
+All distribution amounts are stored and computed as **integer stroops** (1 stroop = 10⁻⁷ XLM, matching Stellar's native precision). To preserve sub-stroop accuracy during per-share calculations, the contract uses an internal **SCALE_FACTOR** of `10_000_000` (10⁷). Every distribution amount is multiplied by `SCALE_FACTOR` before being divided by the total share supply:
+
+```
+scaled_per_share = (distribution_amount × SCALE_FACTOR) / total_shares
+```
+
+A holder's entitlement at claim time is:
+
+```
+claimable = (holder_shares × scaled_per_share) / SCALE_FACTOR
+```
+
+Integer division truncates toward zero at each step, so the sum of all individual entitlements may be less than `distribution_amount`. The difference is **dust**.
+
+---
+
+### Distribution Checkpoints
+
+Each distribution event is recorded as an on-chain **checkpoint**. A checkpoint captures:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `distribution_id` | `u64` | Monotonically increasing identifier |
+| `distribution_type` | `u32` | `1` = rent, `2` = capital return (see constants below) |
+| `total_amount` | `u64` | Gross amount deposited (in stroops) |
+| `scaled_per_share` | `u64` | `total_amount × SCALE_FACTOR / total_shares` at snapshot time |
+| `snapshot_shares` | `u64` | Total shares outstanding at the moment of distribution |
+| `dust_reserve` | `u64` | Accumulated unclaimable remainder (in stroops) |
+| `created_at` | `u64` | Ledger timestamp when the checkpoint was written |
+
+Checkpoints are immutable once written. To read a checkpoint use `get_audit_log` (each distribution write produces one `AuditLog` entry with `operation_type = "distribution"`).
+
+---
+
+### Distribution Type Constants
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `DIST_TYPE_RENT` | `1` | Periodic rental income distributed to holders |
+| `DIST_TYPE_CAPITAL` | `2` | Capital return (e.g. property sale proceeds) |
+
+These constants are enforced at the contract level: passing any other value panics with `InvalidServiceType (8)`.
+
+---
+
+### Dust Reserve
+
+Any stroop remainder that cannot be divided evenly is added to the **dust reserve**. The dust reserve is:
+
+- Stored in a dedicated persistent key, separate from any individual holder balance.
+- Accumulated across multiple distribution rounds.
+- Readable via `get_dust_reserve(env: Env, distribution_type: u32) -> u64`.
+- Swept by the admin into the next distribution round via `sweep_dust(env: Env, distribution_type: u32)`, which resets the reserve to zero and adds the swept amount to `total_amount` of the next checkpoint.
+
+This design ensures **no funds are permanently lost** due to integer truncation.
+
+---
+
+### Claim Methods
+
+Holders call typed claim methods to withdraw their entitlement from a specific distribution type. The two types are kept in separate accounting buckets — a rent claim never touches a holder's capital balance and vice versa.
+
+#### `claim_rent`
+
+```rust
+fn claim_rent(env: Env, holder: Address) -> u64
+```
+
+Transfers all accumulated rent entitlement to `holder`. Returns the amount transferred (in stroops). After a successful call `unclaimed_balance(holder, DIST_TYPE_RENT)` returns `0`.
+
+**Errors:** `AttestorNotRegistered (3)` if `holder` is not a registered token holder.
+
+#### `claim_capital`
+
+```rust
+fn claim_capital(env: Env, holder: Address) -> u64
+```
+
+Transfers all accumulated capital-return entitlement to `holder`. Returns the amount transferred (in stroops). After a successful call `unclaimed_balance(holder, DIST_TYPE_CAPITAL)` returns `0`.
+
+**Errors:** `AttestorNotRegistered (3)` if `holder` is not a registered token holder.
+
+---
+
+### Read Methods
+
+#### `unclaimed_balance`
+
+```rust
+fn unclaimed_balance(env: Env, holder: Address, distribution_type: u32) -> u64
+```
+
+Returns the current unclaimed entitlement for `holder` in the given `distribution_type` bucket (stroops). Does not modify state.
+
+**Errors:** `InvalidServiceType (8)` for unknown `distribution_type` values.
+
+**Example**
+
+```rust
+let rent_owed = client.unclaimed_balance(&holder, &DIST_TYPE_RENT);
+let capital_owed = client.unclaimed_balance(&holder, &DIST_TYPE_CAPITAL);
+// The two values are independent; claiming one never reduces the other.
+```
+
+#### `get_distribution_checkpoint`
+
+```rust
+fn get_distribution_checkpoint(env: Env, distribution_id: u64) -> DistributionCheckpoint
+```
+
+Returns the immutable checkpoint for `distribution_id`.
+
+**Errors:** `CacheNotFound (49)` if no checkpoint exists for that ID.
+
+#### `get_dust_reserve`
+
+```rust
+fn get_dust_reserve(env: Env, distribution_type: u32) -> u64
+```
+
+Returns the accumulated dust (stroops) for the given distribution type. Returns `0` when no dust has accumulated yet.
+
+---
+
+### Rounding Invariant
+
+The contract guarantees the following invariant after every distribution round:
+
+```
+Σ(claimable_i for all holders i) + dust_reserve == total_amount
+```
+
+This can be verified off-chain by summing `unclaimed_balance` across all holders and adding `get_dust_reserve` for the same type. The sum must equal the `total_amount` field of the most recent checkpoint for that type.
 
 ---
 

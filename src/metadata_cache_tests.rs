@@ -394,4 +394,57 @@ mod metadata_cache_tests {
         client.cache_metadata(&anchor, &sample_metadata(&env, &anchor), &7200u64);
         assert_eq!(client.list_cached_anchors().len(), 1);
     }
+
+    #[test]
+    fn test_cache_metadata_rejects_ttl_above_u32_max() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+        let meta = sample_metadata(&env, &anchor);
+        let result = client.try_cache_metadata(&anchor, &meta, &(u32::MAX as u64 + 1));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cache_capabilities_rejects_ttl_above_u32_max() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+        let toml_url = String::from_str(&env, "https://anchor.example/.well-known/stellar.toml");
+        let caps = soroban_sdk::vec![&env, 1u32];
+        let result = client.try_cache_capabilities(
+            &anchor,
+            &toml_url,
+            &caps,
+            &(u32::MAX as u64 + 1),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cache_expiration_does_not_overflow_at_large_timestamp() {
+        let env = make_env();
+        set_ledger(&env, u64::MAX - 10);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+        let meta = sample_metadata(&env, &anchor);
+        client.cache_metadata(&anchor, &meta, &(u32::MAX as u64));
+        assert!(client.try_get_cached_metadata(&anchor).is_ok());
+
+        let toml_url = String::from_str(&env, "https://anchor.example/.well-known/stellar.toml");
+        let caps = soroban_sdk::vec![&env, 1u32];
+        client.cache_capabilities(&anchor, &toml_url, &caps, &(u32::MAX as u64));
+        assert!(client.try_get_cached_capabilities(&anchor).is_ok());
+    }
 }

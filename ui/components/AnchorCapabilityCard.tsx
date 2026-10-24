@@ -144,7 +144,7 @@ const fmt = (n: number, currency: string) =>
 
 function fmtFee(fee?: AssetFee): string {
   if (!fee) return "—";
-  if (fee.type === "flat") return fmt(fee.flatAmount!, fee.currency);
+  if (fee.type === "flat") return fmt(fee.flatAmount ?? 0, fee.currency);
   if (fee.type === "percent")
     return `${Number(fee.percent).toFixed(2)}% ${fee.currency}`;
   if (fee.type === "tiered" && fee.tiers) return "Tiered";
@@ -475,7 +475,7 @@ function FeesPanel({
             {df.type === "flat" && (
               <DataRow
                 label="Amount"
-                value={fmt(df.flatAmount!, df.currency)}
+                value={fmt(df.flatAmount ?? 0, df.currency)}
                 mono
                 accent={accent}
               />
@@ -545,7 +545,7 @@ function FeesPanel({
             {wf.type === "flat" && (
               <DataRow
                 label="Amount"
-                value={fmt(wf.flatAmount!, wf.currency)}
+                value={fmt(wf.flatAmount ?? 0, wf.currency)}
                 mono
                 accent={accent}
               />
@@ -639,11 +639,11 @@ function LimitsPanel({
   ].filter((r) => r.value !== null);
 
   // Build deposit/withdrawal limit bars
-  const depositUtilPct = L.maxDeposit
-    ? Math.min(100, (L.minDeposit! / L.maxDeposit) * 100)
+  const depositUtilPct = L.maxDeposit != null && L.maxDeposit > 0
+    ? Math.min(100, Math.max(0, ((L.minDeposit ?? 0) / L.maxDeposit) * 100))
     : 0;
-  const wdUtilPct = L.maxWithdrawal
-    ? Math.min(100, (L.minWithdrawal! / L.maxWithdrawal) * 100)
+  const wdUtilPct = L.maxWithdrawal != null && L.maxWithdrawal > 0
+    ? Math.min(100, Math.max(0, ((L.minWithdrawal ?? 0) / L.maxWithdrawal) * 100))
     : 0;
 
   return (
@@ -677,6 +677,11 @@ function LimitsPanel({
               </span>
             </div>
             <div
+              role="progressbar"
+              aria-label="Deposit limit range"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={depositUtilPct}
               style={{
                 height: 6,
                 borderRadius: 3,
@@ -687,7 +692,73 @@ function LimitsPanel({
               <div
                 style={{
                   height: "100%",
-                  width: "100%",
+                  width: `${depositUtilPct}%`,
+                  borderRadius: 3,
+                  background: `linear-gradient(90deg, ${accent}40, ${accent})`,
+                }}
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: 6,
+                fontFamily: "'Sora', sans-serif",
+                fontSize: 10,
+                color: "var(--ak-text-muted)",
+              }}
+            >
+              <span>Min</span>
+              <span>Max</span>
+            </div>
+          </div>
+      </div>
+    )}
+
+      {L.maxWithdrawal != null && (
+        <div>
+          <SectionLabel>Withdrawal Range</SectionLabel>
+          <div
+            style={{
+              background: "var(--ak-surface-2)",
+              borderRadius: 12,
+              padding: "14px 16px",
+              border: "1px solid var(--ak-border)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 10,
+                fontFamily: "'Source Code Pro', monospace",
+                fontSize: 11,
+              }}
+            >
+              <span style={{ color: "var(--ak-text-muted)" }}>
+                {fmt(L.minWithdrawal ?? 0, currency)}
+              </span>
+              <span style={{ color: "var(--ak-text-muted)" }}>
+                {fmt(L.maxWithdrawal, currency)}
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label="Withdrawal limit range"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={wdUtilPct}
+              style={{
+                height: 6,
+                borderRadius: 3,
+                background: "var(--ak-border)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${wdUtilPct}%`,
                   borderRadius: 3,
                   background: `linear-gradient(90deg, ${accent}40, ${accent})`,
                 }}
@@ -1505,7 +1576,7 @@ export function AnchorCapabilityCard({
             display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16,
           }}>
             {(["deposits", "withdrawals", "quotes", "kyc"] as const)
-              .filter((svc) => healthStatus[svc] && healthStatus[svc] !== "healthy")
+              .filter((svc) => services?.[svc] !== false && healthStatus[svc] && healthStatus[svc] !== "healthy")
               .map((svc) => (
                 <ServiceHealthBadge
                   key={svc}

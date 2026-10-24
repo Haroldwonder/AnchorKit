@@ -22,6 +22,9 @@ pub enum StorageKey {
     /// revoked. Used by `get_attestation` to populate `issuer_revoked` without
     /// rewriting every stored attestation (persistent).
     AttestorRevoked(Address),
+    /// First attestation ID not covered by the attestor's latest revocation.
+    /// Attestations with a lower ID remain revoked after re-registration.
+    AttestorRevokedBefore(Address),
     /// HTTPS endpoint URL for an attestor (persistent).
     Endpoint(Address),
     /// Supported services record for an anchor (persistent).
@@ -103,6 +106,9 @@ pub fn key_quote_counter(env: &Env) -> Vec<Symbol> {
 }
 pub fn key_audit_counter(env: &Env) -> Vec<Symbol> {
     soroban_sdk::vec![env, symbol_short!("AUD_CNT")]
+}
+pub fn key_total_count(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("TOTALCNT")]
 }
 pub fn key_audit_log_offset(env: &Env) -> Vec<Symbol> {
     soroban_sdk::vec![env, symbol_short!("AUD_OFF")]

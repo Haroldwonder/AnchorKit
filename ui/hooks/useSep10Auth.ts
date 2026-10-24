@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -44,6 +44,15 @@ export interface UseSep10AuthResult {
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Manages SEP-10 authentication against a single anchor domain.
+ *
+ * When `anchorDomain` changes, the hook automatically resets `token`, `error`,
+ * and `isAuthenticating` so a JWT issued for the previous anchor is never
+ * reported as valid for the new one. Callers do not need to invoke `reset()`
+ * manually after switching anchors — `isAuthenticated` becomes `false` until
+ * `authenticate()` succeeds against the new domain.
+ */
 export function useSep10Auth(
   anchorDomain: string,
   adapters: Sep10AuthAdapters,
@@ -62,6 +71,15 @@ export function useSep10Auth(
 
   // In-flight guard: prevents duplicate concurrent SEP-10 flows.
   const inFlightRef = useRef(false);
+
+  // Reset auth state whenever the anchor domain changes so a stale JWT from a
+  // previous anchor is never treated as valid for the new domain.
+  useEffect(() => {
+    setToken(null);
+    setError(null);
+    setIsAuthenticating(false);
+    inFlightRef.current = false;
+  }, [anchorDomain]);
 
   const authenticate = useCallback(async (walletAddress: string): Promise<void> => {
     if (inFlightRef.current) return;

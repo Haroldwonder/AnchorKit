@@ -85,10 +85,9 @@ mod streaming_flow_tests {
     fn test_session_operation_count_increments_on_each_step() {
         let env = make_env();
         setup_ledger(&env);
-        let (client, _admin, _anchor, _sk) = setup(&env);
+        let (client, admin, _anchor, _sk) = setup(&env);
 
-        let initiator = Address::generate(&env);
-        let session_id = client.create_session(&initiator);
+        let session_id = client.create_session(&admin);
 
         assert_eq!(client.get_session_operation_count(&session_id).unwrap(), 0);
 
@@ -123,7 +122,8 @@ mod streaming_flow_tests {
             &subject,
             &(env.ledger().timestamp()),
             &p,
-            &sign_attestation(&env, &sk, &client.address, &anchor, &subject, env.ledger().timestamp(), &p),
+            &sign_payload(&env, &sk, &p),
+            &None,
         );
 
         let log = client.get_audit_log(&0);
@@ -150,7 +150,7 @@ mod streaming_flow_tests {
         let ts = env.ledger().timestamp();
         let sig = sign_attestation(&env, &sk, &client.address, &anchor, &subject, ts, &p);
 
-        client.submit_attestation_with_session(&session_id, &anchor, &subject, &ts, &p, &sig);
+        client.submit_attestation_with_session(&session_id, &anchor, &subject, &ts, &p, &sig, &None);
 
         let result = client.try_submit_attestation_with_session(
             &session_id,
@@ -159,6 +159,7 @@ mod streaming_flow_tests {
             &ts,
             &p,
             &sig,
+            &None,
         );
         assert!(result.is_err());
 

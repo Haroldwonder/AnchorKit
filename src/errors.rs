@@ -72,6 +72,7 @@ use alloc::string::String;
 /// | 62   | PathTraversalDetected       |
 /// | 63   | InvalidAmount               |
 /// | 64   | AttestationRevoked          |
+/// | 65   | UnauthorizedSession         |
 /// | 121  | AttestationExpired          |
 /// | 122  | ContractPaused              |
 /// | 123  | AdminTransferPending        |
@@ -115,6 +116,7 @@ pub enum ErrorCode {
     PathTraversalDetected = 62,
     InvalidAmount = 63,
     AttestationRevoked = 64,
+    UnauthorizedSession = 65,
     AttestationExpired = 121,
     ContractPaused = 122,
     AdminTransferPending = 123,
@@ -159,6 +161,7 @@ impl ErrorCode {
             ErrorCode::PathTraversalDetected => "URL contains a path traversal sequence",
             ErrorCode::InvalidAmount => "Amount is outside the allowed min/max range for this asset",
             ErrorCode::AttestationRevoked => "Attestation has been revoked",
+            ErrorCode::UnauthorizedSession => "Session was not initiated by the current admin",
             ErrorCode::AttestationExpired => "Attestation has expired",
             ErrorCode::ContractPaused => "Contract is paused",
             ErrorCode::AdminTransferPending => "Admin transfer is already pending",
@@ -498,4 +501,3 @@ mod tests {
         assert_eq!(formatted, "[E15] Schema mismatch (field: transaction_id)");
     }
 }
-

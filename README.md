@@ -490,3 +490,9 @@ For questions or issues:
 
 <!-- handsoff-issue-1235 -->
 - #1235: WEBHOOK_MIDDLEWARE.md's Features section (HMAC/Ed25519 signing, 8-type suspicious-activity logging, delivery tracking) describes functionality absent from the codebase
+
+<!-- handsoff-issue-1425 -->
+- #1425: revoke_attestor leaves the attestor's endpoint, services, and keys in place, and re-registration inherits them
+
+<!-- handsoff-issue-1426 -->
+- #1426: submit_attestation_batch has no maximum batch size

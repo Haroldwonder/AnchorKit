@@ -384,4 +384,25 @@ describe('useTransactionStatus', () => {
     // The effect should not have restarted (no extra calls from a fresh poll)
     expect(callCount).toBe(snapshot);
   });
+  test('exposes retry exhaustion separately from a terminal transaction status', async () => {
+    const fetchStatus = jest.fn().mockRejectedValue(new Error('unavailable'));
+    const { result } = renderHook(() =>
+      useTransactionStatus('tx1', {
+        fetchStatus,
+        interval: 100,
+        maxRetries: 2,
+      })
+    );
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.isPolling).toBe(true);
+    expect(result.current.retriesExhausted).toBe(false);
+
+    act(() => { jest.advanceTimersByTime(100); });
+    await waitFor(() => expect(result.current.retriesExhausted).toBe(true));
+    expect(result.current.isPolling).toBe(false);
+    expect(result.current.isTerminal).toBe(false);
+    expect(fetchStatus).toHaveBeenCalledTimes(2);
+  });
+
 });

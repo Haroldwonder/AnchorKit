@@ -73,8 +73,8 @@ mod audit_log_offset_tests {
         data.push_back(nonce);
         let hash = compute_payload_hash(env, &subject, ts, &data);
         let hash_bytes: Bytes = hash.into();
-        let sig = sign_attestation(env, sk, &client.address, attestor, &subject, ts, &hash_bytes);
-        client.submit_attestation_with_session(&session_id, attestor, &subject, &ts, &hash_bytes, &sig);
+        let sig = sign_payload(env, sk, &hash_bytes);
+        client.submit_attestation_with_session(&session_id, attestor, &subject, &ts, &hash_bytes, &sig, &None);
     }
 
     // -----------------------------------------------------------------------

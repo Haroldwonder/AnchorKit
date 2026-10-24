@@ -6,6 +6,12 @@ Quick lookup table for all error codes and their properties.
 
 Error codes are non-contiguous. See the table below for the current values.
 
+> **Reserved / deprecated codes:** Some variants are kept only for ABI stability and are
+> never raised by the contract. Their discriminants remain reserved and must not be
+> reused. These are marked **(reserved)** below. Integrators should match on the
+> canonical code instead (e.g. `PendingAdminAlreadyExists` (52) rather than
+> `AdminTransferPending` (123)).
+
 | Code | Name                     | Description |
 |------|--------------------------|-------------|
 | 1    | AlreadyInitialized       | Contract is already initialized |
@@ -33,11 +39,11 @@ Error codes are non-contiguous. See the table below for the current values.
 | 51   | AuditLogMaxSizeInvalid   | `max_audit_log_size` must be at least 1 |
 | 52   | PendingAdminAlreadyExists | An admin transfer is already pending |
 | 53   | NoPendingAdmin           | No pending admin transfer found |
-| 54   | NotPendingAdmin          | Caller is not the pending admin |
+| 54   | NotPendingAdmin          | Caller is not the pending admin **(reserved, never raised)** |
 | 55   | SessionNotFound          | Session not found |
 | 56   | SessionExpired           | Session has expired |
-| 57   | MissingSigningKey        | No SEP-10 verifying key registered for issuer |
-| 58   | UnauthorizedProposeAdmin | Only admin can propose new admin |
+| 57   | MissingSigningKey        | Anchor TOML does not publish a signing key |
+| 58   | UnauthorizedProposeAdmin | Only admin can propose new admin **(reserved, never raised)** |
 | 59   | InvalidStrategy          | Routing strategy symbol is not recognized |
 | 60   | AttestationLimitReached  | Attestation ID counter has reached its maximum value |
 | 61   | AttestorCapExceeded      | Maximum number of attestors has been reached (also raised when the cached-anchor list is full) |
@@ -46,4 +52,4 @@ Error codes are non-contiguous. See the table below for the current values.
 | 64   | AttestationRevoked       | Attestation has been revoked |
 | 121  | AttestationExpired       | Attestation has expired |
 | 122  | ContractPaused           | Contract is paused |
-| 123  | AdminTransferPending     | Admin transfer is already pending |
+| 123  | AdminTransferPending     | Admin transfer is already pending **(reserved, duplicates 52; never raised)** |

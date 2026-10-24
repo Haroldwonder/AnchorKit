@@ -318,6 +318,38 @@ mod attestation_pagination_tests {
     }
 
     #[test]
+    fn test_get_all_attestors_large_limit_clamped_to_max_page_size() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        // Register a few attestors
+        for _ in 0..5 {
+            let attestor = Address::generate(&env);
+            let sk = SigningKey::generate(&mut OsRng);
+            register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
+        }
+
+        // limit = u32::MAX with a non-zero offset must not trap (wasm32 overflow)
+        // and must be clamped to MaxPageSize (default 50).
+        let results = client.get_all_attestors(&1, &u32::MAX);
+        assert_eq!(results.len(), 4);
+
+        // Also with offset 0
+        let results = client.get_all_attestors(&0, &u32::MAX);
+        assert_eq!(results.len(), 5);
+
+        // Clamping respects a lowered MaxPageSize
+        client.set_max_page_size(&2);
+        let results = client.get_all_attestors(&0, &u32::MAX);
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
     fn test_set_max_page_size_admin_success() {
         let env = make_env();
         setup_ledger(&env);
