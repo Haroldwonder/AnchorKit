@@ -1,41 +1,53 @@
 #![no_std]
 extern crate alloc;
 
-mod deterministic_hash;
-mod domain_validator;
+mod contract;
+pub mod deterministic_hash;
+pub mod domain_validator;
 mod errors;
 mod events;
+mod rate_limiter;
+mod response_validator;
+mod retry;
+pub mod sep10_jwt;
+pub mod sdk_config;
 mod storage;
+mod transaction_state_tracker;
+pub mod transport;
 mod types;
-mod validation;
+pub mod sep6;
 
-#[cfg(test)]
-mod config_tests;
-#[cfg(test)]
-mod streaming_flow_tests;
+pub use errors::{AnchorKitError, ErrorCode};
 
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
-
-pub use config::{AttestorConfig, ContractConfig, SessionConfig};
 pub use errors::Error;
-pub use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitState};
+pub use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitState, RateLimitStatus};
 pub use response_validator::{
     validate_anchor_info_response, validate_deposit_response, validate_quote_response,
     validate_withdraw_response, AnchorInfoResponse, QuoteResponse,
 };
-pub use retry::{retry_with_backoff, is_retryable, RetryConfig};
+pub use retry::{retry_with_backoff, is_retryable, RetryConfig, RetryErrorCode};
 pub use deterministic_hash::{compute_payload_hash, verify_payload_hash};
+pub use domain_validator::validate_anchor_domain;
+
+pub use sep6::{
+    fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
+    deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
+    RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
+    TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
+    AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, TransactionFilters,
+};
+pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
+pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
+pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
+pub use events::EndpointUpdated;
+
+// Generated contract client, re-exported for the criterion benchmark suite
+// (`benches/`, issue #738) which drives the contract through the Soroban test
+// harness as an external consumer of this crate.
+pub use contract::AnchorKitContractClient;
 
 #[cfg(test)]
 mod transaction_state_tracker_tests;
-pub use sep6::{
-    fetch_transaction_status, initiate_deposit, initiate_withdrawal,
-    RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, TransactionKind,
-    TransactionStatusResponse,
-};
-pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
-pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
-pub use events::EndpointUpdated;
 
 #[cfg(test)]
 mod request_id_tests;
@@ -45,9 +57,6 @@ mod tracing_span_tests;
 
 #[cfg(test)]
 mod metadata_cache_tests;
-
-#[cfg(test)]
-mod streaming_flow_tests;
 
 #[cfg(test)]
 mod webhook_middleware_tests;
@@ -66,6 +75,12 @@ mod sep10_contract_tests;
 
 #[cfg(test)]
 mod routing_tests;
+
+#[cfg(test)]
+mod routing_score_tests;
+
+#[cfg(test)]
+mod credential_storage_tests;
 
 #[cfg(test)]
 mod deterministic_hash_snapshot_tests {
@@ -98,7 +113,49 @@ mod get_attestation_tests;
 mod replay_window_tests;
 
 #[cfg(test)]
+mod attestor_cap_batch_tests;
+
+#[cfg(test)]
 mod anchor_health_score_tests;
 
 #[cfg(test)]
+mod issue_1355_1362_1364_tests;
+
+#[cfg(test)]
 mod compute_payload_hash_tests;
+
+#[cfg(test)]
+mod new_features_tests;
+
+#[cfg(test)]
+mod audit_log_offset_tests;
+
+#[cfg(test)]
+mod contract_tests;
+
+#[cfg(test)]
+mod payload_hash_vectors_tests;
+
+#[cfg(test)]
+mod session_expiry_error_tests;
+
+#[cfg(test)]
+mod pause_tests;
+
+#[cfg(test)]
+mod sdk_config_tests;
+
+#[cfg(test)]
+mod streaming_flow_tests;
+
+// Issue #959 – Holder pagination edge cases (empty, exact, partial, out-of-range).
+#[cfg(test)]
+mod holder_pagination_tests;
+
+// Issue #958 – Forced-transfer audit record integrity.
+#[cfg(test)]
+mod forced_transfer_audit_tests;
+
+// Issue #956 – Rent vs capital claim separation regression.
+#[cfg(test)]
+mod typed_distribution_separation_tests;

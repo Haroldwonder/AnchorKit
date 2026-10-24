@@ -21,15 +21,16 @@ CacheNotFound = 49,
 RateLimitExceeded = 50,  // ✅ Unique value
 ```
 
-### 2. Added Missing Error Variants ✅
-**Issue**: `src/asset_validator.rs` referenced `Error::AssetNotConfigured` and `Error::UnsupportedAsset` which didn't exist
+### 2. Corrected Error Code Documentation ✅
+**Issue**: Documentation incorrectly referenced error codes 51 and 52 as `AssetNotConfigured` and `UnsupportedAsset`, but these error variants don't exist in the current codebase
 
-**Fix**: Added to `src/errors.rs`:
+**Actual Codes in `src/errors.rs`**:
 ```rust
-/// Asset validation errors
-AssetNotConfigured = 51,
-UnsupportedAsset = 52,
+AuditLogMaxSizeInvalid = 51,
+PendingAdminAlreadyExists = 52,
 ```
+
+**Note**: The old documentation was outdated. Error codes 51 and 52 were reused for different error variants after the original documentation was written.
 
 ### 3. Removed Duplicate Re-exports in `src/lib.rs` ✅
 **Issue**: `CredentialManager`, `CredentialPolicy`, `CredentialType`, `SecureCredential` were exported twice

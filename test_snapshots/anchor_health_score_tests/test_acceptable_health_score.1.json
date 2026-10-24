@@ -342,6 +342,18 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "MaxPageSize"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 50
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "RPWINDOW"
                             }
                           ]

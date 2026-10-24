@@ -7,7 +7,7 @@ mod webhook_middleware_tests {
     use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
-    use crate::sep10_test_util::{register_attestor_with_sep10, sign_payload};
+    use crate::sep10_test_util::{register_attestor_with_sep10, sign_attestation};
 
     fn make_env() -> Env {
         let env = Env::default();
@@ -32,7 +32,7 @@ mod webhook_middleware_tests {
         let contract_id = env.register_contract(None, AnchorKitContract);
         let client = AnchorKitContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
         (client, admin)
     }
 
@@ -100,7 +100,7 @@ mod webhook_middleware_tests {
 
         let subject = Address::generate(&env);
         let payload_hash = Bytes::from_slice(&env, &[0xBEu8; 32]);
-        let sig = sign_payload(&env, &sk, &payload_hash);
+        let sig = sign_attestation(&env, &sk, &client.address, &attestor, &subject, 1_000_000u64, &payload_hash);
 
         // First submission succeeds.
         client.submit_attestation(&attestor, &subject, &1_000_000u64, &payload_hash, &sig);

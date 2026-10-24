@@ -40,7 +40,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "80df55bc47c9655e20c22a1a831b1d810b68b1bcbca2c917c80b3b38ae558e66"
+                  "bytes": "f14dd6e199609163364e0e6d46ff10b5a6fea5fa9d34b582c910da3224fb386c"
                 }
               ]
             }
@@ -62,7 +62,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "272f7f526f8c96846386bb3843d09697df966ab835f69f78b87d5641141c3a60"
+                  "bytes": "90d9b0a6b16121ff9f4efedf9548189c656450238c533bc10f66a77bd54a56c8"
                 }
               ]
             }
@@ -84,7 +84,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "4af0ad6aececef03458d7043bc496ef40a8d1ffc37b05f86ab0a2923a59ae891"
+                  "bytes": "1fb666e64d3b0d602d5c6dfcea1137991ffe1d2ade30fe79b9b6a73ccaa80d28"
                 }
               ]
             }
@@ -143,13 +143,13 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "80df55bc47c9655e20c22a1a831b1d810b68b1bcbca2c917c80b3b38ae558e66"
+                      "bytes": "f14dd6e199609163364e0e6d46ff10b5a6fea5fa9d34b582c910da3224fb386c"
                     },
                     {
-                      "bytes": "272f7f526f8c96846386bb3843d09697df966ab835f69f78b87d5641141c3a60"
+                      "bytes": "90d9b0a6b16121ff9f4efedf9548189c656450238c533bc10f66a77bd54a56c8"
                     },
                     {
-                      "bytes": "4af0ad6aececef03458d7043bc496ef40a8d1ffc37b05f86ab0a2923a59ae891"
+                      "bytes": "1fb666e64d3b0d602d5c6dfcea1137991ffe1d2ade30fe79b9b6a73ccaa80d28"
                     }
                   ]
                 }
@@ -205,6 +205,18 @@
                         },
                         "val": {
                           "u64": 100
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MaxPageSize"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 50
                         }
                       },
                       {
@@ -464,7 +476,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "80df55bc47c9655e20c22a1a831b1d810b68b1bcbca2c917c80b3b38ae558e66"
+                  "bytes": "f14dd6e199609163364e0e6d46ff10b5a6fea5fa9d34b582c910da3224fb386c"
                 }
               ]
             }
@@ -518,7 +530,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "272f7f526f8c96846386bb3843d09697df966ab835f69f78b87d5641141c3a60"
+                  "bytes": "90d9b0a6b16121ff9f4efedf9548189c656450238c533bc10f66a77bd54a56c8"
                 }
               ]
             }
@@ -572,7 +584,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "4af0ad6aececef03458d7043bc496ef40a8d1ffc37b05f86ab0a2923a59ae891"
+                  "bytes": "1fb666e64d3b0d602d5c6dfcea1137991ffe1d2ade30fe79b9b6a73ccaa80d28"
                 }
               ]
             }
@@ -626,7 +638,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "f211051ceceb4eca61c9412a99ed22d9971a131fd6f3b3c879b9aeef29e6d71d"
+                  "bytes": "677c117af108b24005f98d4f1a042b247ed16240e0fafed6f9a74267edcd82ae"
                 }
               ]
             }
@@ -748,7 +760,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                     },
                     {
-                      "bytes": "f211051ceceb4eca61c9412a99ed22d9971a131fd6f3b3c879b9aeef29e6d71d"
+                      "bytes": "677c117af108b24005f98d4f1a042b247ed16240e0fafed6f9a74267edcd82ae"
                     }
                   ]
                 }

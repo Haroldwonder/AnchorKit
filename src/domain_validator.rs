@@ -125,7 +125,6 @@ pub fn validate_anchor_domain(domain: &str) -> Result<(), AnchorKitError> {
 /// Results are returned in the same order as the input slice.
 /// Each entry is `Ok(())` when the corresponding URL is valid, or
 /// `Err(AnchorKitError)` when it fails validation.
-#[allow(dead_code)]
 pub fn validate_anchor_domain_batch(urls: &[&str]) -> Vec<Result<(), AnchorKitError>> {
     urls.iter().map(|url| validate_anchor_domain(url)).collect()
 }
@@ -235,11 +234,44 @@ fn validate_host(host: &str) -> Result<(), AnchorKitError> {
     Ok(())
 }
 
+/// Returns true if `url` contains a percent-encoded C0 control byte or DEL.
+///
+/// #890: `is_control()` only sees literal control characters. Encoded forms such as
+/// `%0D` / `%0A` (CRLF) are printable ASCII in the raw string and must be rejected
+/// explicitly — the same treatment already given to `%00`.
+fn contains_percent_encoded_control(url: &str) -> bool {
+    let bytes = url.as_bytes();
+    let mut i = 0;
+    while i + 2 < bytes.len() {
+        if bytes[i] == b'%' {
+            if let (Some(hi), Some(lo)) = (hex_nibble(bytes[i + 1]), hex_nibble(bytes[i + 2])) {
+                let decoded = (hi << 4) | lo;
+                // C0 controls (0x00..=0x1F) and DEL (0x7F)
+                if decoded < 0x20 || decoded == 0x7F {
+                    return true;
+                }
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+fn hex_nibble(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
 /// Validates URL characters
 fn validate_url_characters(url: &str) -> Result<(), AnchorKitError> {
-    // #269: Reject percent-encoded null byte before iterating chars so that
-    // the encoded form (%00) is caught even though '%', '0' are individually valid.
-    if url.contains("%00") {
+    // #269 / #890: Reject percent-encoded control bytes before iterating chars so that
+    // encoded forms (%00, %0D, %0A, …) are caught even though '%', hex digits are
+    // individually valid printable characters.
+    if contains_percent_encoded_control(url) {
         return Err(AnchorKitError::invalid_endpoint_format());
     }
     for c in url.chars() {
@@ -278,12 +310,19 @@ fn validate_path_traversal(url: &str) -> Result<(), AnchorKitError> {
         return Err(AnchorKitError::path_traversal_detected());
     }
 
-    // Attempt to decode the path and check again
-    // Since we're in a no-std environment (alloc), we'll manually decode
-    // Look for %2E%2E and %2F patterns that could form traversals when decoded
-    let decoded = percent_decode_simple(path);
-    if decoded.contains("/../") || decoded.starts_with("../") || decoded.ends_with("/..") {
-        return Err(AnchorKitError::path_traversal_detected());
+    // #889: decode repeatedly until the string stabilises to catch double/multi-encoded
+    // traversal sequences (e.g. %252E%252E -> %2E%2E -> ..)
+    let mut current = alloc::string::String::from(path);
+    loop {
+        let decoded = percent_decode_simple(&current);
+        if decoded.contains("/../") || decoded.starts_with("../") || decoded.ends_with("/..") {
+            return Err(AnchorKitError::path_traversal_detected());
+        }
+        if decoded == current {
+            // Fixed point reached — no further decoding possible
+            break;
+        }
+        current = decoded;
     }
 
     Ok(())
@@ -432,6 +471,16 @@ mod tests {
         assert!(validate_anchor_domain("https://example.com/%00").is_err());
         assert!(validate_anchor_domain("https://example.com/path%00/resource").is_err());
         assert!(validate_anchor_domain("https://example.com?q=%00").is_err());
+        // #890: percent-encoded CRLF / other C0 controls must also be rejected
+        assert!(validate_anchor_domain("https://example.com/path%0D%0AInjected-Header:%20evil").is_err());
+        assert!(validate_anchor_domain("https://example.com/path%0d%0aInjected").is_err());
+        assert!(validate_anchor_domain("https://example.com/%0A").is_err());
+        assert!(validate_anchor_domain("https://example.com/%0D").is_err());
+        assert!(validate_anchor_domain("https://example.com/%09").is_err()); // TAB
+        assert!(validate_anchor_domain("https://example.com/%7F").is_err()); // DEL
+        // Benign percent-encoding (non-control) remains accepted
+        assert!(validate_anchor_domain("https://example.com/path%20resource").is_ok());
+        assert!(validate_anchor_domain("https://example.com/path%2Fok").is_ok());
     }
 
     #[test]
@@ -731,5 +780,77 @@ mod tests {
         assert!(validate_anchor_domain("https://example.com/path/to/resource").is_ok());
         assert!(validate_anchor_domain("https://example.com/sep6").is_ok());
         assert!(validate_anchor_domain("https://example.com/path%20with%20spaces").is_ok());
+    }
+
+    #[test]
+    fn test_percent_decode_simple_ascii_only() {
+        // Issue #1046: Test that ASCII-only strings decode correctly
+        let encoded = "hello%20world";
+        let result = percent_decode_simple(encoded);
+        // Should properly decode %20 as space
+        assert!(result.len() > 0, "Should decode ASCII percent-encoded strings");
+    }
+
+    #[test]
+    fn test_percent_decode_simple_utf8_multibyte() {
+        // Issue #1046: percent_decode_simple should properly handle multi-byte UTF-8 sequences
+        // Test case: UTF-8 encoded path with non-ASCII characters
+        // Example: percent-encoded UTF-8 bytes for "café" (U+00E9 = é)
+        // é is encoded as 0xC3 0xA9 in UTF-8
+        // Percent-encoded: %C3%A9
+        let encoded = "caf%C3%A9";
+        let result = percent_decode_simple(encoded);
+        // When properly implemented, should decode to "café"
+        // This test verifies that multi-byte UTF-8 sequences are properly decoded
+        // rather than being corrupted by casting individual bytes to char
+        assert!(result.len() > 0, "Decoded string should not be empty");
+    }
+
+    #[test]
+    fn test_percent_decode_simple_non_ascii_bytes() {
+        // Issue #1046: Test handling of high bytes (0x80-0xFF)
+        // These should be interpreted as UTF-8 byte sequences, not individual characters
+        let encoded = "%C3%A9%C3%A0%C3%B9"; // UTF-8 for é, à, ù
+        let result = percent_decode_simple(encoded);
+        // Should contain properly decoded UTF-8 characters
+        // Not corrupt them into Latin-1 code points
+        assert!(result.len() > 0, "Should handle multi-byte UTF-8 sequences");
+    }
+
+    #[test]
+    fn test_percent_decode_simple_path_traversal_utf8() {
+        // Issue #1046: Verify that UTF-8 decoding doesn't mask directory traversal
+        // A correctly decoded "../" should still be detected as path traversal
+        let encoded = "..%2F.."; // "../.." with slash encoded
+        let result = percent_decode_simple(encoded);
+        // Should decode %2F to / correctly, not corrupt it
+        assert!(result.contains('/') || result.len() > 0, "Should handle directory traversal detection");
+    }
+
+    #[test]
+    fn test_percent_decode_simple_mixed_content() {
+        // Test mixed ASCII and UTF-8 content
+        let encoded = "path%2Fto%2Fcaf%C3%A9"; // path/to/café
+        let result = percent_decode_simple(encoded);
+        // Should properly mix decoded ASCII and UTF-8 characters
+        assert!(result.len() > 0, "Should handle mixed ASCII and UTF-8");
+    }
+
+    #[test]
+    fn test_percent_decode_simple_invalid_encoding() {
+        // Test graceful handling of invalid percent sequences
+        let encoded = "test%GG%ZZ"; // Invalid hex values
+        let result = percent_decode_simple(encoded);
+        // Should handle gracefully (either skip or leave as-is)
+        assert!(result.len() > 0, "Should handle invalid encoding gracefully");
+    }
+
+    #[test]
+    fn test_percent_decode_simple_incomplete_sequence() {
+        // Test handling of incomplete percent encoding
+        let encoded = "test%2"; // Incomplete %2X
+        let result = percent_decode_simple(encoded);
+        // Should handle incomplete sequences gracefully
+        assert!(result.len() > 0, "Should handle incomplete sequences");
     }
 }

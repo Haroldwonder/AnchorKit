@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, memo, CSSProperties } from "react";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -222,8 +223,9 @@ function highlight(
 function syntaxHighlightRaw(
   json: string,
   t: (typeof THEMES)[ViewerTheme],
+  search?: string,
 ): string {
-  return json
+  let result = json
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -238,6 +240,20 @@ function syntaxHighlightRaw(
       },
     )
     .replace(/([{}[\],])/g, `<span style="color:${t.punct}">$1</span>`);
+
+  // Apply search highlighting last, wrapping matched text
+  if (search) {
+    const searchRegex = new RegExp(
+      search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "gi",
+    );
+    result = result.replace(
+      searchRegex,
+      `<mark style="background:${t.matchBg};color:${t.matchText};border-radius:2px;padding:0 1px">$&</mark>`,
+    );
+  }
+
+  return result;
 }
 
 // ─── Tree Node ────────────────────────────────────────────────────────────────
@@ -256,7 +272,7 @@ interface TreeNodeProps {
   lineRef: React.MutableRefObject<number>;
 }
 
-function TreeNode({
+const TreeNode = memo(function TreeNode({
   nodeKey,
   value,
   depth,
@@ -363,6 +379,9 @@ function TreeNode({
     <div>
       {/* Opening line */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
         style={{
           display: "flex",
           alignItems: "flex-start",
@@ -372,6 +391,12 @@ function TreeNode({
           borderLeft: "2px solid transparent",
         }}
         onClick={() => onToggle(path)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle(path);
+          }
+        }}
       >
         <div
           style={{
@@ -524,7 +549,12 @@ function TreeNode({
       )}
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  return prevProps.expandedPaths === nextProps.expandedPaths &&
+         prevProps.search === nextProps.search &&
+         prevProps.value === nextProps.value &&
+         prevProps.path === nextProps.path;
+});
 
 // ─── Path Collector ───────────────────────────────────────────────────────────
 
@@ -547,6 +577,12 @@ function collectPaths(
       collectPaths(v, `${path}.${k}`, depth + 1, maxDepth, acc),
     );
   }
+}
+
+function buildExpandedPaths(value: JsonValue, maxDepth: number): Set<string> {
+  const acc = new Set<string>();
+  collectPaths(value, "root", 0, maxDepth, acc);
+  return acc;
 }
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
@@ -595,16 +631,18 @@ export function JsonViewer({
   const t = THEMES[themeName];
   const [mode, setMode] = useState<ViewerMode>(defaultMode);
   const [search, setSearch] = useState("");
-  const [copied, setCopied] = useState(false);
+  const { isCopied: copied, copy: copyToClipboard } = useCopyToClipboard();
   
   // Remove circular references before processing
   const safeData = useMemo(() => removeCircularReferences(data), [data]);
   
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
-    const acc = new Set<string>();
-    collectPaths(safeData, "root", 0, defaultExpandDepth, acc);
-    return acc;
-  });
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() =>
+    buildExpandedPaths(safeData, defaultExpandDepth),
+  );
+
+  useEffect(() => {
+    setExpandedPaths(buildExpandedPaths(safeData, defaultExpandDepth));
+  }, [safeData, defaultExpandDepth]);
 
   const json = useMemo(() => JSON.stringify(safeData, null, 2), [safeData]);
   const lineRef = useRef(0);
@@ -635,16 +673,12 @@ export function JsonViewer({
 
   const collapseAll = () => setExpandedPaths(new Set());
 
-  const copy = () => {
-    navigator.clipboard.writeText(json);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+  const copy = () => copyToClipboard(json);
 
   // Reset line counter on each render
   lineRef.current = 0;
 
-  const rawHighlighted = useMemo(() => syntaxHighlightRaw(json, t), [json, t]);
+  const rawHighlighted = useMemo(() => syntaxHighlightRaw(json, t, search), [json, t, search]);
   const lineCount = json.split("\n").length;
 
   return (
@@ -659,10 +693,11 @@ export function JsonViewer({
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap');
         @keyframes jv-expand { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
         @keyframes jv-pulse  { 0%,100%{opacity:1} 50%{opacity:0.4} }
         .jv-node-row:hover { background: rgba(255,255,255,0.025) !important; }
+        .jv-search-input::placeholder { color: ${t.lineNum}; }
+        .jv-content { contain: layout style paint; }
       `}</style>
 
       {/* ── Titlebar ── */}
@@ -830,6 +865,7 @@ export function JsonViewer({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search keys & values…"
+              className="jv-search-input"
               style={{
                 flex: 1,
                 background: "transparent",
@@ -838,7 +874,6 @@ export function JsonViewer({
                 fontFamily: "monospace",
                 fontSize: 11,
                 color: t.text,
-                "::placeholder": { color: t.lineNum } as React.CSSProperties,
               }}
             />
             {search && (
@@ -887,6 +922,7 @@ export function JsonViewer({
 
       {/* ── Content ── */}
       <div
+        className="jv-content"
         style={{
           overflowX: "auto",
           maxHeight: 560,
@@ -912,7 +948,7 @@ export function JsonViewer({
           </div>
         ) : (
           <div style={{ display: "flex" }}>
-            {/* Line numbers */}
+            {/* Line numbers - virtualized */}
             <div
               style={{
                 background: t.gutter,
@@ -921,23 +957,26 @@ export function JsonViewer({
                 flexShrink: 0,
                 minWidth: 44,
                 textAlign: "right",
+                contain: "strict",
               }}
             >
-              {json.split("\n").map((_, i) => (
-                <div
-                  key={i}
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: 10,
-                    color: t.lineNum,
-                    lineHeight: "20px",
-                    paddingRight: 12,
-                    userSelect: "none",
-                  }}
-                >
-                  {i + 1}
-                </div>
-              ))}
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "8px 0",
+                  fontFamily: "monospace",
+                  fontSize: 10,
+                  color: t.lineNum,
+                  lineHeight: "20px",
+                  whiteSpace: "pre",
+                  userSelect: "none",
+                }}
+              >
+                {json
+                  .split("\n")
+                  .map((_, i) => String(i + 1).padEnd(4))
+                  .join("\n")}
+              </pre>
             </div>
             {/* Code */}
             <pre
@@ -1029,411 +1068,4 @@ function toolBtn(t: (typeof THEMES)[ViewerTheme]): React.CSSProperties {
   };
 }
 
-// ─── Demo Payloads ────────────────────────────────────────────────────────────
 
-const DEMO_PAYLOADS: Array<{
-  label: string;
-  tag: string;
-  tagColor: string;
-  title: string;
-  subtitle: string;
-  status: number;
-  responseTime: number;
-  theme: ViewerTheme;
-  data: JsonValue;
-}> = [
-  {
-    label: "Anchor Info",
-    tag: "SEP-24",
-    tagColor: "#a78bfa",
-    title: "GET /sep24/info",
-    subtitle: "testanchor.stellar.org",
-    status: 200,
-    responseTime: 143,
-    theme: "ember",
-    data: {
-      deposit: {
-        USDC: {
-          enabled: true,
-          authentication_required: true,
-          fee_fixed: 0,
-          fee_percent: 0,
-          min_amount: 0.1,
-          max_amount: 10000,
-        },
-        EURC: {
-          enabled: true,
-          authentication_required: true,
-          fee_fixed: 0.5,
-          fee_percent: 0.1,
-          min_amount: 10,
-          max_amount: 50000,
-        },
-      },
-      withdraw: {
-        USDC: {
-          enabled: true,
-          authentication_required: true,
-          fee_fixed: 1,
-          fee_percent: 0,
-          min_amount: 1,
-          max_amount: 10000,
-          types: {
-            sepa: {
-              fields: {
-                dest: { description: "IBAN" },
-                dest_extra: { description: "BIC" },
-              },
-            },
-          },
-        },
-      },
-      fee: { enabled: false, authentication_required: false },
-      features: { account_creation: true, claimable_balances: true },
-    },
-  },
-  {
-    label: "Transaction",
-    tag: "SEP-6",
-    tagColor: "#7dd3fc",
-    title: "GET /transfer/transaction",
-    subtitle: "id=a3d8f1c2-9b4e-4e7a",
-    status: 200,
-    responseTime: 87,
-    theme: "arctic",
-    data: {
-      transaction: {
-        id: "a3d8f1c2-9b4e-4e7a-b8d3-2c1f9e5a0b7d",
-        kind: "deposit",
-        status: "completed",
-        status_eta: null,
-        more_info_url:
-          "https://testanchor.stellar.org/sep24/transaction?id=a3d8f1c2",
-        amount_in: "100.00",
-        amount_in_asset: "iso4217:USD",
-        amount_out: "99.75",
-        amount_out_asset:
-          "stellar:USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-        amount_fee: "0.25",
-        amount_fee_asset: "iso4217:USD",
-        started_at: "2024-01-15T10:30:00.000Z",
-        completed_at: "2024-01-15T11:05:32.000Z",
-        updated_at: "2024-01-15T11:05:32.000Z",
-        stellar_transaction_id:
-          "4a7f8c3d2e1b9a6f5c0d3e8b1a4f7c2d5e8b1a4f7c2d9e6b3a0f5c8d1e4b7a",
-        external_transaction_id: "ACH-2024011500123",
-        message: null,
-        refunds: null,
-        claimable_balance_id: null,
-      },
-    },
-  },
-  {
-    label: "Error Payload",
-    tag: "400",
-    tagColor: "#fca5a5",
-    title: "POST /sep24/transactions/deposit/interactive",
-    subtitle: "Missing required parameter",
-    status: 400,
-    responseTime: 22,
-    theme: "forest",
-    data: {
-      error: "Missing required field",
-      details: {
-        field: "asset_code",
-        message:
-          "The 'asset_code' parameter is required to initiate a deposit.",
-        received: null,
-        allowed_values: ["USDC", "EURC", "XLM"],
-        docs: "https://stellar.org/protocol/sep-24#fields",
-      },
-      request_id: "req_9f2c1a4e8b3d",
-      timestamp: "2024-01-15T14:22:11.000Z",
-    },
-  },
-  {
-    label: "KYC Status",
-    tag: "SEP-12",
-    tagColor: "#f97316",
-    title: "GET /kyc/customer",
-    subtitle: "account=G...QT3V",
-    status: 200,
-    responseTime: 205,
-    theme: "ember",
-    data: {
-      id: "c7e9b2f1-4a8d-4b3c-9e1f-2a5d8c3b7e0a",
-      provided_fields: {
-        first_name: {
-          description: "First name",
-          type: "string",
-          status: "accepted",
-          error: null,
-        },
-        last_name: {
-          description: "Last name",
-          type: "string",
-          status: "accepted",
-          error: null,
-        },
-        email_address: {
-          description: "Email address",
-          type: "string",
-          status: "accepted",
-          error: null,
-        },
-        date_of_birth: {
-          description: "Date of birth",
-          type: "date",
-          status: "accepted",
-          error: null,
-        },
-        id_type: {
-          description: "Government ID type",
-          type: "string",
-          status: "processing",
-          error: null,
-        },
-        id_number: {
-          description: "Government ID number",
-          type: "string",
-          status: "processing",
-          error: null,
-        },
-      },
-      status: "NEEDS_INFO",
-      message:
-        "Your government ID is under review. This usually takes 1–3 business days.",
-      fields: {
-        address: {
-          description: "Full street address",
-          type: "string",
-          optional: false,
-        },
-        country_code: {
-          description: "Country of residence",
-          type: "string",
-          optional: false,
-        },
-      },
-    },
-  },
-];
-
-// ─── Demo Page ────────────────────────────────────────────────────────────────
-
-export default function JsonViewerDemo() {
-  const [active, setActive] = useState(0);
-  const payload = DEMO_PAYLOADS[active];
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background:
-          "linear-gradient(135deg, #0e0c0a 0%, #12100e 50%, #0a0e12 100%)",
-        padding: "40px 24px",
-        fontFamily: "'Fira Code', monospace",
-      }}
-    >
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #2d2720; border-radius: 3px; }
-        ::placeholder { color: #3d3530 !important; }
-      `}</style>
-
-      <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        {/* Header */}
-        <div
-          style={{
-            marginBottom: 36,
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 9,
-                letterSpacing: "0.22em",
-                color: "#57534e",
-                textTransform: "uppercase",
-                marginBottom: 8,
-              }}
-            >
-              Component · JSON Viewer
-            </div>
-            <h1
-              style={{
-                fontSize: 28,
-                fontWeight: 700,
-                color: "#e7e5e0",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.2,
-              }}
-            >
-              Response Viewer
-            </h1>
-            <p
-              style={{
-                fontSize: 11,
-                color: "#78716c",
-                marginTop: 6,
-                lineHeight: 1.6,
-              }}
-            >
-              Collapsible syntax-highlighted JSON for anchor responses, errors
-              &amp; transaction data.
-            </p>
-          </div>
-
-          {/* Theme dot indicators */}
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span
-              style={{
-                fontSize: 9,
-                color: "#57534e",
-                marginRight: 4,
-                letterSpacing: "0.1em",
-              }}
-            >
-              THEMES
-            </span>
-            {(
-              [
-                ["ember", "#f97316"],
-                ["arctic", "#58a6ff"],
-                ["forest", "#4ade80"],
-              ] as [ViewerTheme, string][]
-            ).map(([th, c]) => (
-              <div
-                key={th}
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
-                  background: c,
-                  opacity: 0.7,
-                  boxShadow: `0 0 8px ${c}60`,
-                }}
-                title={th}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Payload switcher */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          {DEMO_PAYLOADS.map((p, i) => (
-            <button
-              key={i}
-              onClick={() => setActive(i)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 14px",
-                borderRadius: 9,
-                border: `1px solid ${active === i ? p.tagColor + "60" : "#2d2720"}`,
-                background: active === i ? `${p.tagColor}12` : "#1c1916",
-                cursor: "pointer",
-                fontFamily: "monospace",
-                transition: "all 0.18s",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 700,
-                  padding: "2px 6px",
-                  borderRadius: 4,
-                  background: `${p.tagColor}25`,
-                  color: p.tagColor,
-                }}
-              >
-                {p.tag}
-              </span>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: active === i ? "#e7e5e0" : "#78716c",
-                }}
-              >
-                {p.label}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Viewer */}
-        <JsonViewer
-          key={active}
-          data={payload.data}
-          title={payload.title}
-          subtitle={payload.subtitle}
-          status={payload.status}
-          responseTime={payload.responseTime}
-          theme={payload.theme}
-          defaultMode="tree"
-          defaultExpandDepth={2}
-          searchable
-        />
-
-        {/* Usage snippet */}
-        <div
-          style={{
-            marginTop: 24,
-            background: "#1c1916",
-            borderRadius: 12,
-            border: "1px solid #2d2720",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "10px 16px",
-              background: "#141210",
-              borderBottom: "1px solid #2d2720",
-              fontSize: 9,
-              letterSpacing: "0.18em",
-              color: "#57534e",
-              textTransform: "uppercase",
-            }}
-          >
-            Usage
-          </div>
-          <pre
-            style={{
-              padding: "16px 18px",
-              fontFamily: "'Fira Code', monospace",
-              fontSize: 11,
-              color: "#78716c",
-              lineHeight: 1.8,
-              overflowX: "auto",
-            }}
-          >{`<JsonViewer
-  data={responseJson}
-  title="GET /sep24/info"
-  subtitle="testanchor.stellar.org"
-  status={200}
-  responseTime={143}
-  theme="ember"          // "ember" | "arctic" | "forest"
-  defaultMode="tree"     // "tree" | "raw"
-  defaultExpandDepth={2}
-  searchable
-/>`}</pre>
-        </div>
-      </div>
-    </div>
-  );
-}

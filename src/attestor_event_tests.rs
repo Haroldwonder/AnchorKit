@@ -13,7 +13,7 @@ fn test_register_attestor_emits_registered_event() {
     let issuer = Address::random(&env);
 
     // Expect event
-(symbol_short!("attestor"), symbol_short!("reg"))
+    let topics = (symbol_short!("attestor"), symbol_short!("reg"));
     env.events().publish_expect(&topics, &AttestorRegistered(attestor.clone()));
 
     // Call

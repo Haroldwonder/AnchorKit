@@ -1,0 +1,58 @@
+/* PrecisionFintech design tokens */
+:root {
+  /* Brand colors */
+  --pf-mint: #00FFB2;
+  --pf-mint-hover: #00e8a0;
+  --pf-mint-dim: rgba(0, 255, 178, 0.12);
+  --pf-mint-border: rgba(0, 255, 178, 0.25);
+  --pf-mint-glow: rgba(0, 255, 178, 0.35);
+  --pf-mint-pulse-start: rgba(0, 255, 178, 0.6);
+  --pf-mint-pulse-end: rgba(0, 255, 178, 0);
+  --pf-danger: #ff4d6d;
+
+  /* Backgrounds */
+  --pf-bg: #000000;
+  --pf-surface: #050505;
+  --pf-surface-alt: #0a0a0a;
+
+  /* Borders */
+  --pf-border: #1f1f1f;
+  --pf-border-subtle: #0d0d0d;
+  --pf-border-card: #161616;
+  --pf-border-footer: #0f0f0f;
+
+  /* Text */
+  --pf-text: #e0e0e0;
+  --pf-text-muted: #666666;
+  --pf-text-dim: #555555;
+  --pf-text-ghost: #2a2a2a;
+  --pf-text-danger: #ff4d6d;
+
+  /* Spacing */
+  --pf-spacing-xs: 4px;
+  --pf-spacing-sm: 8px;
+  --pf-spacing-md: 12px;
+  --pf-spacing-lg: 16px;
+  --pf-spacing-xl: 20px;
+  --pf-spacing-2xl: 24px;
+  --pf-spacing-3xl: 28px;
+  --pf-spacing-4xl: 32px;
+
+  /* Typography */
+  --pf-font-mono: 'DM Mono', 'Courier New', monospace;
+  --pf-font-display: 'Syne', sans-serif;
+  --pf-font-size-xs: 9px;
+  --pf-font-size-sm: 10px;
+  --pf-font-size-base: 11px;
+  --pf-font-size-md: 13px;
+  --pf-font-size-lg: 15px;
+  --pf-font-size-xl: 18px;
+  --pf-font-size-2xl: 26px;
+  --pf-font-size-hero: 48px;
+
+  /* Border radius */
+  --pf-radius-sm: 2px;
+
+  /* Transitions */
+  --pf-transition: all 0.15s;
+}

@@ -2,14 +2,14 @@
 
 ## Supported Versions
 
-The following versions of AnchorKit currently receive security updates:
+The table below shows which versions of AnchorKit currently receive security patches. If your version is not listed as supported, upgrade to the latest release before filing a report.
 
-| Version | Supported          |
-|---------|--------------------|
-| 0.1.x   | ✅ Yes             |
-| < 0.1   | ❌ No              |
+| Version | Supported          | Notes                                      |
+|---------|--------------------|--------------------------------------------|
+| 0.1.x   | ✅ Yes             | Current stable release — actively patched  |
+| < 0.1   | ❌ No              | Pre-release; no further security fixes     |
 
-Only the latest patch release within a supported minor version receives security fixes. We recommend always running the latest published version.
+Only the **latest patch release** within a supported minor version receives security fixes. For example, if `0.1.3` is the latest patch, `0.1.0`–`0.1.2` will not receive backported fixes. We recommend always running the latest published version.
 
 ## Reporting a Vulnerability
 
@@ -21,7 +21,7 @@ If you discover a security vulnerability in AnchorKit, please report it responsi
 
 Use GitHub's built-in private reporting feature:
 
-1. Go to the [Security tab](../../security) of this repository.
+1. Go to the [Security tab](https://github.com/Haroldwonder/AnchorKit/security) of this repository.
 2. Click **"Report a vulnerability"**.
 3. Fill in the details and submit.
 
@@ -29,7 +29,7 @@ This keeps the report confidential until a fix is ready and allows coordinated d
 
 ### Email
 
-If you prefer email, send your report to the repository maintainer via the contact listed on the [GitHub profile](https://github.com/Haroldwonder).
+If you prefer email, send your report to: **security@anchorkit.dev**
 
 Please include the following in your report:
 

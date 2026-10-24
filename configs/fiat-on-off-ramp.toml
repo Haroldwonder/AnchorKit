@@ -21,7 +21,7 @@ enabled = true
 # Bank Integration Service
 [[attestors.registry]]
 name = "bank-integration"
-address = "GB7ZTQBJ7XXJQ6JDLHYQXQX3JQXJ3JQXJ3JQXJ3JQXJ3JQXJ3JQX"
+address = "GB7ZTQBJ7XXJQ6JDLHYQXQX3JQXJ3JQXJ3JQXJ3JQXJ3JQXJ3JQXJZ"
 description = "Bank wire transfer confirmation"
 endpoint = "https://banking-api.example.com/transfers"
 role = "transfer-verifier"
@@ -32,6 +32,7 @@ enabled = true
 name = "compliance-officer"
 address = "GBCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZAB"
 description = "Manual compliance review and approval"
+endpoint = "https://compliance-portal.example.com/approve"
 role = "compliance-approver"
 enabled = true
 

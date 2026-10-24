@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTheme } from "../hooks/useTheme";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,25 @@ export interface SupportedAsset {
   networks?: string[]; // e.g. "ACH", "SEPA", "SWIFT"
 }
 
+/** Per-service health status for the capability card */
+export type ServiceHealth = "healthy" | "degraded" | "unavailable";
+
+/** Which on-chain services the anchor exposes */
+export interface AnchorServices {
+  deposits?: boolean;
+  withdrawals?: boolean;
+  quotes?: boolean;
+  kyc?: boolean;
+}
+
+/** Optional health status per service */
+export interface AnchorHealthStatus {
+  deposits?: ServiceHealth;
+  withdrawals?: ServiceHealth;
+  quotes?: ServiceHealth;
+  kyc?: ServiceHealth;
+}
+
 export interface AnchorCapabilityCardProps {
   anchorName: string;
   domain: string;
@@ -59,6 +79,14 @@ export interface AnchorCapabilityCardProps {
   accentColor?: string;
   description?: string;
   assets: SupportedAsset[];
+  /** Shows a skeleton loader in the tab content area */
+  isLoading?: boolean;
+  /** Renders an error state in the tab content area */
+  error?: string;
+  /** Which services this anchor supports; all enabled when omitted */
+  services?: AnchorServices;
+  /** Optional health status per service for degraded-state display */
+  healthStatus?: AnchorHealthStatus;
 }
 
 import './themes.css';
@@ -116,7 +144,7 @@ const fmt = (n: number, currency: string) =>
 
 function fmtFee(fee?: AssetFee): string {
   if (!fee) return "—";
-  if (fee.type === "flat") return fmt(fee.flatAmount!, fee.currency);
+  if (fee.type === "flat") return fmt(fee.flatAmount ?? 0, fee.currency);
   if (fee.type === "percent")
     return `${Number(fee.percent).toFixed(2)}% ${fee.currency}`;
   if (fee.type === "tiered" && fee.tiers) return "Tiered";
@@ -210,9 +238,9 @@ function RowDivider() {
     <div
       style={{
         height: 1,
-        background:
-          "linear-gradient(90deg, transparent, rgba(226,232,240,0.19), rgba(226,232,240,0.38), rgba(226,232,240,0.19), transparent)",
+        background: "linear-gradient(90deg, transparent, var(--ak-border), var(--ak-border), transparent)",
         margin: "2px 0",
+        opacity: 0.5,
       }}
     />
   );
@@ -382,6 +410,23 @@ function AssetsPanel({
                   {n}
                 </span>
               ))}
+              {asset.networks && asset.networks.length > 2 && (
+                <span
+                  title={asset.networks.slice(2).join(", ")}
+                  style={{
+                    fontFamily: "'Source Code Pro', monospace",
+                    fontSize: 9,
+                    fontWeight: 600,
+                    color: "var(--ak-text-muted)",
+                    background: "var(--ak-surface-2)",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    cursor: "help",
+                  }}
+                >
+                  +{asset.networks.length - 2}
+                </span>
+              )}
             </div>
             <div
               style={{
@@ -430,7 +475,7 @@ function FeesPanel({
             {df.type === "flat" && (
               <DataRow
                 label="Amount"
-                value={fmt(df.flatAmount!, df.currency)}
+                value={fmt(df.flatAmount ?? 0, df.currency)}
                 mono
                 accent={accent}
               />
@@ -500,7 +545,7 @@ function FeesPanel({
             {wf.type === "flat" && (
               <DataRow
                 label="Amount"
-                value={fmt(wf.flatAmount!, wf.currency)}
+                value={fmt(wf.flatAmount ?? 0, wf.currency)}
                 mono
                 accent={accent}
               />
@@ -594,11 +639,11 @@ function LimitsPanel({
   ].filter((r) => r.value !== null);
 
   // Build deposit/withdrawal limit bars
-  const depositUtilPct = L.maxDeposit
-    ? Math.min(100, (L.minDeposit! / L.maxDeposit) * 100)
+  const depositUtilPct = L.maxDeposit != null && L.maxDeposit > 0
+    ? Math.min(100, Math.max(0, ((L.minDeposit ?? 0) / L.maxDeposit) * 100))
     : 0;
-  const wdUtilPct = L.maxWithdrawal
-    ? Math.min(100, (L.minWithdrawal! / L.maxWithdrawal) * 100)
+  const wdUtilPct = L.maxWithdrawal != null && L.maxWithdrawal > 0
+    ? Math.min(100, Math.max(0, ((L.minWithdrawal ?? 0) / L.maxWithdrawal) * 100))
     : 0;
 
   return (
@@ -632,6 +677,11 @@ function LimitsPanel({
               </span>
             </div>
             <div
+              role="progressbar"
+              aria-label="Deposit limit range"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={depositUtilPct}
               style={{
                 height: 6,
                 borderRadius: 3,
@@ -642,7 +692,73 @@ function LimitsPanel({
               <div
                 style={{
                   height: "100%",
-                  width: "100%",
+                  width: `${depositUtilPct}%`,
+                  borderRadius: 3,
+                  background: `linear-gradient(90deg, ${accent}40, ${accent})`,
+                }}
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: 6,
+                fontFamily: "'Sora', sans-serif",
+                fontSize: 10,
+                color: "var(--ak-text-muted)",
+              }}
+            >
+              <span>Min</span>
+              <span>Max</span>
+            </div>
+          </div>
+      </div>
+    )}
+
+      {L.maxWithdrawal != null && (
+        <div>
+          <SectionLabel>Withdrawal Range</SectionLabel>
+          <div
+            style={{
+              background: "var(--ak-surface-2)",
+              borderRadius: 12,
+              padding: "14px 16px",
+              border: "1px solid var(--ak-border)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 10,
+                fontFamily: "'Source Code Pro', monospace",
+                fontSize: 11,
+              }}
+            >
+              <span style={{ color: "var(--ak-text-muted)" }}>
+                {fmt(L.minWithdrawal ?? 0, currency)}
+              </span>
+              <span style={{ color: "var(--ak-text-muted)" }}>
+                {fmt(L.maxWithdrawal, currency)}
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label="Withdrawal limit range"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={wdUtilPct}
+              style={{
+                height: 6,
+                borderRadius: 3,
+                background: "var(--ak-border)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${wdUtilPct}%`,
                   borderRadius: 3,
                   background: `linear-gradient(90deg, ${accent}40, ${accent})`,
                 }}
@@ -1048,6 +1164,29 @@ function KYCPanel({
 
 // ─── Main Card ────────────────────────────────────────────────────────────────
 
+// ─── Service Health Badge ─────────────────────────────────────────────────────
+
+const HEALTH_META: Record<ServiceHealth, { label: string; color: string; bg: string; border: string; icon: string }> = {
+  healthy:     { label: "Healthy",     color: "#22c55e", bg: "#f0fdf4", border: "#bbf7d0", icon: "●" },
+  degraded:    { label: "Degraded",    color: "#f59e0b", bg: "#fffbeb", border: "#fde68a", icon: "◐" },
+  unavailable: { label: "Unavailable", color: "#ef4444", bg: "#fef2f2", border: "#fecaca", icon: "○" },
+};
+
+function ServiceHealthBadge({ service, status }: { service: string; status: ServiceHealth }) {
+  const m = HEALTH_META[status];
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "3px 9px", borderRadius: 20,
+      background: m.bg, border: `1px solid ${m.border}`,
+      fontSize: 10, fontWeight: 600, color: m.color,
+      fontFamily: "'Sora', sans-serif",
+    }}>
+      {m.icon} {service}
+    </span>
+  );
+}
+
 export function AnchorCapabilityCard({
   anchorName,
   domain,
@@ -1055,7 +1194,12 @@ export function AnchorCapabilityCard({
   accentColor = "#3b82f6",
   description,
   assets,
+  isLoading = false,
+  error,
+  services,
+  healthStatus,
 }: AnchorCapabilityCardProps) {
+  const isDark = useTheme();
   const [activeTab, setActiveTab] = useState<Tab>("assets");
   const [selectedAssetCode, setSelectedAssetCode] = useState(
     assets[0]?.code ?? "",
@@ -1065,6 +1209,10 @@ export function AnchorCapabilityCard({
     assets.find((a) => a.code === selectedAssetCode) ?? assets[0];
   const accent = accentColor;
 
+  // Derive whether any service is enabled
+  const hasAnyService = !services ||
+    services.deposits || services.withdrawals || services.quotes || services.kyc;
+
   const handleAssetSelect = (code: string) => {
     setSelectedAssetCode(code);
     // When selecting from asset list, jump to fees view for that asset
@@ -1073,6 +1221,7 @@ export function AnchorCapabilityCard({
 
   return (
     <div
+      data-theme={isDark ? "dark" : "light"}
       style={{
         fontFamily: "'Sora', sans-serif",
         background: "var(--ak-surface)",
@@ -1086,7 +1235,6 @@ export function AnchorCapabilityCard({
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Source+Code+Pro:wght@400;500;600&display=swap');
         @keyframes cap-slide-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
         @keyframes cap-fade-in  { from { opacity:0; } to { opacity:1; } }
       `}</style>
@@ -1289,16 +1437,34 @@ export function AnchorCapabilityCard({
 
       {/* ── Tabs ── */}
       <div
+        role="tablist"
+        aria-label="Capability panels"
         style={{
           display: "flex",
           borderBottom: "1px solid var(--ak-border)",
           background: "var(--ak-surface-3)",
         }}
       >
-        {TABS.map((tab) => (
+        {TABS.map((tab, idx, arr) => (
           <button
             key={tab}
+            id={`cap-tab-${tab}`}
+            role="tab"
+            aria-selected={activeTab === tab}
+            aria-controls={`cap-tabpanel-${tab}`}
+            tabIndex={activeTab === tab ? 0 : -1}
             onClick={() => setActiveTab(tab)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                const next = e.key === "ArrowRight"
+                  ? arr[(idx + 1) % arr.length]
+                  : arr[(idx - 1 + arr.length) % arr.length];
+                setActiveTab(next);
+                (e.currentTarget.parentElement?.querySelector(`[id="cap-tab-${next}"]`) as HTMLElement)?.focus();
+              }
+              if (e.key === "Home") { setActiveTab(arr[0]); (e.currentTarget.parentElement?.querySelector(`[id="cap-tab-${arr[0]}"]`) as HTMLElement)?.focus(); }
+              if (e.key === "End") { setActiveTab(arr[arr.length - 1]); (e.currentTarget.parentElement?.querySelector(`[id="cap-tab-${arr[arr.length - 1]}"]`) as HTMLElement)?.focus(); }
+            }}
             style={{
               flex: 1,
               padding: "12px 0",
@@ -1335,6 +1501,9 @@ export function AnchorCapabilityCard({
 
       {/* ── Tab Content ── */}
       <div
+        role="tabpanel"
+        id={`cap-tabpanel-${activeTab}`}
+        aria-labelledby={`cap-tab-${activeTab}`}
         style={{
           padding: "20px 20px 22px",
           minHeight: 280,
@@ -1342,22 +1511,103 @@ export function AnchorCapabilityCard({
         }}
         key={activeTab + selectedAssetCode}
       >
-        {activeTab === "assets" && (
-          <AssetsPanel
-            assets={assets}
-            accent={accent}
-            onSelect={handleAssetSelect}
-            selected={selectedAssetCode}
-          />
+        {/* Loading skeleton */}
+        {isLoading && (
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label="Loading anchor capabilities"
+            style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 0" }}
+          >
+            {[100, 80, 60, 90, 70].map((w, i) => (
+              <div key={i} aria-hidden="true" style={{
+                height: 16, width: `${w}%`, borderRadius: 8,
+                background: "linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%)",
+                backgroundSize: "200% 100%",
+                animation: "cap-shimmer 1.4s ease infinite",
+              }} />
+            ))}
+            <style>{`@keyframes cap-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
+            <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}>
+              Loading anchor capabilities
+            </span>
+          </div>
         )}
-        {activeTab === "fees" && selectedAsset && (
-          <FeesPanel asset={selectedAsset} accent={accent} />
+
+        {/* Error state */}
+        {!isLoading && error && (
+          <div style={{
+            display: "flex", flexDirection: "column", alignItems: "center",
+            justifyContent: "center", gap: 12, minHeight: 200, textAlign: "center",
+          }}>
+            <div style={{ fontSize: 36 }}>⚠️</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#ef4444" }}>
+              Failed to load capabilities
+            </div>
+            <div style={{
+              fontSize: 12, color: "#94a3b8", maxWidth: 280, lineHeight: 1.6,
+              background: "#fef2f2", border: "1px solid #fecaca",
+              borderRadius: 10, padding: "10px 14px",
+            }}>
+              {error}
+            </div>
+          </div>
         )}
-        {activeTab === "limits" && selectedAsset && (
-          <LimitsPanel asset={selectedAsset} accent={accent} />
+
+        {/* No-services state */}
+        {!isLoading && !error && !hasAnyService && (
+          <div style={{
+            display: "flex", flexDirection: "column", alignItems: "center",
+            justifyContent: "center", gap: 12, minHeight: 200, textAlign: "center",
+          }}>
+            <div style={{ fontSize: 36 }}>🔌</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>
+              No services available
+            </div>
+            <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>
+              This anchor has no active services at this time.
+            </div>
+          </div>
         )}
-        {activeTab === "kyc" && selectedAsset && (
-          <KYCPanel asset={selectedAsset} accent={accent} />
+
+        {/* Health status banner (shown when at least one service is degraded/unavailable) */}
+        {!isLoading && !error && hasAnyService && healthStatus && (
+          <div style={{
+            display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16,
+          }}>
+            {(["deposits", "withdrawals", "quotes", "kyc"] as const)
+              .filter((svc) => services?.[svc] !== false && healthStatus[svc] && healthStatus[svc] !== "healthy")
+              .map((svc) => (
+                <ServiceHealthBadge
+                  key={svc}
+                  service={svc.charAt(0).toUpperCase() + svc.slice(1)}
+                  status={healthStatus[svc]!}
+                />
+              ))}
+          </div>
+        )}
+
+        {/* Normal tab panels */}
+        {!isLoading && !error && hasAnyService && (
+          <>
+            {activeTab === "assets" && (
+              <AssetsPanel
+                assets={assets}
+                accent={accent}
+                onSelect={handleAssetSelect}
+                selected={selectedAssetCode}
+              />
+            )}
+            {activeTab === "fees" && selectedAsset && (
+              <FeesPanel asset={selectedAsset} accent={accent} />
+            )}
+            {activeTab === "limits" && selectedAsset && (
+              <LimitsPanel asset={selectedAsset} accent={accent} />
+            )}
+            {activeTab === "kyc" && selectedAsset && (
+              <KYCPanel asset={selectedAsset} accent={accent} />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1550,7 +1800,6 @@ export default function AnchorCapabilityDemo() {
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Source+Code+Pro:wght@400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
       `}</style>
 

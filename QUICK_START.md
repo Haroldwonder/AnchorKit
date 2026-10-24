@@ -65,7 +65,11 @@ cargo run --bin anchorkit -- register \
 
 ## Config reference
 
-The minimal config only requires two top-level sections:
+The config requires three top-level sections — `contract`, `attestors`, and
+`sessions` (per `config_schema.json`'s root `required` array). A fourth
+section, `deployment`, is defined by the schema and shown below, but it is
+**optional**: a config with only the three required sections validates
+successfully.
 
 ```json
 {
@@ -84,6 +88,17 @@ The minimal config only requires two top-level sections:
         "enabled": true
       }
     ]
+  },
+  "sessions": {
+    "enable_session_tracking": true,
+    "session_timeout_seconds": 3600,
+    "operations_per_session": 100,
+    "audit_log_retention_days": 30
+  },
+  "deployment": {                   // optional — not in the schema's required list
+    "admin_key": "G...",        // 56-char Stellar public key
+    "rpc_endpoint": "https://soroban-testnet.stellar.org",
+    "network": "stellar-testnet"
   }
 }
 ```

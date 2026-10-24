@@ -103,7 +103,7 @@ cargo test --no-default-features --features mock-only
 ## Compatibility
 
 ### ✅ Soroban SDK Compatibility
-- Uses soroban-sdk 21.7.0
+- Uses soroban-sdk 26.1.0
 - All types are Soroban-native (String, Vec, Address, Env)
 - Proper use of #[contracttype] for data structures
 - Correct storage patterns (temporary storage with TTL)

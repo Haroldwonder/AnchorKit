@@ -1,5 +1,9 @@
 # AnchorKit
 
+[![Rust CI](https://github.com/Haroldwonder/AnchorKit/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/rust-ci.yml)
+[![Coverage](https://github.com/Haroldwonder/AnchorKit/actions/workflows/coverage.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/coverage.yml)
+[![Feature Flag Matrix](https://github.com/Haroldwonder/AnchorKit/actions/workflows/feature-flag-matrix.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/feature-flag-matrix.yml)
+[![WASM Size](https://github.com/Haroldwonder/AnchorKit/actions/workflows/wasm-size-check.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/wasm-size-check.yml)
 [![UI Tests](https://github.com/Haroldwonder/AnchorKit/actions/workflows/ui-tests.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/ui-tests.yml)
 
 AnchorKit is a Soroban-native toolkit for anchoring off-chain attestations to Stellar. It enables smart contracts to verify real-world events such as KYC approvals, payment confirmations, and signed claims in a trust-minimized way.
@@ -101,8 +105,7 @@ Use the new CLI binary for machine-friendly command output:
 
 ```bash
 cargo run --bin anchorkit -- query --output json --transaction-id TX123
-cargo run --bin anchorkit -- attest --subject GUSER123 --payload-file payload.bin
-cat payload.bin | cargo run --bin anchorkit -- attest --subject GUSER123 --payload-hash -
+cargo run --bin anchorkit -- attest --subject GUSER123 --payload-hash <64-char-hex>
 ```
 
 See **[docs/guides/DOCTOR_COMMAND.md](./docs/guides/DOCTOR_COMMAND.md)** for CLI documentation.
@@ -160,7 +163,7 @@ If you prefer the Stellar JavaScript SDK, use its contract invocation API instea
 - **[docs/features/ANCHOR_ADAPTER.md](./docs/features/ANCHOR_ADAPTER.md)** - Unified anchor adapter interface
 - **[docs/features/METADATA_CACHE.md](./docs/features/METADATA_CACHE.md)** - Metadata and capabilities caching
 - **[docs/features/REQUEST_ID_PROPAGATION.md](./docs/features/REQUEST_ID_PROPAGATION.md)** - Request ID tracking and tracing
-- **[docs/features/LOGGING.md](./docs/features/LOGGING.md)** - Logging system
+- **[docs/features/LOGGING.md](./docs/features/LOGGING.md)** - Observability: tracing spans, audit log, events
 - **[docs/features/DOMAIN_VALIDATION.md](./docs/features/DOMAIN_VALIDATION.md)** - Domain validation
 - **[docs/features/ERROR_CODES_REFERENCE.md](./docs/features/ERROR_CODES_REFERENCE.md)** - API error codes reference
 - **[docs/features/RETRY_BACKOFF.md](./docs/features/RETRY_BACKOFF.md)** - Retry and backoff strategies
@@ -316,6 +319,10 @@ anchorkit health --attestor GANCHOR123... --watch --interval 30
 - `test` - Run contract tests
 - `validate` - Validate configuration files
 - `doctor` - Run environment diagnostics
+- `config` - Manage configuration (validate/initialize config files)
+- `audit` - Fetch and display audit log entries
+- `export-audit` - Export audit logs in JSON or CSV format
+- `session` - Manage interaction sessions
 
 Each command includes:
 - Clear description of when to use it
@@ -369,6 +376,24 @@ cargo test cross_platform
 # Run with verbose output
 cargo test --verbose
 ```
+
+### Benchmarks
+
+Performance baselines for the contract's hot paths are maintained with
+[criterion](https://github.com/bheisler/criterion.rs) in `benches/hot_paths.rs`,
+so regressions can be caught between releases. The suite covers
+`submit_attestation`, `get_anchor_health_score`, and `route_transaction` (the
+latter parameterized by anchor-set size).
+
+```bash
+# Run the full benchmark suite
+cargo bench
+# or
+make bench
+```
+
+Criterion writes HTML reports and saves the previous run as a baseline under
+`target/criterion/`, so subsequent runs report deltas against it.
 
 ### Configuration Validation
 
@@ -461,3 +486,13 @@ For questions or issues:
 2. Review the API specification
 3. Examine the test cases in the dedicated test files — `src/lib.rs` only declares modules, the actual tests live in files such as `src/contract_tests.rs`, `src/session_tests.rs`, `src/anchor_info_discovery_tests.rs`, `src/anchor_health_score_tests.rs`, and other `src/*_tests.rs` files
 
+## Handsoff notes
+
+<!-- handsoff-issue-1235 -->
+- #1235: WEBHOOK_MIDDLEWARE.md's Features section (HMAC/Ed25519 signing, 8-type suspicious-activity logging, delivery tracking) describes functionality absent from the codebase
+
+<!-- handsoff-issue-1425 -->
+- #1425: revoke_attestor leaves the attestor's endpoint, services, and keys in place, and re-registration inherits them
+
+<!-- handsoff-issue-1426 -->
+- #1426: submit_attestation_batch has no maximum batch size

@@ -1,0 +1,53 @@
+name: WASM Size Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  # Maximum allowed WASM binary size in bytes (100 KB)
+  WASM_SIZE_LIMIT: 102400
+
+jobs:
+  wasm-size:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-wasm-
+
+      - name: Build WASM (release)
+        run: cargo build --lib --target wasm32-unknown-unknown --release --no-default-features --features wasm
+
+      - name: Check WASM binary size
+        run: |
+          WASM_FILE="target/wasm32-unknown-unknown/release/anchorkit.wasm"
+          WASM_SIZE=$(wc -c < "$WASM_FILE")
+          echo "WASM binary size: $WASM_SIZE bytes"
+          echo "Size limit:       $WASM_SIZE_LIMIT bytes"
+          if [ "$WASM_SIZE" -gt "$WASM_SIZE_LIMIT" ]; then
+            echo "ERROR: WASM binary exceeds the configured size limit."
+            echo "  Actual:  $WASM_SIZE bytes"
+            echo "  Limit:   $WASM_SIZE_LIMIT bytes"
+            echo "  Excess:  $(( WASM_SIZE - WASM_SIZE_LIMIT )) bytes"
+            exit 1
+          fi
+          echo "WASM size check passed."

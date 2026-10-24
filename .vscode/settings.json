@@ -1,4 +1,5 @@
 {
     "kiroAgent.configureMCP": "Disabled",
-    "typescript.autoClosingTags": false
+    "typescript.autoClosingTags": false,
+    "wake.compiler.solc.remappings": []
 }

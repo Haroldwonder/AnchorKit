@@ -105,6 +105,23 @@ describe('useCopyToClipboard', () => {
     expect(result.current.isCopied).toBe(false);
   });
 
+  it('falls back to execCommand when clipboard.writeText rejects', async () => {
+    mockWriteText.mockRejectedValue(new Error('denied'));
+    const execCommand = jest.spyOn(document, 'execCommand').mockImplementation(() => true);
+    const onError = jest.fn();
+    const { result } = renderHook(() => useCopyToClipboard({ onError }));
+
+    let copyResult = false;
+    await act(async () => {
+      copyResult = await result.current.copy('fallback-text');
+    });
+
+    expect(copyResult).toBe(true);
+    expect(execCommand).toHaveBeenCalledWith('copy');
+    expect(result.current.isCopied).toBe(true);
+    expect(result.current.copiedText).toBe('fallback-text');
+  });
+
   it('should reset state manually', async () => {
     mockWriteText.mockResolvedValue(undefined);
     const { result } = renderHook(() => useCopyToClipboard());

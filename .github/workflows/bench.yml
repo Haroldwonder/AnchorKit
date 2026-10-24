@@ -1,0 +1,94 @@
+name: Benchmarks
+
+# Run criterion benchmarks on every push to main and on every PR targeting
+# main.  The job is informational (continue-on-error: true) so a detected
+# regression never blocks a merge — reviewers are notified via the job summary
+# and, on PRs, a sticky comment posted by benchmark-action.
+#
+# Closes #974.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    name: Criterion benchmarks
+    runs-on: ubuntu-latest
+    # Non-blocking: a regression is surfaced as a warning, not a build failure.
+    # Flip to false once baseline numbers are stable and thresholds are agreed.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+
+      - name: Build benchmarks (compile check)
+        # Verify the bench target compiles before attempting a timed run.
+        run: cargo build --benches
+
+      - name: Run criterion benchmarks
+        # --profile bench applies opt-level = 3 (see Cargo.toml [profile.bench])
+        # so results reflect runtime speed, not wasm size optimisation.
+        # criterion writes machine-readable JSON to target/criterion/.
+        run: cargo bench -- --output-format bencher | tee bench_output.txt
+
+      - name: Upload criterion results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: criterion-results-${{ github.sha }}
+          path: |
+            target/criterion/
+            bench_output.txt
+          retention-days: 90
+
+      - name: Store benchmark result (push to main only)
+        # Persists the baseline so future runs can compare against it.
+        # Only runs on pushes to main — PR runs compare against the stored baseline.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: AnchorKit hot-path benchmarks
+          tool: cargo
+          output-file-path: bench_output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # Alert when a benchmark regresses by more than 20% vs the stored baseline.
+          alert-threshold: "120%"
+          comment-on-alert: true
+          fail-on-alert: false
+          benchmark-data-dir-path: dev/bench
+
+      - name: Comment benchmark results on PR
+        # Posts a comparison comment on the PR when running against a PR.
+        if: github.event_name == 'pull_request'
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: AnchorKit hot-path benchmarks
+          tool: cargo
+          output-file-path: bench_output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false
+          alert-threshold: "120%"
+          comment-on-alert: true
+          fail-on-alert: false
+          benchmark-data-dir-path: dev/bench

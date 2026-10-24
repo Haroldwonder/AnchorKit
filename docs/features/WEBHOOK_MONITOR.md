@@ -369,9 +369,9 @@ server.operations()
 
 ## Related Documentation
 
-- [API_SPEC.md](./API_SPEC.md) - Event schemas and error codes
-- [SESSION_TRACEABILITY.md](./SESSION_TRACEABILITY.md) - Session event tracking
-- [HEALTH_MONITORING.md](./HEALTH_MONITORING.md) - Health check events
+- [API_REFERENCE.md](../API_REFERENCE.md) - Event schemas and error codes
+- [TRANSACTION_STATE_TRACKER.md](./TRANSACTION_STATE_TRACKER.md) - Session event tracking
+- [STATUS_MONITOR.md](./STATUS_MONITOR.md) - Health check events
 - [SDK_CONFIG.md](./SDK_CONFIG.md) - SDK configuration
 
 ## Future Enhancements

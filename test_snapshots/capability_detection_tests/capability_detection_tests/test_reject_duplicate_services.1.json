@@ -40,7 +40,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "bytes": "69cad45e16d84b86d82bb2566e271bd53dc5a637e638e1cdd6f32a65a3410307"
+                  "bytes": "f304e6e6402f5cd1a2f240e6b7685aa5e824a42bad9c18edf84369484805814a"
                 }
               ]
             }
@@ -62,7 +62,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6ODY0MDB9.r8MHj33XkJteajAkqnnNkJaJsz-gc3wzjqkOdhQhZfqViUK_9zECHbFVaYB054ZSSf1StiLplaRQiUok_s9HDQ"
+                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6ODY0MDB9.pRDrl0e-hgliZl7n21L9f1nK3Rai_MYFLHu5JFZDvhf1Eyq-WCh3eri_o1f7oqZHgax85-nGBDO-lyRu9T7pBw"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
@@ -169,7 +169,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "69cad45e16d84b86d82bb2566e271bd53dc5a637e638e1cdd6f32a65a3410307"
+                      "bytes": "f304e6e6402f5cd1a2f240e6b7685aa5e824a42bad9c18edf84369484805814a"
                     }
                   ]
                 }
@@ -225,6 +225,18 @@
                         },
                         "val": {
                           "u64": 100
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MaxPageSize"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 50
                         }
                       },
                       {
@@ -451,7 +463,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "bytes": "69cad45e16d84b86d82bb2566e271bd53dc5a637e638e1cdd6f32a65a3410307"
+                  "bytes": "f304e6e6402f5cd1a2f240e6b7685aa5e824a42bad9c18edf84369484805814a"
                 }
               ]
             }
@@ -505,7 +517,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6ODY0MDB9.r8MHj33XkJteajAkqnnNkJaJsz-gc3wzjqkOdhQhZfqViUK_9zECHbFVaYB054ZSSf1StiLplaRQiUok_s9HDQ"
+                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6ODY0MDB9.pRDrl0e-hgliZl7n21L9f1nK3Rai_MYFLHu5JFZDvhf1Eyq-WCh3eri_o1f7oqZHgax85-nGBDO-lyRu9T7pBw"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"

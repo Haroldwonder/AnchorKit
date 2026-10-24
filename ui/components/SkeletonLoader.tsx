@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 export interface SkeletonLoaderProps {
   /**
@@ -63,6 +63,21 @@ export function SkeletonLoader({
 }: SkeletonLoaderProps) {
   const baseColor = dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
   const shimmerColor = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.10)';
+
+  const listWidths = useMemo(() =>
+    Array.from({ length: count }).map(() => ({
+      nameWidth: 60 + Math.random() * 30,
+      subtitleWidth: 40 + Math.random() * 20,
+    })),
+    [count]
+  );
+
+  const tableWidths = useMemo(() =>
+    Array.from({ length: count }).map(() =>
+      Array.from({ length: 3 }).map(() => 50 + Math.random() * 40)
+    ),
+    [count]
+  );
   
   const baseStyle: React.CSSProperties = {
     background: `linear-gradient(90deg, ${baseColor} 0%, ${shimmerColor} 50%, ${baseColor} 100%)`,
@@ -100,7 +115,7 @@ export function SkeletonLoader({
       case 'list':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {Array.from({ length: count }).map((_, i) => (
+            {listWidths.map((widths, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div
                   style={{
@@ -115,14 +130,14 @@ export function SkeletonLoader({
                   <div
                     style={{
                       ...baseStyle,
-                      width: `${60 + Math.random() * 30}%`,
+                      width: `${widths.nameWidth}%`,
                       height: 14,
                     }}
                   />
                   <div
                     style={{
                       ...baseStyle,
-                      width: `${40 + Math.random() * 20}%`,
+                      width: `${widths.subtitleWidth}%`,
                       height: 12,
                     }}
                   />
@@ -149,15 +164,15 @@ export function SkeletonLoader({
               ))}
             </div>
             {/* Rows */}
-            {Array.from({ length: count }).map((_, i) => (
+            {tableWidths.map((rowWidths, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                {[1, 2, 3].map((j) => (
+                {rowWidths.map((cellWidth, j) => (
                   <div
                     key={j}
                     style={{
                       ...baseStyle,
                       height: 14,
-                      width: `${50 + Math.random() * 40}%`,
+                      width: `${cellWidth}%`,
                     }}
                   />
                 ))}

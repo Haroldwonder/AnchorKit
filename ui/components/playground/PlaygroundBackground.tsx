@@ -1,12 +1,21 @@
 interface PlaygroundBackgroundProps {
   dark: boolean;
   neon: string;
-  tick: number;
 }
 
-export function PlaygroundBackground({ dark: D, neon, tick }: PlaygroundBackgroundProps) {
+export function PlaygroundBackground({ dark: D, neon }: PlaygroundBackgroundProps) {
   return (
     <>
+      <style>{`
+        @keyframes playground-scanline-sweep {
+          from { top: -10%; }
+          to { top: 110%; }
+        }
+        .playground-scanline-sweep { animation: playground-scanline-sweep 8s linear infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .playground-scanline-sweep { animation: none; }
+        }
+      `}</style>
       {/* Grid background */}
       <div
         style={{
@@ -70,14 +79,13 @@ export function PlaygroundBackground({ dark: D, neon, tick }: PlaygroundBackgrou
             }}
           />
           <div
+            className="playground-scanline-sweep"
             style={{
               position: "absolute",
               left: 0,
               right: 0,
               height: 80,
-              top: `${(tick / 200) * 120 - 10}%`,
               background: `linear-gradient(transparent,${neon}06,transparent)`,
-              transition: "top 0.04s linear",
             }}
           />
         </div>

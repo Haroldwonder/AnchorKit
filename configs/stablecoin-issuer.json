@@ -13,35 +13,32 @@
         "address": "GBAA5XKQC3KVDPD5OS3CHJJ24SB3BX7GI7XBXKNNCKQVPQVX6S3VT5O",
         "description": "Independent auditor verifying reserve adequacy",
         "endpoint": "https://auditor.example.com/reserves",
-        "role": "reserve-verifier",
-        "enabled": true,
-        "contact_email": "audit@example.com"
+        "role": "attestor",
+        "enabled": true
       },
       {
         "name": "collateral-manager",
         "address": "GBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
         "description": "Manages collateral positions and liquidations",
         "endpoint": "https://collateral-mgmt.example.com/positions",
-        "role": "collateral-custodian",
-        "enabled": true,
-        "contact_email": "collateral@example.com"
+        "role": "attestor",
+        "enabled": true
       },
       {
         "name": "treasury-manager",
         "address": "GBYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
         "description": "Authorizes mint, burn, and redeemable operations",
-        "role": "treasury-operator",
-        "enabled": true,
-        "contact_email": "treasury@example.com"
+        "endpoint": "https://treasury-ops.example.com/authorize",
+        "role": "attestor",
+        "enabled": true
       },
       {
         "name": "risk-monitor",
         "address": "GBZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
         "description": "Continuous monitoring of stablecoin risk parameters",
         "endpoint": "https://risk-system.example.com/monitor",
-        "role": "risk-analyst",
-        "enabled": true,
-        "contact_email": "risk@example.com"
+        "role": "attestor",
+        "enabled": true
       }
     ]
   },

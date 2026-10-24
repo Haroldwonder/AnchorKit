@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 
 import './themes.css';
+import './AnchorPlayground.responsive.css';
 import { useTheme } from '../hooks/useTheme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -545,8 +546,8 @@ const SendIcon = () => (
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function AnchorPlayground() {
-  const sysDark = useTheme();
-  const [dark, setDark] = useState(sysDark);
+  const [manualDark, setManualDark] = useState<boolean | undefined>(undefined);
+  const dark = useTheme(manualDark);
   const [domain, setDomain] = useState("testanchor.stellar.org");
   const [activeSEP, setActiveSEP] = useState<SEPProtocol>(SEP_PROTOCOLS[0]);
   const [activeEp, setActiveEp] = useState<Endpoint>(
@@ -564,14 +565,8 @@ export default function AnchorPlayground() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [tab, setTab] = useState<"response" | "history">("response");
   const [copied, setCopied] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const responseRef = useRef<HTMLDivElement>(null);
-
-  // Pulsing scan line for dark mode
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 200), 40);
-    return () => clearInterval(id);
-  }, []);
 
   const neon = SEP_HEX[activeSEP.color].neon;
   const neonDim = SEP_HEX[activeSEP.color].dim;
@@ -699,12 +694,9 @@ export default function AnchorPlayground() {
     >
       {/* ── Grid bg ── */}
       <div
+        data-decorative-fixed="true"
         style={{
-          position: "fixed",
-          inset: 0,
-          pointerEvents: "none",
           backgroundImage: `linear-gradient(${D ? "rgba(80,120,255,0.04)" : "rgba(60,100,200,0.05)"} 1px, transparent 1px), linear-gradient(90deg, ${D ? "rgba(80,120,255,0.04)" : "rgba(60,100,200,0.05)"} 1px, transparent 1px)`,
-          backgroundSize: "48px 48px",
         }}
       />
 
@@ -760,14 +752,13 @@ export default function AnchorPlayground() {
             }}
           />
           <div
+            className="playground-scanline-sweep"
             style={{
               position: "absolute",
               left: 0,
               right: 0,
               height: 80,
-              top: `${(tick / 200) * 120 - 10}%`,
               background: `linear-gradient(transparent,${neon}06,transparent)`,
-              transition: "top 0.04s linear",
             }}
           />
         </div>
@@ -833,36 +824,33 @@ export default function AnchorPlayground() {
 
       {/* ═══ HEADER ═══ */}
       <header
+        data-playground-header="true"
         style={{
-          position: "relative",
-          zIndex: 10,
           background: D ? "rgba(5,8,16,0.95)" : "rgba(255,255,255,0.95)",
-          backdropFilter: "blur(16px)",
-          borderBottom: `1px solid ${borderCol}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 24px",
-          flexShrink: 0,
         }}
       >
         {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
+        <div data-playground-header-left="true">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            data-playground-sidebar-toggle="true"
             style={{
-              position: "relative",
-              width: 38,
-              height: 38,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              background: D ? "rgba(0,0,0,0.3)" : "rgba(240,244,255,0.6)",
+              color: textCol,
+              cursor: "pointer",
+            }}
+            title="Toggle sidebar"
+          >
+            ☰
+          </button>
+          <div
+            data-logo-icon="true"
+            style={{
               border: `1px solid ${neon}`,
-              borderRadius: 8,
               background: neonDim,
               boxShadow: D
                 ? `0 0 18px ${neon}35, inset 0 0 12px ${neon}08`
                 : "none",
-              transition: "all 0.4s",
             }}
           >
             <span style={{ fontSize: 18 }}>⚓</span>
@@ -891,44 +879,27 @@ export default function AnchorPlayground() {
           </div>
           <div>
             <div
+              data-logo-text="true"
               style={{
-                fontSize: 13,
-                fontWeight: 700,
-                letterSpacing: "0.18em",
                 color: neon,
                 textShadow: D ? `0 0 22px ${neon}70` : "none",
-                transition: "all 0.4s",
-                textTransform: "uppercase",
               }}
             >
               Anchor // Playground
             </div>
-            <div
-              style={{
-                fontSize: 9,
-                letterSpacing: "0.22em",
-                color: mutedCol,
-                textTransform: "uppercase",
-              }}
-            >
+            <div data-logo-subtext="true">
               Stellar SEP Protocol Tester
             </div>
           </div>
         </div>
 
         {/* Right */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div data-playground-header-right="true">
           {/* Status pill */}
           <div
+            data-playground-status-pill="true"
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 12px",
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
               background: D ? "rgba(0,0,0,0.3)" : "rgba(240,244,255,0.6)",
-              fontSize: 10,
               color: mutedCol,
             }}
           >
@@ -953,21 +924,14 @@ export default function AnchorPlayground() {
               LIVE
             </span>
             <span style={{ color: borderCol }}>·</span>
-            <span
-              style={{
-                maxWidth: 160,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
+            <span data-status-domain="true">
               {domain || "—"}
             </span>
           </div>
 
           {/* Dark/Light toggle */}
           <button
-            onClick={() => setDark((d) => !d)}
+            onClick={() => setManualDark((prev) => (prev === undefined ? !dark : !prev))}
             style={{
               display: "flex",
               alignItems: "center",
@@ -995,44 +959,19 @@ export default function AnchorPlayground() {
 
       {/* ═══ BODY ═══ */}
       <div
-        style={{
-          position: "relative",
-          zIndex: 10,
-          flex: 1,
-          display: "flex",
-          overflow: "hidden",
-        }}
+        data-playground-container="true"
       >
         {/* ═══ SIDEBAR ═══ */}
         <aside
+          data-playground-sidebar="true"
+          data-open={sidebarOpen ? "true" : "false"}
           style={{
-            width: 300,
-            flexShrink: 0,
-            display: "flex",
-            flexDirection: "column",
-            borderRight: `1px solid ${borderCol}`,
             background: panelBg,
-            backdropFilter: "blur(12px)",
-            overflow: "hidden",
           }}
         >
           {/* Domain */}
-          <div
-            style={{
-              padding: "16px 16px 14px",
-              borderBottom: `1px solid ${borderCol}`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: "0.2em",
-                color: mutedCol,
-                textTransform: "uppercase",
-                marginBottom: 8,
-              }}
-            >
+          <div data-sidebar-section="true">
+            <div data-sidebar-label="true">
               ◈ Anchor Domain
             </div>
             <div
@@ -1046,19 +985,14 @@ export default function AnchorPlayground() {
               }}
             >
               <span
+                data-domain-prefix="true"
                 style={{
-                  padding: "9px 10px",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "0.1em",
-                  color: neon,
-                  borderRight: `1px solid ${inputBord}`,
-                  background: D ? "rgba(0,0,0,0.35)" : "rgba(230,236,250,0.5)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                https://
-              </span>
+                color: neon,
+                background: D ? "rgba(0,0,0,0.35)" : "rgba(230,236,250,0.5)",
+              }}
+            >
+              https://
+            </span>
               <input
                 style={{
                   flex: 1,
@@ -1078,22 +1012,8 @@ export default function AnchorPlayground() {
           </div>
 
           {/* JWT */}
-          <div
-            style={{
-              padding: "12px 16px 14px",
-              borderBottom: `1px solid ${borderCol}`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: "0.2em",
-                color: mutedCol,
-                textTransform: "uppercase",
-                marginBottom: 8,
-              }}
-            >
+          <div data-sidebar-section="true">
+            <div data-sidebar-label="true">
               ◈ JWT Token{" "}
               <span
                 style={{ fontWeight: 400, color: D ? "#23334d" : "#aab8cc" }}
@@ -1121,49 +1041,21 @@ export default function AnchorPlayground() {
           </div>
 
           {/* SEP selector */}
-          <div
-            style={{
-              padding: "12px 16px 14px",
-              borderBottom: `1px solid ${borderCol}`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: "0.2em",
-                color: mutedCol,
-                textTransform: "uppercase",
-                marginBottom: 10,
-              }}
-            >
+          <div data-sidebar-section="true">
+            <div data-sidebar-label="true">
               ◈ SEP Protocol
             </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 6,
-              }}
-            >
+            <div data-sep-grid="true">
               {SEP_PROTOCOLS.map((sep) => {
                 const isActive = sep.id === activeSEP.id;
                 const sc = SEP_HEX[sep.color];
                 return (
                   <button
                     key={sep.id}
+                    data-sep-button="true"
                     onClick={() => selectSEP(sep)}
                     style={{
-                      position: "relative",
-                      padding: "8px 4px",
-                      borderRadius: 6,
-                      fontSize: 9,
-                      fontWeight: 700,
-                      letterSpacing: "0.12em",
-                      textTransform: "uppercase",
                       cursor: "pointer",
-                      transition: "all 0.2s",
-                      fontFamily: "inherit",
                       border: `1px solid ${isActive ? sc.neon : D ? "#18243d" : "#ccd4e8"}`,
                       background: isActive
                         ? sc.dim
@@ -1229,23 +1121,13 @@ export default function AnchorPlayground() {
 
           {/* Endpoints */}
           <div
+            data-sidebar-section="true"
             style={{
-              padding: "12px 16px",
-              borderBottom: `1px solid ${borderCol}`,
               flex: 1,
               overflowY: "auto",
             }}
           >
-            <div
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: "0.2em",
-                color: mutedCol,
-                textTransform: "uppercase",
-                marginBottom: 10,
-              }}
-            >
+            <div data-sidebar-label="true">
               ◈ Endpoint
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1258,15 +1140,10 @@ export default function AnchorPlayground() {
                 return (
                   <button
                     key={ep.id}
+                    data-endpoint-button="true"
                     onClick={() => selectEp(ep)}
                     style={{
-                      position: "relative",
-                      textAlign: "left",
-                      padding: "9px 10px 9px 14px",
-                      borderRadius: 6,
                       cursor: "pointer",
-                      transition: "all 0.15s",
-                      fontFamily: "inherit",
                       border: `1px solid ${isActive ? neon + "55" : D ? "#18243d" : "#ccd4e8"}`,
                       background: isActive
                         ? neonDim
@@ -1365,26 +1242,16 @@ export default function AnchorPlayground() {
           {/* Params */}
           {activeEp.params.length > 0 && (
             <div
+              data-sidebar-section="true"
               style={{
-                padding: "12px 16px",
-                borderBottom: `1px solid ${borderCol}`,
                 maxHeight: 210,
                 overflowY: "auto",
               }}
             >
-              <div
-                style={{
-                  fontSize: 9,
-                  fontWeight: 700,
-                  letterSpacing: "0.2em",
-                  color: mutedCol,
-                  textTransform: "uppercase",
-                  marginBottom: 10,
-                }}
-              >
+              <div data-sidebar-label="true">
                 ◈ Parameters
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div data-params-container="true">
                 {activeEp.params.map((p) => (
                   <div key={p.key}>
                     <div
@@ -1396,19 +1263,7 @@ export default function AnchorPlayground() {
                       )}
                     </div>
                     <input
-                      style={{
-                        width: "100%",
-                        padding: "7px 10px",
-                        fontSize: 11,
-                        background: inputBg,
-                        border: `1px solid ${inputBord}`,
-                        borderRadius: 5,
-                        outline: "none",
-                        color: textCol,
-                        fontFamily: "inherit",
-                        boxSizing: "border-box",
-                        transition: "border-color 0.2s",
-                      }}
+                      data-param-input="true"
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = neon + "70";
                         e.currentTarget.style.boxShadow = `0 0 0 2px ${neon}18`;
@@ -1435,25 +1290,11 @@ export default function AnchorPlayground() {
           {/* Send btn */}
           <div style={{ padding: 16 }}>
             <button
+              data-send-button="true"
               onClick={sendRequest}
               disabled={loading || !domain}
               style={{
-                width: "100%",
-                padding: "13px 0",
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                fontFamily: "inherit",
                 cursor: loading || !domain ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                position: "relative",
-                overflow: "hidden",
-                transition: "all 0.25s",
                 border: `1px solid ${loading || !domain ? (D ? "#18243d" : "#ccd4e8") : neon}`,
                 background:
                   loading || !domain
@@ -1532,24 +1373,13 @@ export default function AnchorPlayground() {
         </aside>
 
         {/* ═══ MAIN PANEL ═══ */}
-        <main
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
+        <main data-playground-main="true">
           {/* URL bar */}
           <div
+            data-url-bar="true"
+            data-scrollable="true"
             style={{
-              flexShrink: 0,
-              padding: "10px 20px",
-              borderBottom: `1px solid ${borderCol}`,
               background: D ? "rgba(5,8,16,0.7)" : "rgba(240,244,255,0.7)",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
             }}
           >
             <span
@@ -1685,32 +1515,36 @@ export default function AnchorPlayground() {
 
           {/* Tabs */}
           <div
+            data-tabs="true"
+            role="tablist"
+            aria-label="Response panels"
             style={{
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              padding: "0 20px",
-              borderBottom: `1px solid ${borderCol}`,
               background: D ? "rgba(5,8,16,0.5)" : "rgba(240,244,255,0.5)",
             }}
           >
-            {(["response", "history"] as const).map((t) => (
+            {(["response", "history"] as const).map((t, idx, arr) => (
               <button
                 key={t}
+                id={`tab-${t}`}
+                role="tab"
+                aria-selected={tab === t}
+                aria-controls={`tabpanel-${t}`}
+                tabIndex={tab === t ? 0 : -1}
+                data-tab-button="true"
                 onClick={() => setTab(t)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                    const next = e.key === "ArrowRight"
+                      ? arr[(idx + 1) % arr.length]
+                      : arr[(idx - 1 + arr.length) % arr.length];
+                    setTab(next);
+                    (e.currentTarget.parentElement?.querySelector(`[id="tab-${next}"]`) as HTMLElement)?.focus();
+                  }
+                  if (e.key === "Home") { setTab(arr[0]); (e.currentTarget.parentElement?.querySelector(`[id="tab-${arr[0]}"]`) as HTMLElement)?.focus(); }
+                  if (e.key === "End") { setTab(arr[arr.length - 1]); (e.currentTarget.parentElement?.querySelector(`[id="tab-${arr[arr.length - 1]}"]`) as HTMLElement)?.focus(); }
+                }}
                 style={{
-                  position: "relative",
-                  padding: "11px 16px",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  fontFamily: "inherit",
-                  cursor: "pointer",
-                  border: "none",
-                  background: "transparent",
                   color: tab === t ? neon : mutedCol,
-                  transition: "color 0.2s",
                 }}
               >
                 {t === "response" ? "◉ RESPONSE" : "◎ HISTORY"}
@@ -1747,8 +1581,12 @@ export default function AnchorPlayground() {
 
           {/* Content */}
           <div
+            data-response-area="true"
+            data-scrollable="true"
             ref={responseRef}
-            style={{ flex: 1, overflowY: "auto", padding: 20 }}
+            role="tabpanel"
+            id={`tabpanel-${tab}`}
+            aria-labelledby={`tab-${tab}`}
           >
             {tab === "response" && (
               <>
@@ -2082,20 +1920,9 @@ export default function AnchorPlayground() {
                         )}
                       </div>
                       <button
+                        data-copy-button="true"
                         onClick={copyResponse}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          letterSpacing: "0.12em",
-                          textTransform: "uppercase",
-                          padding: "6px 12px",
-                          borderRadius: 5,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          transition: "all 0.15s",
                           border: `1px solid ${copied ? neon : D ? "#18243d" : "#ccd4e8"}`,
                           color: copied ? neon : mutedCol,
                           background: copied ? neonDim : "transparent",
@@ -2177,13 +2004,9 @@ export default function AnchorPlayground() {
                         </div>
                       </div>
                       <pre
+                        data-code-block="true"
+                        data-scrollable="true"
                         style={{
-                          margin: 0,
-                          padding: "18px 20px",
-                          fontSize: 11,
-                          lineHeight: 1.7,
-                          overflowX: "auto",
-                          maxHeight: "60vh",
                           background: codeBg,
                           color: D ? "#6688aa" : "#445577",
                         }}
@@ -2221,9 +2044,7 @@ export default function AnchorPlayground() {
                     </div>
                   </div>
                 ) : (
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
-                  >
+                  <div data-history-list="true">
                     {history.map((entry, i) => {
                       const sc =
                         SEP_HEX[
@@ -2233,14 +2054,9 @@ export default function AnchorPlayground() {
                       return (
                         <div
                           key={entry.id}
+                          data-history-item="true"
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            padding: "10px 14px",
-                            borderRadius: 7,
                             opacity: 1 - i * 0.03,
-                            transition: "all 0.15s",
                             border: `1px solid ${entry.success ? (D ? "#18243d" : "#ccd4e8") : "rgba(255,51,119,0.25)"}`,
                             background: entry.success
                               ? D
@@ -2382,9 +2198,16 @@ export default function AnchorPlayground() {
 
       {/* CSS keyframes */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes playground-scanline-sweep {
+          from { top: -10%; }
+          to { top: 110%; }
+        }
+        .playground-scanline-sweep { animation: playground-scanline-sweep 8s linear infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .playground-scanline-sweep { animation: none; }
+        }
         @keyframes skeleton-shimmer {
           0% { background-position: 200% 0; }
           100% { background-position: -200% 0; }

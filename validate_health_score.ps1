@@ -79,19 +79,19 @@ if ($contractContent -match "pub fn get_anchor_health_score\(env: Env, anchor: A
     Check-Fail "Function signature incorrect"
 }
 
-if ($contractContent -match "const UPTIME_WEIGHT: u32 = 40") {
+if ($contractContent -match "const UPTIME_WEIGHT: u64 = 40") {
     Check-Pass "UPTIME_WEIGHT constant defined (40%)"
 } else {
     Check-Fail "UPTIME_WEIGHT constant missing or incorrect"
 }
 
-if ($contractContent -match "const REPUTATION_WEIGHT: u32 = 35") {
+if ($contractContent -match "const REPUTATION_WEIGHT: u64 = 35") {
     Check-Pass "REPUTATION_WEIGHT constant defined (35%)"
 } else {
     Check-Fail "REPUTATION_WEIGHT constant missing or incorrect"
 }
 
-if ($contractContent -match "const SPEED_WEIGHT: u32 = 25") {
+if ($contractContent -match "const SPEED_WEIGHT: u64 = 25") {
     Check-Pass "SPEED_WEIGHT constant defined (25%)"
 } else {
     Check-Fail "SPEED_WEIGHT constant missing or incorrect"

@@ -85,19 +85,19 @@ else
 fi
 
 # Check for weight constants
-if grep -q "const UPTIME_WEIGHT: u32 = 40" src/contract.rs; then
+if grep -q "const UPTIME_WEIGHT: u64 = 40" src/contract.rs; then
     check_pass "UPTIME_WEIGHT constant defined (40%)"
 else
     check_fail "UPTIME_WEIGHT constant missing or incorrect"
 fi
 
-if grep -q "const REPUTATION_WEIGHT: u32 = 35" src/contract.rs; then
+if grep -q "const REPUTATION_WEIGHT: u64 = 35" src/contract.rs; then
     check_pass "REPUTATION_WEIGHT constant defined (35%)"
 else
     check_fail "REPUTATION_WEIGHT constant missing or incorrect"
 fi
 
-if grep -q "const SPEED_WEIGHT: u32 = 25" src/contract.rs; then
+if grep -q "const SPEED_WEIGHT: u64 = 25" src/contract.rs; then
     check_pass "SPEED_WEIGHT constant defined (25%)"
 else
     check_fail "SPEED_WEIGHT constant missing or incorrect"

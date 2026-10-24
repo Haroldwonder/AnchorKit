@@ -40,8 +40,8 @@ The Transaction State Tracker supports four transaction states:
 
 ### Storage Options
 
-- **Development Mode**: Uses in-memory cache (`Vec<TransactionStateRecord>`)
-- **Production Mode**: Designed for database persistence (implementation ready for DB integration)
+- Uses an in-memory cache (`Vec<TransactionStateRecord>`) for all operations
+- Suitable for client-side SDK usage; not backed by on-chain Soroban storage
 
 ## API Reference
 
@@ -77,7 +77,7 @@ pub struct TransactionStateRecord {
 
 #### Initialization
 ```rust
-let mut tracker = TransactionStateTracker::new(is_dev_mode);
+let mut tracker = TransactionStateTracker::new();
 ```
 
 #### Create Transaction
@@ -110,11 +110,11 @@ tracker.get_transactions_by_state(state)?;
 // Get all transactions
 tracker.get_all_transactions()?;
 
-// Get cache size (dev mode only)
+// Get cache size
 tracker.cache_size();
 
-// Clear cache (dev mode only)
-tracker.clear_cache()?;
+// Clear cache (requires admin address and Env)
+tracker.clear_cache(&admin, &env)?;
 ```
 
 ## Usage Example
@@ -126,7 +126,7 @@ use anchorkit::{TransactionStateTracker, TransactionState};
 use soroban_sdk::Env;
 
 fn handle_transaction(env: &Env, user: Address) {
-    let mut tracker = TransactionStateTracker::new(true); // dev mode
+    let mut tracker = TransactionStateTracker::new();
     
     // Create a transaction
     let record = tracker.create_transaction(1, user, env)
@@ -149,7 +149,7 @@ fn handle_transaction(env: &Env, user: Address) {
 
 ```rust
 fn handle_failed_transaction(env: &Env, user: Address) {
-    let mut tracker = TransactionStateTracker::new(true);
+    let mut tracker = TransactionStateTracker::new();
     
     tracker.create_transaction(1, user, env).ok();
     tracker.start_transaction(1, env).ok();
@@ -184,22 +184,11 @@ fn monitor_transactions(tracker: &TransactionStateTracker) {
 
 ## Implementation Details
 
-### Memory Cache (Dev Mode)
+### Memory Cache
 
 - Transactions are stored in a `Vec<TransactionStateRecord>`
-- Useful for development and testing
-- Can be cleared with `clear_cache()`
+- All operations are in-memory; data is not persisted across process restarts
 - Access with O(n) complexity for lookups
-
-### Database Mode (Production)
-
-- Framework prepared for database integration
-- In production mode, data would be persisted to permanent storage
-- Supports error handling for database operations
-- Ready to implement with:
-  - Soroban persistent storage
-  - External database integration
-  - Distributed cache (Redis, etc.)
 
 ## State Management Features
 
@@ -262,19 +251,18 @@ To add Transaction State Tracker to your AnchorKit deployment:
 
 1. Update to the latest AnchorKit version
 2. Import the module: `use anchorkit::TransactionStateTracker;`
-3. Initialize tracker: `let tracker = TransactionStateTracker::new(is_dev_mode);`
+3. Initialize tracker: `let tracker = TransactionStateTracker::new();`
 4. Use the API for transaction lifecycle management
 
 ## Performance Considerations
 
-- **Dev Mode**: O(n) for lookups, O(1) for append
-- **Production Mode**: Depends on storage backend implementation
-- **Cache Size**: No built-in limits; clear periodically if needed
-- **Memory Usage**: ~100-200 bytes per transaction record
+- O(n) for lookups, O(1) for append
+- No built-in limits on cache size; call `clear_cache()` periodically if needed
+- Memory usage: ~100-200 bytes per transaction record
 
 ## Security Notes
 
 - Transactions are immutable once created (state transitions only)
 - Initiator address prevents spoofing
 - Error messages are logged but should not contain sensitive data
-- Production mode with database backend should use encryption at rest
+- If persistence is needed, integrate an external storage layer with encryption at rest

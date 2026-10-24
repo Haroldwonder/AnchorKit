@@ -9,6 +9,16 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any
 
+# tomllib is in the standard library from Python 3.11+.
+# For older Pythons install the backport: pip install tomli
+try:
+    import tomllib  # type: ignore[import]
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib  # type: ignore[import,no-redef]
+    except ModuleNotFoundError:
+        tomllib = None  # type: ignore[assignment]
+
 class ValidationError(Exception):
     pass
 
@@ -73,6 +83,12 @@ def validate_attestor(attestor: Dict[str, Any], index: int) -> None:
     endpoint = attestor.get("endpoint", "")
     role = attestor.get("role", "")
     
+    # Check for unknown/extra properties (additionalProperties: false in schema)
+    allowed_fields = {"name", "address", "endpoint", "role", "enabled", "description"}
+    extra_fields = set(attestor.keys()) - allowed_fields
+    if extra_fields:
+        raise ValidationError(f"Attestor {index}: unknown fields: {', '.join(sorted(extra_fields))}")
+    
     if not name or len(name) > 64:
         raise ValidationError(f"Attestor {index}: invalid name length")
     
@@ -89,8 +105,12 @@ def validate_attestor(attestor: Dict[str, Any], index: int) -> None:
     if not endpoint.startswith(("http://", "https://")):
         raise ValidationError(f"Attestor {index} ({name}): endpoint must start with http:// or https://")
     
-    if not role or len(role) > 32:
-        raise ValidationError(f"Attestor {index} ({name}): role must be 1-32 chars")
+    # Validate role against enum from config_schema.json
+    valid_roles = {"kyc-issuer", "transfer-verifier", "compliance-approver", "rate-provider", "attestor"}
+    if not role:
+        raise ValidationError(f"Attestor {index} ({name}): role is required")
+    if role not in valid_roles:
+        raise ValidationError(f"Attestor {index} ({name}): role must be one of {sorted(valid_roles)}, got '{role}'")
 
 def validate_attestors(attestors: List[Dict[str, Any]]) -> None:
     """Validate attestor registry"""
@@ -134,23 +154,75 @@ def validate_json_config(file_path: Path) -> None:
     
     print(f"✓ {file_path.name} is valid")
 
+
+def validate_toml_config(file_path: Path) -> None:
+    """Validate TOML configuration file (same rules as JSON)."""
+    if tomllib is None:
+        raise ValidationError(
+            "TOML support requires Python 3.11+ (tomllib) or the 'tomli' package. "
+            "Install it with: pip install tomli"
+        )
+
+    print(f"Validating {file_path}...")
+
+    with open(file_path, "rb") as f:
+        config = tomllib.load(f)
+
+    validate_required_fields(config)
+
+    if "contract" in config:
+        validate_contract_config(config["contract"])
+
+    if "attestors" in config and "registry" in config["attestors"]:
+        validate_attestors(config["attestors"]["registry"])
+
+    if "sessions" in config:
+        validate_session_config(config["sessions"])
+
+    print(f"✓ {file_path.name} is valid")
+
+
 def main():
-    # Use pathlib for cross-platform path handling
+    # Allow the caller (e.g. `anchorkit config validate <path>`) to override
+    # the default configs/ directory via an environment variable.
+    import os
+    env_path = os.environ.get("ANCHORKIT_CONFIG_PATH")
+
     script_dir = Path(__file__).resolve().parent
-    config_dir = script_dir.joinpath("configs")
-    
-    if not config_dir.exists():
-        print(f"Error: configs directory not found at {config_dir}")
+
+    if env_path:
+        target = Path(env_path)
+        # Relative paths are resolved against the CWD of the caller.
+        if not target.is_absolute():
+            target = Path.cwd() / target
+    else:
+        target = script_dir / "configs"
+
+    if target.is_file():
+        # Single file mode
+        if target.suffix == ".json":
+            json_files = [target]
+            toml_files: List[Path] = []
+        elif target.suffix == ".toml":
+            json_files = []
+            toml_files = [target]
+        else:
+            print(f"Error: {target} is not a JSON or TOML file")
+            sys.exit(1)
+    elif target.is_dir():
+        json_files = list(target.glob("*.json"))
+        toml_files = list(target.glob("*.toml"))
+    else:
+        print(f"Error: path not found: {target}")
         sys.exit(1)
-    
-    json_files = list(config_dir.glob("*.json"))
-    
-    if not json_files:
-        print("No JSON config files found")
+
+    all_files = json_files + toml_files
+    if not all_files:
+        print("No JSON or TOML config files found")
         sys.exit(1)
-    
+
     errors = []
-    
+
     for config_file in json_files:
         try:
             validate_json_config(config_file)
@@ -158,14 +230,22 @@ def main():
             errors.append(f"{config_file.name}: {e}")
         except Exception as e:
             errors.append(f"{config_file.name}: Unexpected error - {e}")
-    
+
+    for config_file in toml_files:
+        try:
+            validate_toml_config(config_file)
+        except ValidationError as e:
+            errors.append(f"{config_file.name}: {e}")
+        except Exception as e:
+            errors.append(f"{config_file.name}: Unexpected error - {e}")
+
     if errors:
         print("\n❌ Validation failed:\n")
         for error in errors:
             print(f"  • {error}")
         sys.exit(1)
-    
-    print(f"\n✅ All {len(json_files)} configuration files are valid")
+
+    print(f"\n✅ All {len(all_files)} configuration file(s) are valid")
 
 if __name__ == "__main__":
     main()

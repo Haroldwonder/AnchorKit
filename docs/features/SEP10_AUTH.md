@@ -1,6 +1,6 @@
 # SEP-10 Authentication Module
 
-> **Location:** This file is the canonical SEP-10 doc (`docs/features/SEP10_AUTH.md`). A short pointer also exists at the repo root as [`SEP10_AUTH.md`](../../SEP10_AUTH.md) for older links.
+> **Location:** This file is the canonical SEP-10 doc (`docs/features/SEP10_AUTH.md`).
 
 ## Overview
 

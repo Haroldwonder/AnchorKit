@@ -1,6 +1,13 @@
 import { configSchema, type Config } from './schema';
 
-function loadConfig(): Config {
+/**
+ * Load and validate the server-side configuration from `process.env`.
+ *
+ * This is intentionally lazy: it must only be invoked from server-side
+ * entry points. Importing this module from a browser bundle must not
+ * touch `process.env` or `process.exit`.
+ */
+export function loadConfig(): Config {
   const result = configSchema.safeParse(process.env);
 
   if (!result.success) {
@@ -23,5 +30,4 @@ function loadConfig(): Config {
   return result.data as Config;
 }
 
-export const config: Config = loadConfig();
 export type { Config };

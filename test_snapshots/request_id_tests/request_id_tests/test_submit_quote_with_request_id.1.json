@@ -40,7 +40,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "8061d81f19fbd5b4dbe0900d4423f6dc50fca6588136fe77bd4bda564c7d67af"
+                  "bytes": "aae83c60ebe92f81ee6affdd507b61e8bf267e1380e55b75c4fcfbdd3702cb69"
                 }
               ]
             }
@@ -62,7 +62,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6ODc0MDB9.AZz9xaOSyK7BqXyUOiD3-OCnDBegngoI6_uzRUlGmN-rOMnKZR1c4TM8pevew9XDmwJ5RfivlNGh8kiEkkESAg"
+                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6ODc0MDB9.jFi5U7iHrnX__gu43nPu0zboUK0E0iZ98b3NiaU_FZXok7ec3h7PH4O9yG7AXWkhSnsnnhOkM8SWwhEtsqzXDA"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -125,7 +125,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "bytes": "1dbf595975a7597010512dc1a625a467"
+                        "bytes": "1dbf595975a7597010512dc1a625a4671d3ebb898cf96400e84709c40a08d608"
                       }
                     }
                   ]
@@ -225,6 +225,175 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "LatestQuote"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "LatestQuote"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": 1
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Quote"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "u64": 1
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Quote"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                    },
+                    {
+                      "u64": 1
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "anchor"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "base_asset"
+                      },
+                      "val": {
+                        "string": "USD"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "fee_percentage"
+                      },
+                      "val": {
+                        "u32": 100
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "maximum_amount"
+                      },
+                      "val": {
+                        "u64": 10000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "minimum_amount"
+                      },
+                      "val": {
+                        "u64": 100
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "quote_asset"
+                      },
+                      "val": {
+                        "string": "USDC"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "quote_id"
+                      },
+                      "val": {
+                        "u64": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "rate"
+                      },
+                      "val": {
+                        "u64": 10000
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "valid_until"
+                      },
+                      "val": {
+                        "u64": 4600
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "Sep10Key"
                 },
                 {
@@ -256,7 +425,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "8061d81f19fbd5b4dbe0900d4423f6dc50fca6588136fe77bd4bda564c7d67af"
+                      "bytes": "aae83c60ebe92f81ee6affdd507b61e8bf267e1380e55b75c4fcfbdd3702cb69"
                     }
                   ]
                 }
@@ -343,7 +512,7 @@
                   "symbol": "Span"
                 },
                 {
-                  "bytes": "1dbf595975a7597010512dc1a625a467"
+                  "bytes": "1dbf595975a7597010512dc1a625a4671d3ebb898cf96400e84709c40a08d608"
                 }
               ]
             },
@@ -363,7 +532,7 @@
                       "symbol": "Span"
                     },
                     {
-                      "bytes": "1dbf595975a7597010512dc1a625a467"
+                      "bytes": "1dbf595975a7597010512dc1a625a4671d3ebb898cf96400e84709c40a08d608"
                     }
                   ]
                 },
@@ -413,7 +582,7 @@
                               "symbol": "id"
                             },
                             "val": {
-                              "bytes": "1dbf595975a7597010512dc1a625a467"
+                              "bytes": "1dbf595975a7597010512dc1a625a4671d3ebb898cf96400e84709c40a08d608"
                             }
                           }
                         ]
@@ -489,6 +658,30 @@
                         },
                         "val": {
                           "u64": 100
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MaxPageSize"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 50
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "QCNT"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": 1
                         }
                       },
                       {
@@ -781,7 +974,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "8061d81f19fbd5b4dbe0900d4423f6dc50fca6588136fe77bd4bda564c7d67af"
+                  "bytes": "aae83c60ebe92f81ee6affdd507b61e8bf267e1380e55b75c4fcfbdd3702cb69"
                 }
               ]
             }
@@ -835,7 +1028,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6ODc0MDB9.AZz9xaOSyK7BqXyUOiD3-OCnDBegngoI6_uzRUlGmN-rOMnKZR1c4TM8pevew9XDmwJ5RfivlNGh8kiEkkESAg"
+                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6ODc0MDB9.jFi5U7iHrnX__gu43nPu0zboUK0E0iZ98b3NiaU_FZXok7ec3h7PH4O9yG7AXWkhSnsnnhOkM8SWwhEtsqzXDA"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -1051,7 +1244,7 @@
                     "symbol": "id"
                   },
                   "val": {
-                    "bytes": "1dbf595975a7597010512dc1a625a467"
+                    "bytes": "1dbf595975a7597010512dc1a625a4671d3ebb898cf96400e84709c40a08d608"
                   }
                 }
               ]
@@ -1096,7 +1289,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "bytes": "1dbf595975a7597010512dc1a625a467"
+                        "bytes": "1dbf595975a7597010512dc1a625a4671d3ebb898cf96400e84709c40a08d608"
                       }
                     }
                   ]
@@ -1172,7 +1365,7 @@
               }
             ],
             "data": {
-              "bytes": "1dbf595975a7597010512dc1a625a467"
+              "bytes": "1dbf595975a7597010512dc1a625a4671d3ebb898cf96400e84709c40a08d608"
             }
           }
         }
@@ -1239,7 +1432,7 @@
                           "symbol": "id"
                         },
                         "val": {
-                          "bytes": "1dbf595975a7597010512dc1a625a467"
+                          "bytes": "1dbf595975a7597010512dc1a625a4671d3ebb898cf96400e84709c40a08d608"
                         }
                       }
                     ]

@@ -6,6 +6,36 @@
  */
 
 // ============================================================================
+// STANDALONE BOOTSTRAP
+// When this file runs outside webhook_monitor.html (e.g. in a Node.js backend
+// test or as a standalone <script>), eventCounter and addEvent must exist.
+// The HTML page declares its own `let eventCounter` and `function addEvent`
+// which will shadow these module-level versions for browser embeds — so this
+// is a safe, non-breaking fallback only.
+// ============================================================================
+
+/** @type {number} Running sequence counter used to stamp each event with a unique id. */
+let eventCounter = 0;
+
+/**
+ * Default addEvent implementation used when the file runs outside
+ * webhook_monitor.html (e.g. in a Node.js process or a unit-test harness).
+ * In the browser page, the page-local addEvent shadows this function.
+ *
+ * @param {{ id: number, type: string, timestamp: string, payload: object }} event
+ */
+/* eslint-disable no-unused-vars */
+function addEvent(event) {
+    // Fallback: emit a structured log line so events are not silently dropped
+    // when running outside the monitor UI.
+    console.log(
+        `[WebhookMonitor] event #${event.id} type=${event.type} ts=${event.timestamp}`,
+        event.payload
+    );
+}
+/* eslint-enable no-unused-vars */
+
+// ============================================================================
 // METHOD 1: WebSocket (Recommended for Real-Time)
 // ============================================================================
 
@@ -82,15 +112,14 @@ class WebhookMonitorWebSocket {
     }
 
     handleWebhookEvent(webhookData) {
-        // Add to monitor (assumes addEvent function exists in webhook_monitor.html)
-        if (typeof addEvent === 'function') {
-            addEvent({
-                id: ++eventCounter,
-                type: webhookData.type,
-                timestamp: webhookData.timestamp || new Date().toISOString(),
-                payload: webhookData.payload
-            });
-        }
+        // eventCounter and addEvent are declared at module scope (see top of file).
+        // When embedded in webhook_monitor.html the page-local versions take over.
+        addEvent({
+            id: ++eventCounter,
+            type: webhookData.type,
+            timestamp: webhookData.timestamp || new Date().toISOString(),
+            payload: webhookData.payload
+        });
     }
 
     disconnect() {
@@ -138,14 +167,12 @@ class WebhookMonitorSSE {
     }
 
     handleWebhookEvent(webhookData) {
-        if (typeof addEvent === 'function') {
-            addEvent({
-                id: ++eventCounter,
-                type: webhookData.type,
-                timestamp: webhookData.timestamp || new Date().toISOString(),
-                payload: webhookData.payload
-            });
-        }
+        addEvent({
+            id: ++eventCounter,
+            type: webhookData.type,
+            timestamp: webhookData.timestamp || new Date().toISOString(),
+            payload: webhookData.payload
+        });
     }
 
     disconnect() {
@@ -224,14 +251,12 @@ class WebhookMonitorPolling {
     }
 
     handleWebhookEvent(webhookData) {
-        if (typeof addEvent === 'function') {
-            addEvent({
-                id: ++eventCounter,
-                type: webhookData.type,
-                timestamp: webhookData.timestamp || new Date().toISOString(),
-                payload: webhookData.payload
-            });
-        }
+        addEvent({
+            id: ++eventCounter,
+            type: webhookData.type,
+            timestamp: webhookData.timestamp || new Date().toISOString(),
+            payload: webhookData.payload
+        });
     }
 
     stop() {
@@ -449,3 +474,24 @@ Replace the simulation code in webhook_monitor.html with:
     });
 </script>
 */
+
+// ============================================================================
+// MODULE EXPORTS
+// Guard with typeof check so this file can still be loaded as a plain browser
+// <script> without errors (browsers have no `module` global).
+// ============================================================================
+
+/* istanbul ignore next */
+if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
+    module.exports = {
+        // Security / sanitization
+        WEBHOOK_PAYLOAD_ALLOWLIST,
+        sanitizeWebhookPayload,
+        // Monitor classes
+        WebhookMonitorWebSocket,
+        WebhookMonitorSSE,
+        WebhookMonitorPolling,
+        // Standalone bootstrap (useful for test harnesses that want to spy on addEvent)
+        addEvent,
+    };
+}

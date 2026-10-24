@@ -41,7 +41,6 @@ fn main() {
         match validate_anchor_domain(domain) {
             Ok(()) => println!("  ✗ {} - Should have failed!", domain),
             Err(_) => println!("  ✓ {} - Correctly rejected", domain),
-            Err(e) => println!("  ? {} - Unexpected error: {:?}", domain, e),
         }
     }
 

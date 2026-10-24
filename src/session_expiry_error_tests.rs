@@ -8,7 +8,7 @@ mod session_expiry_error_tests {
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
     use crate::errors::ErrorCode;
-    use crate::sep10_test_util::{build_sep10_jwt, sign_payload};
+    use crate::sep10_test_util::{build_sep10_jwt, sign_attestation};
     use crate::deterministic_hash::compute_payload_hash;
     use soroban_sdk::Bytes;
     use ed25519_dalek::SigningKey;
@@ -37,7 +37,7 @@ mod session_expiry_error_tests {
         let contract_id = env.register_contract(None, AnchorKitContract);
         let client = AnchorKitContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
         client
     }
 
@@ -46,6 +46,7 @@ mod session_expiry_error_tests {
         let attestor = Address::generate(env);
         let pk = Bytes::from_slice(env, sk.verifying_key().as_bytes());
         client.set_sep10_jwt_verifying_key(&attestor, &pk);
+        client.add_attestation_key(&attestor, &pk);
         let sub = attestor.to_string();
         let mut buf = [0u8; 128];
         let len = sub.len() as usize;
@@ -77,16 +78,9 @@ mod session_expiry_error_tests {
         data.push_back(0x01);
         let hash = compute_payload_hash(&env, &subject, ts, &data);
         let hash_bytes: Bytes = hash.into();
-        let sig = sign_payload(&env, &sk, &hash_bytes);
+        let sig = sign_attestation(&env, &sk, &client.address, &attestor, &subject, ts, &hash_bytes);
 
-        let result = client.try_submit_attestation_with_session(
-            &nonexistent_session_id,
-            &attestor,
-            &subject,
-            &ts,
-            &hash_bytes,
-            &sig,
-        );
+        let result = client.try_submit_attestation_with_session(&nonexistent_session_id, &attestor, &subject, &ts, &hash_bytes, &sig, &None);
         assert!(result.is_err());
         let err = result.unwrap_err().unwrap();
         assert_eq!(err, soroban_sdk::Error::from_contract_error(ErrorCode::SessionNotFound as u32));
@@ -114,16 +108,9 @@ mod session_expiry_error_tests {
         data.push_back(0x02);
         let hash = compute_payload_hash(&env, &subject, ts, &data);
         let hash_bytes: Bytes = hash.into();
-        let sig = sign_payload(&env, &sk, &hash_bytes);
+        let sig = sign_attestation(&env, &sk, &client.address, &attestor, &subject, ts, &hash_bytes);
 
-        let result = client.try_submit_attestation_with_session(
-            &session_id,
-            &attestor,
-            &subject,
-            &ts,
-            &hash_bytes,
-            &sig,
-        );
+        let result = client.try_submit_attestation_with_session(&session_id, &attestor, &subject, &ts, &hash_bytes, &sig, &None);
         assert!(result.is_err());
         let err = result.unwrap_err().unwrap();
         assert_eq!(err, soroban_sdk::Error::from_contract_error(ErrorCode::SessionExpired as u32));
@@ -147,17 +134,10 @@ mod session_expiry_error_tests {
         data.push_back(0x03);
         let hash = compute_payload_hash(&env, &subject, ts, &data);
         let hash_bytes: Bytes = hash.into();
-        let sig = sign_payload(&env, &sk, &hash_bytes);
+        let sig = sign_attestation(&env, &sk, &client.address, &attestor, &subject, ts, &hash_bytes);
 
         // Should succeed without panic
-        let result = client.try_submit_attestation_with_session(
-            &session_id,
-            &attestor,
-            &subject,
-            &ts,
-            &hash_bytes,
-            &sig,
-        );
+        let result = client.try_submit_attestation_with_session(&session_id, &attestor, &subject, &ts, &hash_bytes, &sig, &None);
         assert!(result.is_ok());
     }
 }

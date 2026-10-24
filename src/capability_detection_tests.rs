@@ -7,7 +7,7 @@ mod capability_detection_tests {
 
     use crate::contract::{
         AnchorKitContract, AnchorKitContractClient, ServiceType,
-        SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC,
+        SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES,
     };
     use crate::sep10_test_util::register_attestor_with_sep10;
 
@@ -21,7 +21,7 @@ mod capability_detection_tests {
         let contract_id = env.register_contract(None, AnchorKitContract);
         let client = AnchorKitContractClient::new(env, &contract_id);
         let admin = Address::generate(env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
         (client, admin)
     }
 
@@ -42,10 +42,11 @@ mod capability_detection_tests {
 
     #[test]
     fn test_service_type_values() {
-        assert_eq!(ServiceType::Deposits.as_u32(), SERVICE_DEPOSITS);
-        assert_eq!(ServiceType::Withdrawals.as_u32(), SERVICE_WITHDRAWALS);
-        assert_eq!(ServiceType::Quotes.as_u32(), SERVICE_QUOTES);
-        assert_eq!(ServiceType::KYC.as_u32(), SERVICE_KYC);
+        assert_eq!(ServiceType::Deposits.as_u32(), 1u32);
+        assert_eq!(ServiceType::Withdrawals.as_u32(), 2u32);
+        assert_eq!(ServiceType::Quotes.as_u32(), 3u32);
+        assert_eq!(ServiceType::KYC.as_u32(), 4u32);
+        assert_eq!(ServiceType::ExchangeQuotes.as_u32(), 5u32);
     }
 
     #[test]
@@ -140,5 +141,55 @@ mod capability_detection_tests {
         let (client, admin) = setup(&env);
         let anchor = register(&env, &client, &admin);
         client.get_supported_services(&anchor);
+    }
+
+    #[test]
+    fn test_cache_capabilities_accepts_known_codes() {
+        let env = make_env();
+        let (client, admin) = setup(&env);
+        let anchor = register(&env, &client, &admin);
+
+        let caps = services(&env, &[SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES]);
+        let res = client.try_cache_capabilities(&anchor, &caps);
+        assert!(res.is_ok());
+
+        let stored = client.get_cached_capabilities(&anchor);
+        assert_eq!(stored.len(), 3);
+        assert_eq!(stored.get(0).unwrap(), SERVICE_DEPOSITS);
+        assert_eq!(stored.get(1).unwrap(), SERVICE_WITHDRAWALS);
+        assert_eq!(stored.get(2).unwrap(), SERVICE_QUOTES);
+    }
+
+    #[test]
+    fn test_cache_capabilities_rejects_unknown_code() {
+        let env = make_env();
+        let (client, admin) = setup(&env);
+        let anchor = register(&env, &client, &admin);
+
+        let caps = services(&env, &[SERVICE_DEPOSITS, 99u32]);
+        let res = client.try_cache_capabilities(&anchor, &caps);
+        assert_eq!(res, Err(Ok(Error::InvalidServiceType)));
+    }
+
+    #[test]
+    fn test_cache_capabilities_rejects_duplicate_codes() {
+        let env = make_env();
+        let (client, admin) = setup(&env);
+        let anchor = register(&env, &client, &admin);
+
+        let caps = services(&env, &[SERVICE_DEPOSITS, SERVICE_DEPOSITS]);
+        let res = client.try_cache_capabilities(&anchor, &caps);
+        assert_eq!(res, Err(Ok(Error::InvalidServiceType)));
+    }
+
+    #[test]
+    fn test_cache_capabilities_rejects_empty_list() {
+        let env = make_env();
+        let (client, admin) = setup(&env);
+        let anchor = register(&env, &client, &admin);
+
+        let caps = services(&env, &[]);
+        let res = client.try_cache_capabilities(&anchor, &caps);
+        assert_eq!(res, Err(Ok(Error::InvalidServiceType)));
     }
 }

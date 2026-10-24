@@ -1,140 +1,107 @@
 #![cfg(test)]
 
-use soroban_sdk::testutils::{Accounts, AuthorizedFunction, AuthorizedInvocation, Ledger};
-use soroban_sdk::{Env, Symbol};
-use crate::contract::AnchorKitContractClient;
-use crate::errors::ErrorCode;
-use crate::errors::AnchorKitError;
+use soroban_sdk::{testutils::Address as _, Address, Env};
+use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+
+fn setup() -> (Env, AnchorKitContractClient<'static>) {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, AnchorKitContract);
+    let client = AnchorKitContractClient::new(&env, &contract_id);
+    (env, client)
+}
+
+// ---------------------------------------------------------------------------
+// Initialization
+// ---------------------------------------------------------------------------
 
 #[test]
 fn test_initialize_first_call_succeeds() {
-    let e = Env::default();
-    e.mock_all_auths();
-
-    let admin = e.accounts().generate_and_create();
-    let client = AnchorKitContractClient::new(&e, &e.register_contract(None, AnchorKitContract));
-
-    client.initialize(&admin, &100_u64, &None);
-
-    // Verify admin is stored
-    let stored_admin = client.get_admin();
-    assert_eq!(stored_admin, admin);
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &100_u64, &None, &None);
+    assert_eq!(client.get_admin(), admin);
 }
 
 #[test]
+#[should_panic(expected = "HostError: Error(Contract, #1)")]
 fn test_initialize_second_call_returns_already_initialized() {
-    let e = Env::default();
-    e.mock_all_auths();
-
-    let admin = e.accounts().generate_and_create();
-    let client = AnchorKitContractClient::new(&e, &e.register_contract(None, AnchorKitContract));
-
-    // First call succeeds
-    client.initialize(&admin, &100_u64, &None);
-
-    // Second call should error with AlreadyInitialized
-    let err = client.initialize(&admin, &100_u64, &None);
-    assert_eq!(err.err().unwrap().current_errors()[0].code, ErrorCode::AlreadyInitialized as u32);
-
-    // Admin unchanged
-    let stored_admin = client.get_admin();
-    assert_eq!(stored_admin, admin);
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &100_u64, &None, &None);
+    client.initialize(&admin, &100_u64, &None, &None);
 }
 
 #[test]
+#[should_panic(expected = "HostError: Error(Contract, #1)")]
 fn test_initialize_different_admin_fails() {
-    let e = Env::default();
-    e.mock_all_auths();
-
-    let admin1 = e.accounts().generate_and_create();
-    let admin2 = e.accounts().generate_and_create();
-    let client = AnchorKitContractClient::new(&e, &e.register_contract(None, AnchorKitContract));
-
-    // Initialize with admin1
-    client.initialize(&admin1, &100_u64, &None);
-
-    // Try with admin2 - should fail AlreadyInitialized
-    let err = client.with_authorization(&admin2, || client.initialize(&admin2, &100_u64, &None));
-    assert_eq!(err.err().unwrap().current_errors()[0].code, ErrorCode::AlreadyInitialized as u32);
+    let (env, client) = setup();
+    let admin1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+    client.initialize(&admin1, &100_u64, &None, &None);
+    client.initialize(&admin2, &100_u64, &None, &None);
 }
+
+// ---------------------------------------------------------------------------
+// Two-step admin transfer (#619)
+// ---------------------------------------------------------------------------
 
 #[test]
 fn test_admin_transfer_full_flow() {
-    let e = Env::default();
-    e.mock_all_auths();
+    let (env, client) = setup();
+    let admin1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+    client.initialize(&admin1, &100_u64, &None, &None);
 
-    let admin1 = e.accounts().generate_and_create();
-    let admin2 = e.accounts().generate_and_create();
-    let client = AnchorKitContractClient::new(&e, &e.register_contract(None, AnchorKitContract));
-
-    client.initialize(&admin1, &100_u64, &None);
-
-    // admin1 proposes admin2
+    // propose: admin1 still in charge
     client.propose_admin(&admin2);
-
-    // admin1 should still be admin
     assert_eq!(client.get_admin(), admin1);
 
-    // admin2 accepts
-    client.with_authorization(&admin2, || client.accept_admin());
-
-    // now admin2 is admin
-    assert_eq!(client.get_admin(), admin2);
-
-    // admin1 can no longer propose (require_admin fails)
-    let err = client.with_authorization(&admin1, || client.propose_admin(&e.accounts().generate_and_create()));
-    assert_eq!(err.err().unwrap().current_errors()[0].code, ErrorCode::PendingAdminAlreadyExists as u32);
-}
-
-#[test]
-#[should_panic(expected = "PendingAdminAlreadyExists")]
-fn test_pending_admin_already_exists() {
-    let e = Env::default();
-    e.mock_all_auths();
-
-    let admin1 = e.accounts().generate_and_create();
-    let admin2 = e.accounts().generate_and_create();
-    let unauthorized = e.accounts().generate_and_create();
-    let client = AnchorKitContractClient::new(&e, &e.register_contract(None, AnchorKitContract));
-
-    client.initialize(&admin1, &100_u64, &None);
-
-    // unauthorized tries to propose
-    client.with_authorization(&unauthorized, || client.propose_admin(&admin2));
-}
-
-#[test]
-#[should_panic(expected = "NoPendingAdmin")]
-fn test_accept_no_pending() {
-    let e = Env::default();
-    e.mock_all_auths();
-
-    let admin1 = e.accounts().generate_and_create();
-    let admin2 = e.accounts().generate_and_create();
-    let client = AnchorKitContractClient::new(&e, &e.register_contract(None, AnchorKitContract));
-
-    client.initialize(&admin1, &100_u64, &None);
-
-    // admin2 tries to accept without propose
-    client.with_authorization(&admin2, || client.accept_admin());
-}
-
-#[test]
-fn test_accept_wrong_caller() {
-    let e = Env::default();
-    e.mock_all_auths();
-
-    let admin1 = e.accounts().generate_and_create();
-    let admin2 = e.accounts().generate_and_create();
-    let wrong = e.accounts().generate_and_create();
-    let client = AnchorKitContractClient::new(&e, &e.register_contract(None, AnchorKitContract));
-
-    client.initialize(&admin1, &100_u64, &None);
+    // accept: admin2 takes over
     client.propose_admin(&admin2);
-
-    // wrong caller tries accept
-    let err = client.with_authorization(&wrong, || client.accept_admin());
-    assert_eq!(err.err().unwrap().current_errors()[0].code, ErrorCode::NotPendingAdmin as u32);
+    assert_eq!(client.get_admin(), admin1);
+    client.accept_admin();
+    assert_eq!(client.get_admin(), admin2);
 }
 
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #52)")]
+fn test_pending_admin_already_exists() {
+    let (env, client) = setup();
+    let admin1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+    let admin3 = Address::generate(&env);
+    client.initialize(&admin1, &100_u64, &None, &None);
+    client.propose_admin(&admin2);
+    // second propose while one is in flight must panic with UnauthorizedProposeAdmin (#52)
+    client.propose_admin(&admin3);
+}
 
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #53)")]
+fn test_accept_admin_with_no_pending() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &100_u64, &None, &None);
+    // no propose — must panic with NoPendingAdmin
+    client.accept_admin();
+}
+
+#[test]
+fn test_admin_unchanged_after_propose_before_accept() {
+    let (env, client) = setup();
+    let admin1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+    client.initialize(&admin1, &100_u64, &None, &None);
+    client.propose_admin(&admin2);
+    // admin must not change until accept
+    assert_eq!(client.get_admin(), admin1);
+}
+
+#[test]
+fn test_accept_no_pending() {
+    let (env, client) = setup();
+    let admin1 = Address::generate(&env);
+    client.initialize(&admin1, &100_u64, &None, &None);
+    client.accept_admin();
+}

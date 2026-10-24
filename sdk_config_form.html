@@ -81,25 +81,6 @@
             margin-top: 4px;
         }
 
-        .headers-section {
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            padding: 16px;
-            background: #f7fafc;
-        }
-
-        .header-item {
-            display: grid;
-            grid-template-columns: 1fr 1fr auto;
-            gap: 8px;
-            margin-bottom: 12px;
-            align-items: start;
-        }
-
-        .header-item:last-child {
-            margin-bottom: 0;
-        }
-
         .btn {
             padding: 10px 16px;
             border: none;
@@ -118,29 +99,6 @@
 
         .btn-primary:hover {
             background: #3182ce;
-        }
-
-        .btn-secondary {
-            background: #edf2f7;
-            color: #2d3748;
-            padding: 8px 12px;
-            font-size: 13px;
-        }
-
-        .btn-secondary:hover {
-            background: #e2e8f0;
-        }
-
-        .btn-remove {
-            background: #fed7d7;
-            color: #c53030;
-            padding: 8px 12px;
-            font-size: 13px;
-        }
-
-        .btn-remove:hover {
-            background: #fc8181;
-            color: white;
         }
 
         .error {
@@ -201,18 +159,18 @@
             </div>
 
             <div class="form-group">
-                <label for="anchorDomain">Anchor Domain <span class="required">*</span></label>
+                <label for="defaultAnchor">Default Anchor <span class="required">*</span></label>
                 <input 
                     type="text" 
-                    id="anchorDomain" 
-                    name="anchorDomain" 
-                    placeholder="example.com"
+                    id="defaultAnchor" 
+                    name="defaultAnchor" 
+                    placeholder="https://testanchor.stellar.org"
                     required
                     minlength="3"
-                    maxlength="253"
+                    maxlength="256"
                 />
-                <div class="help-text">Domain of the anchor service (3-253 characters)</div>
-                <div class="error" id="domainError">Invalid domain format</div>
+                <div class="help-text">Default anchor URL (3-256 characters, HTTPS only)</div>
+                <div class="error" id="domainError">Invalid anchor URL (must use HTTPS)</div>
             </div>
 
             <div class="form-group">
@@ -222,20 +180,25 @@
                     id="timeout" 
                     name="timeout" 
                     value="30"
-                    min="1"
+                    min="5"
                     max="300"
                     required
                 />
-                <div class="help-text">Request timeout in seconds (1-300)</div>
+                <div class="help-text">Request timeout in seconds (5-300)</div>
             </div>
 
             <div class="form-group">
-                <label>Custom Headers</label>
-                <div class="headers-section">
-                    <div id="headersContainer"></div>
-                    <button type="button" class="btn btn-secondary" onclick="addHeader()">+ Add Header</button>
-                </div>
-                <div class="help-text">Add custom HTTP headers (max 20)</div>
+                <label for="retryAttempts">Retry Attempts <span class="required">*</span></label>
+                <input 
+                    type="number" 
+                    id="retryAttempts" 
+                    name="retryAttempts" 
+                    value="3"
+                    min="0"
+                    max="10"
+                    required
+                />
+                <div class="help-text">Number of retry attempts (0-10)</div>
             </div>
 
             <button type="submit" class="btn btn-primary">Generate Configuration</button>
@@ -248,57 +211,20 @@
     </div>
 
     <script>
-        let headerCount = 0;
-
-        function addHeader() {
-            if (headerCount >= 20) {
-                alert('Maximum 20 headers allowed');
-                return;
-            }
-
-            const container = document.getElementById('headersContainer');
-            const headerItem = document.createElement('div');
-            headerItem.className = 'header-item';
-            headerItem.id = `header-${headerCount}`;
-            
-            headerItem.innerHTML = `
-                <input 
-                    type="text" 
-                    name="headerKey[]" 
-                    placeholder="Header name"
-                    maxlength="64"
-                />
-                <input 
-                    type="text" 
-                    name="headerValue[]" 
-                    placeholder="Header value"
-                    maxlength="1024"
-                />
-                <button type="button" class="btn btn-remove" onclick="removeHeader(${headerCount})">Remove</button>
-            `;
-            
-            container.appendChild(headerItem);
-            headerCount++;
-        }
-
-        function removeHeader(id) {
-            const element = document.getElementById(`header-${id}`);
-            if (element) {
-                element.remove();
+        function validateAnchor(anchor) {
+            try {
+                const url = new URL(anchor);
+                return url.protocol === 'https:' && url.hostname.length > 0 && anchor.length >= 3 && anchor.length <= 256;
+            } catch {
+                return false;
             }
         }
 
-        function validateDomain(domain) {
-            // Basic domain validation
-            const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]$/;
-            return domainRegex.test(domain) && domain.length >= 3 && domain.length <= 253;
-        }
-
-        document.getElementById('anchorDomain').addEventListener('blur', function() {
-            const domain = this.value;
+        document.getElementById('defaultAnchor').addEventListener('blur', function() {
+            const anchor = this.value.trim();
             const errorElement = document.getElementById('domainError');
             
-            if (domain && !validateDomain(domain)) {
+            if (anchor && !validateAnchor(anchor)) {
                 errorElement.classList.add('show');
                 this.style.borderColor = '#e53e3e';
             } else {
@@ -311,38 +237,22 @@
             e.preventDefault();
 
             const network = document.getElementById('network').value;
-            const anchorDomain = document.getElementById('anchorDomain').value;
-            const timeout = parseInt(document.getElementById('timeout').value);
+            const defaultAnchor = document.getElementById('defaultAnchor').value.trim();
+            const timeout = parseInt(document.getElementById('timeout').value, 10);
+            const retryAttempts = parseInt(document.getElementById('retryAttempts').value, 10);
 
-            // Validate domain
-            if (!validateDomain(anchorDomain)) {
+            // Validate default anchor
+            if (!validateAnchor(defaultAnchor)) {
                 document.getElementById('domainError').classList.add('show');
                 return;
             }
 
-            // Collect headers
-            const headerKeys = document.getElementsByName('headerKey[]');
-            const headerValues = document.getElementsByName('headerValue[]');
-            const headers = [];
-
-            for (let i = 0; i < headerKeys.length; i++) {
-                const key = headerKeys[i].value.trim();
-                const value = headerValues[i].value.trim();
-                
-                if (key) {
-                    headers.push({
-                        key: key,
-                        value: value
-                    });
-                }
-            }
-
-            // Create config object
+            // Create config object matching SdkConfig struct
             const config = {
                 network: network === 'testnet' ? 'Testnet' : 'Mainnet',
-                anchor_domain: anchorDomain,
                 timeout_seconds: timeout,
-                custom_headers: headers
+                retry_attempts: retryAttempts,
+                default_anchor: defaultAnchor
             };
 
             // Display output
@@ -353,9 +263,6 @@
             // Scroll to output
             document.getElementById('output').scrollIntoView({ behavior: 'smooth' });
         });
-
-        // Add one header by default
-        addHeader();
     </script>
 </body>
 </html>

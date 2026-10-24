@@ -91,7 +91,7 @@
   "ledger": {
     "protocol_version": 21,
     "sequence_number": 0,
-    "timestamp": 0,
+    "timestamp": 1000000,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
     "min_persistent_entry_ttl": 4096,
@@ -140,7 +140,7 @@
                         "symbol": "created_at"
                       },
                       "val": {
-                        "u64": 0
+                        "u64": 1000000
                       }
                     },
                     {
@@ -148,7 +148,7 @@
                         "symbol": "expires_at"
                       },
                       "val": {
-                        "u64": 86400
+                        "u64": 1086400
                       }
                     },
                     {
@@ -189,7 +189,7 @@
             },
             "ext": "v0"
           },
-          1555200
+          17280
         ]
       ],
       [
@@ -234,7 +234,7 @@
                         "symbol": "created_at"
                       },
                       "val": {
-                        "u64": 0
+                        "u64": 1000000
                       }
                     },
                     {
@@ -242,7 +242,7 @@
                         "symbol": "expires_at"
                       },
                       "val": {
-                        "u64": 86400
+                        "u64": 1086400
                       }
                     },
                     {
@@ -283,7 +283,7 @@
             },
             "ext": "v0"
           },
-          1555200
+          17280
         ]
       ],
       [
@@ -328,7 +328,7 @@
                         "symbol": "created_at"
                       },
                       "val": {
-                        "u64": 0
+                        "u64": 1000000
                       }
                     },
                     {
@@ -336,7 +336,7 @@
                         "symbol": "expires_at"
                       },
                       "val": {
-                        "u64": 86400
+                        "u64": 1086400
                       }
                     },
                     {
@@ -377,142 +377,7 @@
             },
             "ext": "v0"
           },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "SessionNonce"
-                },
-                {
-                  "u64": 0
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "SessionNonce"
-                    },
-                    {
-                      "u64": 0
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "u64": 6775509081846337106
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "SessionNonce"
-                },
-                {
-                  "u64": 1
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "SessionNonce"
-                    },
-                    {
-                      "u64": 1
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "u64": 16898274228234171706
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "SessionNonce"
-                },
-                {
-                  "u64": 2
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "SessionNonce"
-                    },
-                    {
-                      "u64": 2
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "u64": 1881330075107078953
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
+          17280
         ]
       ],
       [
@@ -560,6 +425,18 @@
                         },
                         "val": {
                           "u64": 100
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MaxPageSize"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 50
                         }
                       },
                       {
@@ -874,7 +751,7 @@
                     "symbol": "timestamp"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 }
               ]
@@ -974,7 +851,7 @@
                     "symbol": "timestamp"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 }
               ]
@@ -1074,7 +951,7 @@
                     "symbol": "timestamp"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 }
               ]
@@ -1155,7 +1032,7 @@
                     "symbol": "created_at"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 },
                 {
@@ -1163,7 +1040,7 @@
                     "symbol": "expires_at"
                   },
                   "val": {
-                    "u64": 86400
+                    "u64": 1086400
                   }
                 },
                 {
@@ -1253,7 +1130,7 @@
                     "symbol": "created_at"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 },
                 {
@@ -1261,7 +1138,7 @@
                     "symbol": "expires_at"
                   },
                   "val": {
-                    "u64": 86400
+                    "u64": 1086400
                   }
                 },
                 {
@@ -1351,7 +1228,7 @@
                     "symbol": "created_at"
                   },
                   "val": {
-                    "u64": 0
+                    "u64": 1000000
                   }
                 },
                 {
@@ -1359,7 +1236,7 @@
                     "symbol": "expires_at"
                   },
                   "val": {
-                    "u64": 86400
+                    "u64": 1086400
                   }
                 },
                 {

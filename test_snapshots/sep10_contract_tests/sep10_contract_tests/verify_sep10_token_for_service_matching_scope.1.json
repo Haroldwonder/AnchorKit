@@ -40,7 +40,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "47f640cb1527d8cca4cf77c3d0c89dd42aa31368816dddebaa2904911ba77333"
+                  "bytes": "7f1c04a777d0fac56ecbba98949c3e56e8454bb49d5b02bd3f06bbbe28b8c882"
                 }
               ]
             }
@@ -99,7 +99,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "47f640cb1527d8cca4cf77c3d0c89dd42aa31368816dddebaa2904911ba77333"
+                      "bytes": "7f1c04a777d0fac56ecbba98949c3e56e8454bb49d5b02bd3f06bbbe28b8c882"
                     }
                   ]
                 }
@@ -155,6 +155,18 @@
                         },
                         "val": {
                           "u64": 100
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MaxPageSize"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 50
                         }
                       },
                       {
@@ -348,7 +360,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "47f640cb1527d8cca4cf77c3d0c89dd42aa31368816dddebaa2904911ba77333"
+                  "bytes": "7f1c04a777d0fac56ecbba98949c3e56e8454bb49d5b02bd3f06bbbe28b8c882"
                 }
               ]
             }
@@ -399,7 +411,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbnkiLCJleHAiOjIwMDAsInNjcCI6ImRlcG9zaXQifQ.Yg-kIj5ESEIrhJxVxmrMI-fgpasArLHiUGFKW94LbOWY4dmRf0-LEjUrttjLWeU6mN7fbAvNCkgXKCMTLqDMAA"
+                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbnkiLCJleHAiOjIwMDAsInNjcCI6ImRlcG9zaXQifQ.0PaJEZEvsRrA82eEEYQ2u0eKXaFUEiWRpklHOQ7Pg5BrWg9svv_4boz9B6s9340vEPSo7qDda3A2GQcm9ab-Bw"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"

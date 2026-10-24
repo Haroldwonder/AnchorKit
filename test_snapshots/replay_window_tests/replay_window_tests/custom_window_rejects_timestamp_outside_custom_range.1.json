@@ -42,7 +42,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "8daad34dbab6ffe2a97d598dbdc647a7d783664b3f8c93791eeaae99e1a26761"
+                  "bytes": "0329dd7f25c5355fa2eb41ed4d09a13bd6354b378ef4a7fcc5d4f86a853c394d"
                 }
               ]
             }
@@ -64,7 +64,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6MTA4NjQwMH0.URhh6anfNZ2C-jP5XXq2_3p0AZUGt3aWMjq8dW81-_QLkcN6Vlgbya58fM8SEqLDTgyLgYTShLPxn1nNQVl8CA"
+                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6MTA4NjQwMH0.XJ4j7O5D77x11Yx1oC6oGzYnaPlx5YgkHaAy4WNXRbF3_tFLQgOClCoEp8POzOZJdehthK3gPVaWyYnkrOqhAQ"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -171,7 +171,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "8daad34dbab6ffe2a97d598dbdc647a7d783664b3f8c93791eeaae99e1a26761"
+                      "bytes": "0329dd7f25c5355fa2eb41ed4d09a13bd6354b378ef4a7fcc5d4f86a853c394d"
                     }
                   ]
                 }
@@ -227,6 +227,18 @@
                         },
                         "val": {
                           "u64": 100
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MaxPageSize"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 50
                         }
                       },
                       {
@@ -455,7 +467,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "8daad34dbab6ffe2a97d598dbdc647a7d783664b3f8c93791eeaae99e1a26761"
+                  "bytes": "0329dd7f25c5355fa2eb41ed4d09a13bd6354b378ef4a7fcc5d4f86a853c394d"
                 }
               ]
             }
@@ -509,7 +521,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6MTA4NjQwMH0.URhh6anfNZ2C-jP5XXq2_3p0AZUGt3aWMjq8dW81-_QLkcN6Vlgbya58fM8SEqLDTgyLgYTShLPxn1nNQVl8CA"
+                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBSEszTSIsImV4cCI6MTA4NjQwMH0.XJ4j7O5D77x11Yx1oC6oGzYnaPlx5YgkHaAy4WNXRbF3_tFLQgOClCoEp8POzOZJdehthK3gPVaWyYnkrOqhAQ"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -602,7 +614,7 @@
                   "bytes": "0404040404040404040404040404040404040404040404040404040404040404"
                 },
                 {
-                  "bytes": "0866da4bc38838e9c5e5226abb47da29adf1fc62392db3056b15acea7bb744cd8d573a2881e982652da87445f6dbd6a35f30bec1c348684f0914af7229177504"
+                  "bytes": "73678710e9b4a3d556fa3330fb6c23627afd856fcac1bc0be703f8858468bd999fd346a570260212e362b895017b33f6dd29b2dfe72a9e0d93d797eed38f290b"
                 }
               ]
             }
@@ -733,7 +745,7 @@
                       "bytes": "0404040404040404040404040404040404040404040404040404040404040404"
                     },
                     {
-                      "bytes": "0866da4bc38838e9c5e5226abb47da29adf1fc62392db3056b15acea7bb744cd8d573a2881e982652da87445f6dbd6a35f30bec1c348684f0914af7229177504"
+                      "bytes": "73678710e9b4a3d556fa3330fb6c23627afd856fcac1bc0be703f8858468bd999fd346a570260212e362b895017b33f6dd29b2dfe72a9e0d93d797eed38f290b"
                     }
                   ]
                 }

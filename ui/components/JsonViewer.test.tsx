@@ -105,6 +105,19 @@ describe('JsonViewer', () => {
       expect(screen.getByText(/value/)).toBeInTheDocument();
     });
 
+    it('resets expanded paths when the data prop changes', () => {
+      const { rerender } = render(
+        <JsonViewer data={{ account: { balance: 'old' } }} defaultExpandDepth={2} />,
+      );
+
+      expect(screen.getByText(/old/)).toBeInTheDocument();
+
+      rerender(<JsonViewer data={{ transfer: { amount: 'new' } }} defaultExpandDepth={2} />);
+
+      expect(screen.getByText(/new/)).toBeInTheDocument();
+      expect(screen.queryByText(/old/)).not.toBeInTheDocument();
+    });
+
     it('renders with title and subtitle', () => {
       const data = { test: true };
       

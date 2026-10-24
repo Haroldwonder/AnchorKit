@@ -126,3 +126,36 @@ cargo test payload_hash_vectors
 
 Any off-chain implementation that produces the same SHA-256 outputs for these
 inputs is compatible with the on-chain contract.
+
+---
+
+# Attestation signature message
+
+`submit_attestation` (and the `_with_request_id` / `_with_session` variants)
+verify an Ed25519 signature over a 32-byte digest, not over `payload_hash`
+alone, so a signature cannot be re-paired with a different subject or
+timestamp or replayed on another deployment or network.
+
+```
+digest = SHA-256( "anchorkit-attest-v1"
+               || network_id            (32 bytes, the ledger network id = SHA-256 of the passphrase)
+               || contract_xdr          (ScAddress XDR of this contract)
+               || issuer_xdr            (ScAddress XDR)
+               || subject_xdr           (ScAddress XDR)
+               || timestamp_be8         (u64, big-endian)
+               || payload_hash )        (the 32 bytes passed to submit_attestation)
+signature = Ed25519.sign(issuer_key, digest)
+```
+
+Each `*_xdr` is encoded as described under "Subject XDR encoding" above
+(40 bytes for an account address; contract addresses use discriminant `1`).
+
+Acceptance behaviour, covered by `src/attestation_validation_tests.rs`:
+
+- changing `subject` or `timestamp` on a signed submission fails with
+  `UnauthorizedAttestor`;
+- a signature made for one contract ID fails on another.
+
+Off-chain signers can obtain the digest from the contract's exported
+`attestation_signing_digest` helper in `src/contract.rs`, which is the
+reference implementation of the layout above.

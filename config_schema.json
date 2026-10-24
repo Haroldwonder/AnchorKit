@@ -63,9 +63,9 @@
               },
               "endpoint": {
                 "type": "string",
-                "minLength": 8,
+                "minLength": 10,
                 "maxLength": 256,
-                "pattern": "^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"
+                "pattern": "^https://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"
               },
               "role": {
                 "type": "string",
@@ -107,7 +107,60 @@
         }
       },
       "additionalProperties": false
+    },
+    "deployment": {
+      "type": "object",
+      "required": ["admin_key", "rpc_endpoint", "network"],
+      "properties": {
+        "admin_key": {
+          "type": "string",
+          "description": "Stellar public key of the contract admin (G…, 56 chars)",
+          "pattern": "^G[A-Z0-9]{55}$",
+          "minLength": 56,
+          "maxLength": 56
+        },
+        "rpc_endpoint": {
+          "type": "string",
+          "description": "Soroban RPC endpoint URL (HTTPS required)",
+          "minLength": 10,
+          "maxLength": 2048,
+          "pattern": "^https://.+"
+        },
+        "network": {
+          "type": "string",
+          "description": "Stellar network this deployment targets",
+          "enum": ["stellar-testnet", "stellar-mainnet", "stellar-futurenet"]
+        },
+        "contract_id": {
+          "type": "string",
+          "description": "Deployed Soroban contract address (C…, 56 chars) — added after deployment",
+          "pattern": "^C[A-Z2-7]{55}$",
+          "minLength": 56,
+          "maxLength": 56
+        }
+      },
+      "additionalProperties": false
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "definitions": {
+    "stellarAddress": {
+      "type": "string",
+      "pattern": "^G[A-Z0-9]{55}$",
+      "minLength": 56,
+      "maxLength": 56
+    },
+    "sorobanContractId": {
+      "type": "string",
+      "pattern": "^C[A-Z2-7]{55}$",
+      "minLength": 56,
+      "maxLength": 56
+    },
+    "httpsUrl": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 2048,
+      "pattern": "^https://[a-zA-Z0-9][a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(:[0-9]+)?(/.*)?$"
+    }
+  }
 }

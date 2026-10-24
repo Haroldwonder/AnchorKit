@@ -49,7 +49,7 @@ else
     check_fail "src/anchor_info_discovery_tests.rs missing"
 fi
 
-if [ -f "ANCHOR_INFO_DISCOVERY.md" ]; then
+if [ -f "docs/features/ANCHOR_INFO_DISCOVERY.md" ]; then
     check_pass "ANCHOR_INFO_DISCOVERY.md exists"
 else
     check_fail "ANCHOR_INFO_DISCOVERY.md missing"
@@ -157,7 +157,7 @@ PUBLIC_METHODS=(
 )
 
 for method in "${PUBLIC_METHODS[@]}"; do
-    if grep -q "pub fn $method" src/lib.rs; then
+    if grep -q "pub fn $method" src/contract.rs; then
         check_pass "Method $method exposed in contract"
     else
         check_fail "Method $method NOT exposed"

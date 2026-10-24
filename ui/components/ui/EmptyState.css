@@ -1,0 +1,37 @@
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  gap: 10px;
+}
+
+.empty-state__icon {
+  font-size: 48px;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.empty-state__heading {
+  font-family: 'Sora', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ak-text);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.empty-state__subtext {
+  font-family: 'Sora', sans-serif;
+  font-size: 14px;
+  color: var(--ak-text-muted);
+  margin: 0;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.empty-state__action {
+  margin-top: 10px;
+}

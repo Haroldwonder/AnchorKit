@@ -4,7 +4,7 @@ mod sep10_contract_tests {
     use ed25519_dalek::{Signer, SigningKey};
     use rand::rngs::OsRng;
     use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
-    use soroban_sdk::{Address, Bytes, Env, String};
+    use soroban_sdk::{Address, Bytes, Env, String, Vec};
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
     use crate::sep10_test_util::{build_sep10_jwt, build_sep10_jwt_with_scope, register_attestor_with_sep10};
@@ -36,7 +36,7 @@ mod sep10_contract_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         let pk = Bytes::from_slice(&env, sk.verifying_key().as_bytes());
@@ -63,7 +63,7 @@ mod sep10_contract_tests {
         let admin = Address::generate(&env);
         let attestor = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         register_attestor_with_sep10(&env, &client, &attestor, &issuer, &sk);
@@ -78,7 +78,7 @@ mod sep10_contract_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         // Set initial key
         let old_sk = SigningKey::generate(&mut OsRng);
@@ -110,7 +110,7 @@ mod sep10_contract_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let old_sk = SigningKey::generate(&mut OsRng);
         let old_pk = Bytes::from_slice(&env, old_sk.verifying_key().as_bytes());
@@ -137,7 +137,7 @@ mod sep10_contract_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let old_sk = SigningKey::generate(&mut OsRng);
         let old_pk = Bytes::from_slice(&env, old_sk.verifying_key().as_bytes());
@@ -164,7 +164,7 @@ mod sep10_contract_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         let pk = Bytes::from_slice(&env, sk.verifying_key().as_bytes());
@@ -187,7 +187,7 @@ mod sep10_contract_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         let pk = Bytes::from_slice(&env, sk.verifying_key().as_bytes());
@@ -209,7 +209,7 @@ mod sep10_contract_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         let pk = Bytes::from_slice(&env, sk.verifying_key().as_bytes());
@@ -231,7 +231,7 @@ mod sep10_contract_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let issuer = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         // Fill up to max (3)
         for _ in 0..3 {
@@ -243,6 +243,156 @@ mod sep10_contract_tests {
         // 4th key should panic
         let sk = SigningKey::generate(&mut OsRng);
         let pk = Bytes::from_slice(&env, sk.verifying_key().as_bytes());
+        client.add_sep10_verifying_key(&issuer, &pk);
+    }
+
+    fn multisig_tokens_with_scope(
+        env: &Env,
+        sk1: &SigningKey,
+        sk2: &SigningKey,
+        sub: &str,
+        scope: &str,
+    ) -> Vec<String> {
+        let jwt1 = build_sep10_jwt_with_scope(sk1, sub, 2000, scope);
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let parts: std::vec::Vec<&str> = jwt1.split('.').collect();
+        let signing_input = format!("{}.{}", parts[0], parts[1]);
+        let sig2 = sk2.sign(signing_input.as_bytes());
+        let jwt2 = format!(
+            "{}.{}",
+            signing_input,
+            URL_SAFE_NO_PAD.encode(sig2.to_bytes())
+        );
+        let mut tokens = Vec::new(env);
+        tokens.push_back(String::from_str(env, jwt1.as_str()));
+        tokens.push_back(String::from_str(env, jwt2.as_str()));
+        tokens
+    }
+
+    #[test]
+    fn contract_verify_sep10_token_multisig_2_of_2() {
+        // #891: wire verify_sep10_jwt_multisig into a contract entry point.
+        let env = make_env();
+        ledger(&env, 1000);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let issuer = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk1 = SigningKey::generate(&mut OsRng);
+        let sk2 = SigningKey::generate(&mut OsRng);
+        client.set_sep10_jwt_verifying_key(
+            &issuer,
+            &Bytes::from_slice(&env, sk1.verifying_key().as_bytes()),
+        );
+        client.add_sep10_verifying_key(
+            &issuer,
+            &Bytes::from_slice(&env, sk2.verifying_key().as_bytes()),
+        );
+
+        let jwt1 = build_sep10_jwt(&sk1, "any", 2000);
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let parts: std::vec::Vec<&str> = jwt1.split('.').collect();
+        let signing_input = format!("{}.{}", parts[0], parts[1]);
+        let sig2 = sk2.sign(signing_input.as_bytes());
+        let jwt2 = format!(
+            "{}.{}",
+            signing_input,
+            URL_SAFE_NO_PAD.encode(sig2.to_bytes())
+        );
+
+        let mut tokens = Vec::new(&env);
+        tokens.push_back(String::from_str(&env, jwt1.as_str()));
+        tokens.push_back(String::from_str(&env, jwt2.as_str()));
+        client.verify_sep10_token_multisig(&tokens, &issuer, &2u32, &None, &None);
+    }
+
+    #[test]
+    fn contract_verify_sep10_token_multisig_with_scope_and_sub() {
+        // #1391: contract multisig entry point enforces optional service + subject.
+        let env = make_env();
+        ledger(&env, 1000);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let issuer = Address::generate(&env);
+        let subject = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk1 = SigningKey::generate(&mut OsRng);
+        let sk2 = SigningKey::generate(&mut OsRng);
+        client.set_sep10_jwt_verifying_key(
+            &issuer,
+            &Bytes::from_slice(&env, sk1.verifying_key().as_bytes()),
+        );
+        client.add_sep10_verifying_key(
+            &issuer,
+            &Bytes::from_slice(&env, sk2.verifying_key().as_bytes()),
+        );
+
+        let sub = subject.to_string();
+        let mut buf = [0u8; 128];
+        let len = sub.len() as usize;
+        let final_len = if len > 128 { 128 } else { len };
+        sub.copy_into_slice(&mut buf[..final_len]);
+        let sub_std = core::str::from_utf8(&buf[..final_len]).unwrap_or("");
+
+        let tokens = multisig_tokens_with_scope(&env, &sk1, &sk2, sub_std, "deposit");
+        client.verify_sep10_token_multisig(
+            &tokens,
+            &issuer,
+            &2u32,
+            &Some(sub.clone()),
+            &Some(1u32),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn contract_verify_sep10_token_multisig_rejects_wrong_scope() {
+        // #1391: mismatched service scope must fail closed.
+        let env = make_env();
+        ledger(&env, 1000);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let issuer = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk1 = SigningKey::generate(&mut OsRng);
+        let sk2 = SigningKey::generate(&mut OsRng);
+        client.set_sep10_jwt_verifying_key(
+            &issuer,
+            &Bytes::from_slice(&env, sk1.verifying_key().as_bytes()),
+        );
+        client.add_sep10_verifying_key(
+            &issuer,
+            &Bytes::from_slice(&env, sk2.verifying_key().as_bytes()),
+        );
+
+        let tokens = multisig_tokens_with_scope(&env, &sk1, &sk2, "any", "deposit");
+        client.verify_sep10_token_multisig(&tokens, &issuer, &2u32, &None, &Some(2u32));
+    }
+
+    #[test]
+    #[should_panic]
+    fn add_sep10_verifying_key_rejects_duplicate() {
+        let env = make_env();
+        ledger(&env, 1000);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let issuer = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk = SigningKey::generate(&mut OsRng);
+        let pk = Bytes::from_slice(&env, sk.verifying_key().as_bytes());
+
+        // Add the key once
+        client.add_sep10_verifying_key(&issuer, &pk);
+
+        // Try to add the same key again — should panic
         client.add_sep10_verifying_key(&issuer, &pk);
     }
 }

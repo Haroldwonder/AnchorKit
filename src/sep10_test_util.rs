@@ -38,13 +38,6 @@ pub fn build_sep10_jwt_with_scope(
     format!("{}.{}", signing_input, sig_b64)
 }
 
-/// Sign a payload hash with the given signing key, returning a 64-byte signature as Bytes.
-pub fn sign_payload(env: &Env, signing_key: &SigningKey, payload_hash: &Bytes) -> Bytes {
-    let mut hash_arr = [0u8; 32];
-    payload_hash.copy_into_slice(&mut hash_arr);
-    let sig = signing_key.sign(&hash_arr);
-    Bytes::from_slice(env, &sig.to_bytes())
-}
 pub fn register_attestor_with_sep10(
     env: &Env,
     client: &AnchorKitContractClient,
@@ -54,6 +47,7 @@ pub fn register_attestor_with_sep10(
 ) {
     let pk = Bytes::from_slice(env, signing_key.verifying_key().as_bytes());
     client.set_sep10_jwt_verifying_key(sep10_issuer, &pk);
+    client.add_attestation_key(sep10_issuer, &pk);
 
     let sub = attestor.to_string();
     let mut buf = [0u8; 128];
@@ -66,4 +60,22 @@ pub fn register_attestor_with_sep10(
     let jwt = build_sep10_jwt(signing_key, sub_str, exp);
     let token = String::from_str(env, jwt.as_str());
     client.register_attestor(attestor, &token, sep10_issuer);
+}
+
+/// Sign an attestation the way `verify_attestation_signature` expects: over
+/// `attestation_signing_digest`, which binds the contract, network, issuer,
+/// subject and timestamp as well as the payload hash.
+pub fn sign_attestation(
+    env: &Env,
+    signing_key: &SigningKey,
+    contract_id: &Address,
+    issuer: &Address,
+    subject: &Address,
+    timestamp: u64,
+    payload_hash: &Bytes,
+) -> Bytes {
+    let digest = env.as_contract(contract_id, || {
+        crate::contract::attestation_signing_digest(env, issuer, subject, timestamp, payload_hash)
+    });
+    Bytes::from_slice(env, &signing_key.sign(&digest).to_bytes())
 }

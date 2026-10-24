@@ -173,7 +173,7 @@ fn validate_schema_consistency() {
 /// The exact soroban-sdk patch version this contract has been tested against.
 /// If Cargo resolves a different version the build fails with a clear message so
 /// developers notice the mismatch before subtle runtime failures surface.
-const EXPECTED_SOROBAN_SDK_VERSION: &str = "21.7.7";
+const EXPECTED_SOROBAN_SDK_VERSION: &str = "26.1.1";
 
 /// Read the resolved soroban-sdk version from Cargo.lock and fail the build if it
 /// does not match EXPECTED_SOROBAN_SDK_VERSION.
@@ -211,9 +211,7 @@ fn check_soroban_sdk_version() {
             );
         }
         None => {
-            println!(
-                "cargo:warning=soroban-sdk not found in Cargo.lock; skipping version check"
-            );
+            println!("cargo:warning=soroban-sdk not found in Cargo.lock; skipping version check");
         }
     }
 }

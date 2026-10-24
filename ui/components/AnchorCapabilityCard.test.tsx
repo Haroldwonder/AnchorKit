@@ -217,6 +217,19 @@ describe('AnchorCapabilityCard', () => {
       expect(screen.getByText('USD 1.99')).toBeInTheDocument();
     });
 
+    it('handles flat fees with omitted amounts without crashing', () => {
+      const incompleteFeeAsset = {
+        ...mockAsset,
+        fees: {
+          deposit: { type: 'flat' as const, currency: 'USD' },
+          withdrawal: { type: 'flat' as const, currency: 'USD' },
+        },
+      };
+      render(<AnchorCapabilityCard {...mockProps} assets={[incompleteFeeAsset]} />);
+      fireEvent.click(screen.getByText('Fees'));
+      expect(screen.getAllByText('USD 0.00')).toHaveLength(2);
+    });
+
     it('displays percentage fees correctly', () => {
       render(<AnchorCapabilityCard {...mockProps} />);
       fireEvent.click(screen.getByText('Fees'));
@@ -264,6 +277,12 @@ describe('AnchorCapabilityCard', () => {
       render(<AnchorCapabilityCard {...mockProps} />);
       fireEvent.click(screen.getByText('Limits'));
       expect(screen.getByText('Deposit Range')).toBeInTheDocument();
+      const depositBar = screen.getByRole('progressbar', { name: 'Deposit limit range' });
+      expect(depositBar).toHaveAttribute('aria-valuenow', '0.1');
+      expect(depositBar.firstChild).toHaveStyle({ width: '0.1%' });
+      const withdrawalBar = screen.getByRole('progressbar', { name: 'Withdrawal limit range' });
+      expect(withdrawalBar).toHaveAttribute('aria-valuenow', '0.2');
+      expect(withdrawalBar.firstChild).toHaveStyle({ width: '0.2%' });
     });
 
     it('shows country availability when provided', () => {
@@ -316,6 +335,21 @@ describe('AnchorCapabilityCard', () => {
       
       fireEvent.click(screen.getByText('KYC'));
       expect(screen.getByText('No verification needed')).toBeInTheDocument();
+    });
+  });
+
+  describe('Service health status', () => {
+    it('does not display stale health for a disabled service', () => {
+      render(
+        <AnchorCapabilityCard
+          {...mockProps}
+          services={{ deposits: true, kyc: false }}
+          healthStatus={{ deposits: 'degraded', kyc: 'unavailable' }}
+        />,
+      );
+
+      expect(screen.getByText('◐ Deposits')).toBeInTheDocument();
+      expect(screen.queryByText('○ Kyc')).not.toBeInTheDocument();
     });
   });
 

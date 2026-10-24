@@ -24,31 +24,7 @@ A real-time webhook event monitoring panel for debugging anchor callbacks with v
 - Accessible UI with proper ARIA labels
 - Mobile-responsive layout
 
-### 2. `src/types.rs` (additions)
-**Purpose**: Type definitions for webhook events
-
-**Types Added**:
-```rust
-pub struct WebhookEvent {
-    pub event_id: u64,
-    pub event_type: WebhookEventType,
-    pub timestamp: u64,
-    pub payload_hash: BytesN<32>,
-}
-
-pub enum WebhookEventType {
-    Deposit = 1,
-    Withdrawal = 2,
-    KycUpdate = 3,
-    QuoteReceived = 4,
-    TransferInitiated = 5,
-    SettlementConfirmed = 6,
-    SessionCreated = 7,
-    AttestationRecorded = 8,
-}
-```
-
-### 3. `WEBHOOK_MONITOR.md` (documentation)
+### 2. `WEBHOOK_MONITOR.md` (documentation)
 **Purpose**: Complete usage guide and integration instructions
 
 **Sections**:
@@ -60,6 +36,11 @@ pub enum WebhookEventType {
 - Performance optimization
 - Customization guide
 - Troubleshooting
+
+> **Note**: The on-chain `WebhookEvent` / `WebhookEventType` types referenced in earlier
+> drafts of this document were never added to `src/types.rs` (or anywhere else in the
+> crate). The dashboard consumes webhook payloads as plain JSON; no corresponding
+> contract-side event types currently exist.
 
 ## Key Features
 
@@ -270,6 +251,9 @@ Potential additions (not implemented to keep code minimal):
 
 ### Event Emission Example
 ```rust
+// NOTE: WebhookEvent / WebhookEventType are not currently defined in the crate.
+// The snippet below is illustrative only and would require adding those types
+// to src/types.rs before it compiles.
 use crate::types::{WebhookEvent, WebhookEventType};
 
 pub fn emit_deposit_webhook(env: &Env, amount: u64, user: &Address) {
@@ -295,7 +279,3 @@ The Webhook Event Monitor provides a production-ready debugging tool for anchor 
 - ✅ Clean, minimal code (no bloat)
 - ✅ Follows existing design patterns
 - ✅ Security best practices documented
-- ✅ Easy integration with backends
-- ✅ Comprehensive documentation
-
-The implementation is ready for immediate use in development and can be deployed to production with the documented security enhancements.

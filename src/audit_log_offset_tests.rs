@@ -10,7 +10,7 @@ mod audit_log_offset_tests {
     use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
-    use crate::sep10_test_util::{build_sep10_jwt, sign_payload};
+    use crate::sep10_test_util::{build_sep10_jwt, sign_attestation};
     use crate::deterministic_hash::compute_payload_hash;
     use soroban_sdk::Bytes;
 
@@ -43,6 +43,7 @@ mod audit_log_offset_tests {
         let issuer = attestor.clone();
         let pk = Bytes::from_slice(env, sk.verifying_key().as_bytes());
         client.set_sep10_jwt_verifying_key(&issuer, &pk);
+        client.add_attestation_key(&issuer, &pk);
 
         let sub = attestor.to_string();
         let mut buf = [0u8; 128];
@@ -73,14 +74,7 @@ mod audit_log_offset_tests {
         let hash = compute_payload_hash(env, &subject, ts, &data);
         let hash_bytes: Bytes = hash.into();
         let sig = sign_payload(env, sk, &hash_bytes);
-        client.submit_attestation_with_session(
-            &session_id,
-            attestor,
-            &subject,
-            &ts,
-            &hash_bytes,
-            &sig,
-        );
+        client.submit_attestation_with_session(&session_id, attestor, &subject, &ts, &hash_bytes, &sig, &None);
     }
 
     // -----------------------------------------------------------------------
@@ -96,7 +90,7 @@ mod audit_log_offset_tests {
 
         let admin = Address::generate(&env);
         // Large max size — pruning will never trigger.
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         assert_eq!(client.get_audit_log_offset(), 0u64);
     }
@@ -113,7 +107,7 @@ mod audit_log_offset_tests {
         let client = AnchorKitContractClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
-        client.initialize(&admin, &5_u64, &None);
+        client.initialize(&admin, &5_u64, &None, &None);
 
         let (attestor, sk) = setup_attestor(&env, &client);
         let session_id = client.create_session(&attestor);
@@ -139,7 +133,7 @@ mod audit_log_offset_tests {
 
         let admin = Address::generate(&env);
         // max_audit_log_size = 3: pruning fires when live_count >= 3.
-        client.initialize(&admin, &3_u64, &None);
+        client.initialize(&admin, &3_u64, &None, &None);
 
         let (attestor, sk) = setup_attestor(&env, &client);
         let session_id = client.create_session(&attestor);
@@ -173,21 +167,20 @@ mod audit_log_offset_tests {
 
         let admin = Address::generate(&env);
         // max = 2: every submission beyond the 2nd triggers a prune.
-        client.initialize(&admin, &2_u64, &None);
+        client.initialize(&admin, &2_u64, &None, &None);
 
         let (attestor, sk) = setup_attestor(&env, &client);
         let session_id = client.create_session(&attestor);
 
         // Submit 5 entries and track expected offset.
-        // After submission N (0-indexed), live_count = N+1.
-        // Prune fires when live_count >= max (2), removing (live_count - max + 1) entries.
+        // Pruning fires once the projected live window would exceed max_size.
         //
-        // N=0: live=1 < 2, offset=0
-        // N=1: live=2 >= 2, prune 1, offset=1
-        // N=2: live=2 >= 2, prune 1, offset=2
-        // N=3: live=2 >= 2, prune 1, offset=3
-        // N=4: live=2 >= 2, prune 1, offset=4
-        let expected_offsets = [0u64, 1, 2, 3, 4];
+        // N=0: projected=1, offset=0
+        // N=1: projected=2, offset=0 (at capacity, not over)
+        // N=2: projected=3 > max=2, prune 1, offset=1
+        // N=3: projected=4 > max=2, prune 1, offset=2
+        // N=4: projected=5 > max=2, prune 1, offset=3
+        let expected_offsets = [0u64, 0, 1, 2, 3];
         for (nonce, &expected) in (0u8..5).zip(expected_offsets.iter()) {
             submit_one(&env, &client, session_id, &attestor, &sk, nonce);
             assert_eq!(

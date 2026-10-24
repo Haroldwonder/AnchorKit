@@ -27,32 +27,21 @@ Main configuration structure for SDK clients.
 
 ```rust
 pub struct SdkConfig {
-    pub network: NetworkType,
-    pub anchor_domain: String,
-    pub timeout_seconds: u64,
-    pub custom_headers: Vec<HttpHeader>,
+    pub network: Network,
+    pub timeout_seconds: u32,
+    pub retry_attempts: u32,
+    pub default_anchor: String,
 }
 ```
 
-### NetworkType
+### Network
 
 Enum for Stellar network selection.
 
 ```rust
-pub enum NetworkType {
-    Testnet = 1,
-    Mainnet = 2,
-}
-```
-
-### HttpHeader
-
-Custom HTTP header for API requests.
-
-```rust
-pub struct HttpHeader {
-    pub key: String,
-    pub value: String,
+pub enum Network {
+    Testnet,
+    Mainnet,
 }
 ```
 
@@ -160,50 +149,50 @@ However, since the feature isn't implemented, this only verifies compilation com
 
 ## Validation Rules
 
-The `SdkConfig::validate()` method enforces the following constraints:
+The `SdkConfig::validate()` method enforces the following constraints and returns `Result<(), Error>`:
 
-### Anchor Domain
+### Default Anchor
 - **Minimum length**: 3 characters
-- **Maximum length**: 253 characters
-- **Format**: Valid domain name
+- **Maximum length**: 256 characters
+- **Field name**: `default_anchor`
 
 ### Timeout
-- **Minimum**: 1 second
+- **Minimum**: 5 seconds
 - **Maximum**: 300 seconds (5 minutes)
-- **Default**: 30 seconds (recommended)
+- **Default**: 10 seconds (`DEFAULT_TIMEOUT_SECONDS`)
 
-### Custom Headers
-- **Maximum count**: 20 headers
-- **Header key length**: 1-64 characters
-- **Header value length**: 0-1024 characters
+### Retry Attempts
+- **Minimum**: 0 (no retries)
+- **Maximum**: 10
+- **Default**: 3 (set by `SdkConfig::with_defaults`)
 
 ## Usage Example
 
 ### Rust (Contract)
 
 ```rust
-use soroban_sdk::{Env, String, Vec};
+use soroban_sdk::{Env, String};
 
 let env = Env::default();
 
-// Create headers
-let mut headers = Vec::new(&env);
-headers.push_back(HttpHeader {
-    key: String::from_str(&env, "Authorization"),
-    value: String::from_str(&env, "Bearer token123"),
-});
+// Create config using the constructor (validates on creation)
+let config = SdkConfig::new(
+    Network::Testnet,
+    30,                                              // timeout_seconds (5–300)
+    3,                                               // retry_attempts (0–10)
+    String::from_str(&env, "anchor.example.com"),   // default_anchor (3–256 chars)
+).expect("valid config");
 
-// Create config
-let config = SdkConfig {
-    network: NetworkType::Testnet,
-    anchor_domain: String::from_str(&env, "anchor.example.com"),
-    timeout_seconds: 30,
-    custom_headers: headers,
-};
+// Or use with_defaults for timeout=10s, retry_attempts=3
+let config = SdkConfig::with_defaults(
+    Network::Mainnet,
+    String::from_str(&env, "anchor.example.com"),
+).expect("valid config");
 
-// Validate
-if config.validate() {
-    // Use config
+// Validate an existing config explicitly
+match config.validate() {
+    Ok(()) => { /* use config */ }
+    Err(e) => { /* handle Error::invalid_config() */ }
 }
 ```
 
@@ -212,18 +201,9 @@ if config.validate() {
 ```javascript
 const config = {
     network: 'Testnet',
-    anchor_domain: 'anchor.example.com',
+    default_anchor: 'anchor.example.com',
     timeout_seconds: 30,
-    custom_headers: [
-        {
-            key: 'Authorization',
-            value: 'Bearer token123'
-        },
-        {
-            key: 'X-Custom-Header',
-            value: 'custom-value'
-        }
-    ]
+    retry_attempts: 3,
 };
 ```
 
@@ -250,7 +230,7 @@ An HTML form is provided in `sdk_config_form.html` for easy configuration genera
 
 ### Header Security
 - Never include sensitive credentials directly in headers
-- Use secure credential management (see `SECURE_CREDENTIALS.md`)
+- Use secure credential management (see `credential_management.sh` in examples)
 - Rotate tokens regularly
 - Use HTTPS for all anchor communications
 
@@ -307,12 +287,12 @@ Currently, mock testing is handled through existing mechanisms:
 let env = Env::default();
 env.mock_all_auths(); // Mock authentication for tests
 
-let config = SdkConfig {
-    network: NetworkType::Testnet,
-    anchor_domain: String::from("test.anchor.com"),
-    timeout_seconds: 30,
-    custom_headers: vec![],
-};
+let config = SdkConfig::new(
+    Network::Testnet,
+    30,
+    3,
+    String::from_str(&env, "test.anchor.com"),
+).expect("valid config");
 
 // Tests use real implementations but with mocked Soroban environment
 ```
@@ -363,38 +343,54 @@ cargo test -- --test-threads=1
 
 ## Error Handling
 
-Configuration validation returns a boolean. For detailed error handling, check specific constraints:
+`validate()` returns `Result<(), Error>`, not a boolean. Use `match` or the `?` operator:
 
 ```rust
-if !config.validate() {
-    // Check individual constraints
-    if config.anchor_domain.len() < 3 {
-        // Handle domain too short
+// Pattern 1: match
+match config.validate() {
+    Ok(()) => {
+        // config is valid, proceed
     }
-    if config.timeout_seconds < 1 || config.timeout_seconds > 300 {
-        // Handle invalid timeout
+    Err(_) => {
+        // Check which constraint was violated
+        if config.default_anchor.len() < 3 || config.default_anchor.len() > 256 {
+            // default_anchor length out of range
+        }
+        if config.timeout_seconds < 5 || config.timeout_seconds > 300 {
+            // timeout_seconds out of range (must be 5–300)
+        }
+        if config.retry_attempts > 10 {
+            // retry_attempts exceeds maximum of 10
+        }
     }
-    if config.custom_headers.len() > 20 {
-        // Handle too many headers
-    }
+}
+
+// Pattern 2: propagate with ?
+fn setup_sdk(env: &Env) -> Result<SdkConfig, Error> {
+    let config = SdkConfig::new(
+        Network::Testnet,
+        30,
+        3,
+        String::from_str(env, "anchor.example.com"),
+    )?;
+    Ok(config)
 }
 ```
 
 ## Future Enhancements
 
 Potential improvements:
-- Add retry configuration
 - Support for connection pooling settings
 - Circuit breaker configuration
 - Rate limiting settings
 - Custom DNS resolver configuration
 - Proxy support
+- Custom HTTP headers (`custom_headers: Vec<HttpHeader>`)
 
 ## Related Documentation
 
-- [SECURE_CREDENTIALS.md](./SECURE_CREDENTIALS.md) - Credential management
-- [HEALTH_MONITORING.md](./HEALTH_MONITORING.md) - Health check configuration
-- [API_SPEC.md](./API_SPEC.md) - API specifications
-- [QUICK_START.md](./QUICK_START.md) - Getting started guide
-- [STATUS_MONITOR.md](./STATUS_MONITOR.md) - Mock server and testing setup
-- [Mock Mode Example](../examples/mock_mode_example.sh) - Mock testing script
+- [Credential Management](../../examples/credential_management.sh) - Credential management
+- [STATUS_MONITOR.md](./STATUS_MONITOR.md) - Status monitoring and health checks
+- [API_REFERENCE.md](../API_REFERENCE.md) - API specifications
+- [QUICK_START.md](../../QUICK_START.md) - Getting started guide
+- [Mock Mode Example](../../examples/mock_mode_example.sh) - Mock testing script

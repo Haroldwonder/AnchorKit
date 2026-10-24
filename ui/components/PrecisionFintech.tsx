@@ -1,5 +1,6 @@
 import { useState } from "react";
 import './themes.css';
+import './precision-fintech-tokens.css';
 
 const metrics = [
   { label: "Portfolio Value", value: "$2,847,391", change: "+4.21%", up: true },
@@ -67,21 +68,13 @@ export default function PrecisionFintech() {
       className="min-h-screen w-full text-white"
       style={{
         background: "var(--ak-bg)",
-        fontFamily: "'DM Mono', 'Courier New', monospace",
+        fontFamily: "var(--pf-font-mono)",
         color: "var(--ak-text)",
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap');
-
-        :root {
-          --mint: #00FFB2;
-          --mint-dim: rgba(0,255,178,0.12);
-          --mint-border: rgba(0,255,178,0.25);
-        }
-
-        .mint { color: var(--mint); }
-        .mint-bg { background: var(--mint); }
+        .mint { color: var(--pf-mint); }
+        .mint-bg { background: var(--pf-mint); }
 
         .glass {
           background: var(--ak-surface);
@@ -89,63 +82,63 @@ export default function PrecisionFintech() {
         }
 
         .glass-mint {
-          background: var(--mint-dim);
-          border: 1px solid var(--mint-border);
+          background: var(--pf-mint-dim);
+          border: 1px solid var(--pf-mint-border);
         }
 
         .btn-primary {
-          background: var(--mint);
-          color: #000;
+          background: var(--pf-mint);
+          color: var(--pf-bg);
           font-weight: 500;
           letter-spacing: 0.08em;
           text-transform: uppercase;
-          font-size: 11px;
-          padding: 10px 24px;
+          font-size: var(--pf-font-size-base);
+          padding: 10px var(--pf-spacing-2xl);
           border: none;
           cursor: pointer;
-          transition: all 0.15s;
-          font-family: 'DM Mono', monospace;
+          transition: var(--pf-transition);
+          font-family: var(--pf-font-mono);
         }
         .btn-primary:hover {
-          background: #00e8a0;
+          background: var(--pf-mint-hover);
           transform: translateY(-1px);
-          box-shadow: 0 0 24px rgba(0,255,178,0.35);
+          box-shadow: 0 0 24px var(--pf-mint-glow);
         }
 
         .btn-ghost {
           background: transparent;
-          color: var(--mint);
-          border: 1px solid var(--mint-border);
+          color: var(--pf-mint);
+          border: 1px solid var(--pf-mint-border);
           font-weight: 400;
           letter-spacing: 0.08em;
           text-transform: uppercase;
-          font-size: 11px;
-          padding: 10px 24px;
+          font-size: var(--pf-font-size-base);
+          padding: 10px var(--pf-spacing-2xl);
           cursor: pointer;
-          transition: all 0.15s;
-          font-family: 'DM Mono', monospace;
+          transition: var(--pf-transition);
+          font-family: var(--pf-font-mono);
         }
         .btn-ghost:hover {
-          background: var(--mint-dim);
-          border-color: var(--mint);
+          background: var(--pf-mint-dim);
+          border-color: var(--pf-mint);
         }
 
         .tab {
           background: transparent;
           border: none;
           color: var(--ak-text-muted);
-          font-family: 'DM Mono', monospace;
-          font-size: 11px;
+          font-family: var(--pf-font-mono);
+          font-size: var(--pf-font-size-base);
           letter-spacing: 0.1em;
           text-transform: uppercase;
-          padding: 8px 16px;
+          padding: var(--pf-spacing-sm) var(--pf-spacing-lg);
           cursor: pointer;
-          transition: all 0.15s;
+          transition: var(--pf-transition);
           border-bottom: 2px solid transparent;
         }
         .tab.active {
-          color: var(--mint);
-          border-bottom-color: var(--mint);
+          color: var(--pf-mint);
+          border-bottom-color: var(--pf-mint);
         }
         .tab:hover:not(.active) {
           color: var(--ak-text);
@@ -154,31 +147,31 @@ export default function PrecisionFintech() {
         .metric-card {
           background: var(--ak-surface);
           border: 1px solid var(--ak-border);
-          padding: 24px;
+          padding: var(--pf-spacing-2xl);
           transition: border-color 0.2s;
         }
         .metric-card:hover {
-          border-color: var(--mint-border);
+          border-color: var(--pf-mint-border);
         }
 
         .row-hover:hover {
-          background: var(--mint-dim) !important;
+          background: var(--pf-mint-dim) !important;
         }
 
-        .up { color: var(--mint); }
-        .dn { color: #ff4d6d; }
+        .up { color: var(--pf-mint); }
+        .dn { color: var(--pf-danger); }
 
         .pulse {
           width: 7px;
           height: 7px;
-          background: var(--mint);
+          background: var(--pf-mint);
           border-radius: 50%;
           display: inline-block;
           animation: pulse 2s infinite;
         }
         @keyframes pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(0,255,178,0.6); }
-          50% { box-shadow: 0 0 0 6px rgba(0,255,178,0); }
+          0%, 100% { box-shadow: 0 0 0 0 var(--pf-mint-pulse-start); }
+          50% { box-shadow: 0 0 0 6px var(--pf-mint-pulse-end); }
         }
 
         .scanline {
@@ -210,7 +203,7 @@ export default function PrecisionFintech() {
             <div>
               <div
                 style={{
-                  fontFamily: "'Syne', sans-serif",
+                  fontFamily: "var(--pf-font-display)",
                   fontWeight: 800,
                   fontSize: 18,
                   letterSpacing: "-0.01em",
@@ -261,7 +254,7 @@ export default function PrecisionFintech() {
             </div>
             <div
               style={{
-                fontFamily: "'Syne', sans-serif",
+                fontFamily: "var(--pf-font-display)",
                 fontWeight: 800,
                 fontSize: 48,
                 lineHeight: 1,
@@ -308,7 +301,7 @@ export default function PrecisionFintech() {
                 </div>
                 <div
                   style={{
-                    fontFamily: "'Syne', sans-serif",
+                    fontFamily: "var(--pf-font-display)",
                     fontWeight: 700,
                     fontSize: 26,
                     letterSpacing: "-0.02em",
@@ -346,7 +339,7 @@ export default function PrecisionFintech() {
                     </div>
                     <div
                       style={{
-                        fontFamily: "'Syne', sans-serif",
+                        fontFamily: "var(--pf-font-display)",
                         fontWeight: 700,
                         fontSize: 18,
                       }}
@@ -363,12 +356,12 @@ export default function PrecisionFintech() {
                           letterSpacing: "0.1em",
                           padding: "4px 10px",
                           border: "1px solid",
-                          borderColor: i === 2 ? "var(--mint)" : "var(--ak-border)",
-                          color: i === 2 ? "var(--mint)" : "var(--ak-text-muted)",
+                          borderColor: i === 2 ? "var(--pf-mint)" : "var(--ak-border)",
+                          color: i === 2 ? "var(--pf-mint)" : "var(--ak-text-muted)",
                           background:
                             i === 2 ? "var(--mint-dim)" : "transparent",
                           cursor: "pointer",
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--pf-font-mono)",
                         }}
                       >
                         {p}
@@ -509,7 +502,7 @@ export default function PrecisionFintech() {
                 >
                   <div
                     style={{
-                      fontFamily: "'Syne', sans-serif",
+                      fontFamily: "var(--pf-font-display)",
                       fontWeight: 700,
                       fontSize: 15,
                     }}
@@ -572,7 +565,7 @@ export default function PrecisionFintech() {
                         <td style={{ padding: "16px 24px" }}>
                           <div
                             style={{
-                              fontFamily: "'Syne', sans-serif",
+                              fontFamily: "var(--pf-font-display)",
                               fontWeight: 700,
                               fontSize: 14,
                             }}
@@ -611,7 +604,7 @@ export default function PrecisionFintech() {
                         <td
                           style={{
                             padding: "16px 24px",
-                            fontFamily: "'Syne', sans-serif",
+                            fontFamily: "var(--pf-font-display)",
                             fontWeight: 700,
                             fontSize: 14,
                           }}
@@ -649,7 +642,7 @@ export default function PrecisionFintech() {
                   style={{
                     fontSize: 9,
                     letterSpacing: "0.25em",
-                    color: "var(--mint)",
+                    color: "var(--pf-mint)",
                     marginBottom: 20,
                   }}
                 >
@@ -664,13 +657,13 @@ export default function PrecisionFintech() {
                         padding: "8px 0",
                         fontSize: 10,
                         letterSpacing: "0.1em",
-                        background: i === 0 ? "var(--mint)" : "transparent",
+                        background: i === 0 ? "var(--pf-mint)" : "transparent",
                         color: i === 0 ? "#000" : "rgba(0,255,178,0.5)",
                         border: "1px solid",
                         borderColor:
-                          i === 0 ? "var(--mint)" : "rgba(0,255,178,0.2)",
+                          i === 0 ? "var(--pf-mint)" : "var(--pf-mint-border)",
                         cursor: "pointer",
-                        fontFamily: "DM Mono, monospace",
+                        fontFamily: "var(--pf-font-mono)",
                       }}
                     >
                       {a}
@@ -728,7 +721,7 @@ export default function PrecisionFintech() {
                       border: "1px solid var(--mint-border)",
                       padding: "10px 14px",
                       fontSize: 13,
-                      color: "var(--mint)",
+                      color: "var(--pf-mint)",
                       display: "flex",
                       justifyContent: "space-between",
                     }}
@@ -801,7 +794,7 @@ export default function PrecisionFintech() {
                           left: 0,
                           height: "100%",
                           width: `${a.pct}%`,
-                          background: "var(--mint)",
+                          background: "var(--pf-mint)",
                           transition: "width 0.5s",
                         }}
                       />
@@ -846,16 +839,16 @@ export default function PrecisionFintech() {
                       marginBottom: 8,
                       background:
                         alert.severity === "ok"
-                          ? "rgba(0,255,178,0.05)"
+                          ? "var(--pf-mint-dim)"
                           : "rgba(255,77,109,0.05)",
-                      borderLeft: `2px solid ${alert.severity === "ok" ? "var(--mint)" : "#ff4d6d"}`,
+                      borderLeft: `2px solid ${alert.severity === "ok" ? "var(--pf-mint)" : "var(--pf-danger)"}`,
                       fontSize: 11,
                     }}
                   >
                     <div
                       style={{
                         color:
-                          alert.severity === "ok" ? "var(--mint)" : "#ff4d6d",
+                          alert.severity === "ok" ? "var(--pf-mint)" : "var(--pf-danger)",
                         marginBottom: 3,
                       }}
                     >

@@ -1,0 +1,39 @@
+name: Release notes from Conventional Commits
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-release-notes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate release notes with git-cliff
+        uses: orhun/git-cliff-action@v1
+        with:
+          args: >-
+            --output RELEASE_NOTES.md
+            --tag "$GITHUB_REF_NAME"
+            --current-tag "$GITHUB_REF_NAME"
+            --repository-path .
+            --config .git-cliff.toml
+            --context full
+
+      - name: Create/Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+

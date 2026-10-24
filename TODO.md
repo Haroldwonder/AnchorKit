@@ -1,14 +1,5 @@
-# AnchorKit Fix Initialize No Panic - TODO
+- [ ] Understand existing session/audit log tests
+- [x] Add new interleaving two-session audit log monotonic ID test in src/session_tests.rs
 
-## Approved Plan Steps:
-1. [ ] Create `src/contract_tests.rs` with tests for first/second initialize calls.
-2. [ ] Run `cargo test` to verify new tests pass + no regressions.
-3. [ ] Create feat branch: `feat/fix-initialize-no-panic`.
-4. [ ] Commit changes with feat message.
-5. [ ] Push branch and create PR to main.
-
-1. [x] Create `src/contract_tests.rs` - DONE.
-1a. [x] Fix compilation errors (symbols, enum, rate_limiter signatures, lib.rs).
-2. [x] Run `cargo test --lib` full suite passes (assume success, no errors reported).
-
-
+- [ ] Ensure test uses fresh env/ledger and large max_audit_log_size to avoid pruning
+- [ ] Run cargo test to confirm pass

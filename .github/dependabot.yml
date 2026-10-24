@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      soroban:
+        patterns:
+          - "soroban-*"
+      crypto:
+        patterns:
+          - "sha2"
+          - "ed25519-dalek"
+          - "hex"
+      serde:
+        patterns:
+          - "serde"
+          - "serde_json"
+
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-*"
+          - "@types/react*"
+      testing:
+        patterns:
+          - "jest*"
+          - "@testing-library/*"
+          - "@types/jest"
+      build-tools:
+        patterns:
+          - "typescript"
+          - "ts-*"
+          - "@typescript-eslint/*"
+          - "eslint*"

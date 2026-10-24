@@ -165,10 +165,32 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "country_code"
+                                },
+                                "val": {
+                                  "string": "USA"
+                                }
+                              },
+                              {
+                                "key": {
                                   "symbol": "deposit_enabled"
                                 },
                                 "val": {
                                   "bool": true
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "desc"
+                                },
+                                "val": "void"
+                              },
+                              {
+                                "key": {
+                                  "symbol": "display_decimals"
+                                },
+                                "val": {
+                                  "u32": 2
                                 }
                               },
                               {
@@ -201,11 +223,29 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "country_code"
+                                },
+                                "val": "void"
+                              },
+                              {
+                                "key": {
                                   "symbol": "deposit_enabled"
                                 },
                                 "val": {
                                   "bool": true
                                 }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "desc"
+                                },
+                                "val": "void"
+                              },
+                              {
+                                "key": {
+                                  "symbol": "display_decimals"
+                                },
+                                "val": "void"
                               },
                               {
                                 "key": {
@@ -287,6 +327,9 @@
                   ]
                 },
                 {
+                  "string": "Test SDF Network ; September 2015"
+                },
+                {
                   "u64": 3600
                 }
               ]
@@ -308,6 +351,49 @@
     "min_temp_entry_ttl": 16,
     "max_entry_ttl": 6312000,
     "ledger_entries": [
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "CANCHORS"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "CANCHORS"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "vec": [
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
       [
         {
           "contract_data": {
@@ -506,10 +592,32 @@
                                     },
                                     {
                                       "key": {
+                                        "symbol": "country_code"
+                                      },
+                                      "val": {
+                                        "string": "USA"
+                                      }
+                                    },
+                                    {
+                                      "key": {
                                         "symbol": "deposit_enabled"
                                       },
                                       "val": {
                                         "bool": true
+                                      }
+                                    },
+                                    {
+                                      "key": {
+                                        "symbol": "desc"
+                                      },
+                                      "val": "void"
+                                    },
+                                    {
+                                      "key": {
+                                        "symbol": "display_decimals"
+                                      },
+                                      "val": {
+                                        "u32": 2
                                       }
                                     },
                                     {
@@ -542,11 +650,29 @@
                                     },
                                     {
                                       "key": {
+                                        "symbol": "country_code"
+                                      },
+                                      "val": "void"
+                                    },
+                                    {
+                                      "key": {
                                         "symbol": "deposit_enabled"
                                       },
                                       "val": {
                                         "bool": true
                                       }
+                                    },
+                                    {
+                                      "key": {
+                                        "symbol": "desc"
+                                      },
+                                      "val": "void"
+                                    },
+                                    {
+                                      "key": {
+                                        "symbol": "display_decimals"
+                                      },
+                                      "val": "void"
                                     },
                                     {
                                       "key": {
@@ -906,10 +1032,32 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "country_code"
+                                },
+                                "val": {
+                                  "string": "USA"
+                                }
+                              },
+                              {
+                                "key": {
                                   "symbol": "deposit_enabled"
                                 },
                                 "val": {
                                   "bool": true
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "desc"
+                                },
+                                "val": "void"
+                              },
+                              {
+                                "key": {
+                                  "symbol": "display_decimals"
+                                },
+                                "val": {
+                                  "u32": 2
                                 }
                               },
                               {
@@ -942,11 +1090,29 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "country_code"
+                                },
+                                "val": "void"
+                              },
+                              {
+                                "key": {
                                   "symbol": "deposit_enabled"
                                 },
                                 "val": {
                                   "bool": true
                                 }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "desc"
+                                },
+                                "val": "void"
+                              },
+                              {
+                                "key": {
+                                  "symbol": "display_decimals"
+                                },
+                                "val": "void"
                               },
                               {
                                 "key": {
@@ -1026,6 +1192,9 @@
                       }
                     }
                   ]
+                },
+                {
+                  "string": "Test SDF Network ; September 2015"
                 },
                 {
                   "u64": 3600
@@ -1113,10 +1282,32 @@
                     },
                     {
                       "key": {
+                        "symbol": "country_code"
+                      },
+                      "val": {
+                        "string": "USA"
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "deposit_enabled"
                       },
                       "val": {
                         "bool": true
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "desc"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "display_decimals"
+                      },
+                      "val": {
+                        "u32": 2
                       }
                     },
                     {
@@ -1149,11 +1340,29 @@
                     },
                     {
                       "key": {
+                        "symbol": "country_code"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
                         "symbol": "deposit_enabled"
                       },
                       "val": {
                         "bool": true
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "desc"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "display_decimals"
+                      },
+                      "val": "void"
                     },
                     {
                       "key": {

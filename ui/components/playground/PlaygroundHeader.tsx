@@ -107,6 +107,9 @@ export function PlaygroundHeader({
       {/* Theme toggle */}
       <button
         onClick={onToggleTheme}
+        aria-label={D ? "Switch to light mode" : "Switch to dark mode"}
+        aria-pressed={D}
+        title={D ? "Switch to light mode" : "Switch to dark mode"}
         style={{
           width: 36,
           height: 36,
@@ -131,7 +134,11 @@ export function PlaygroundHeader({
           e.currentTarget.style.boxShadow = "none";
         }}
       >
-        {D ? <SunIcon /> : <MoonIcon />}
+        {D ? (
+          <SunIcon aria-hidden="true" />
+        ) : (
+          <MoonIcon aria-hidden="true" />
+        )}
       </button>
     </header>
   );

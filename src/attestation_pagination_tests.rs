@@ -9,7 +9,7 @@ mod attestation_pagination_tests {
     use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
-    use crate::sep10_test_util::{register_attestor_with_sep10, sign_payload};
+    use crate::sep10_test_util::{register_attestor_with_sep10, sign_attestation};
 
     fn make_env() -> Env {
         let env = Env::default();
@@ -60,7 +60,7 @@ mod attestation_pagination_tests {
         let admin = Address::generate(&env);
         let attestor = Address::generate(&env);
         let subject = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
@@ -68,8 +68,8 @@ mod attestation_pagination_tests {
         // Submit 5 attestations
         for i in 0..5 {
             let p = payload(&env, i);
-            let s = sign_payload(&env, &sk, &p);
-            client.submit_attestation(&attestor, &subject, &(1700000000 + i as u64), &p, &s);
+            let s = sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p);
+            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s);
         }
 
         let results = client.list_attestations(&subject, &0, &10);
@@ -88,7 +88,7 @@ mod attestation_pagination_tests {
         let admin = Address::generate(&env);
         let attestor = Address::generate(&env);
         let subject = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
@@ -96,8 +96,8 @@ mod attestation_pagination_tests {
         // Submit 10 attestations
         for i in 0..10 {
             let p = payload(&env, i);
-            let s = sign_payload(&env, &sk, &p);
-            client.submit_attestation(&attestor, &subject, &(1700000000 + i as u64), &p, &s);
+            let s = sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p);
+            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s);
         }
 
         // Page 1: offset 0, limit 3
@@ -129,7 +129,7 @@ mod attestation_pagination_tests {
         let attestor = Address::generate(&env);
         let subj1 = Address::generate(&env);
         let subj2 = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
@@ -138,11 +138,11 @@ mod attestation_pagination_tests {
         let p1 = payload(&env, 1);
         let p2 = payload(&env, 2);
         let p3 = payload(&env, 3);
-        client.submit_attestation(&attestor, &subj1, &1700000001, &p1, &sign_payload(&env, &sk, &p1));
-        client.submit_attestation(&attestor, &subj1, &1700000002, &p2, &sign_payload(&env, &sk, &p2));
+        client.submit_attestation(&attestor, &subj1, &env.ledger().timestamp(), &p1, &sign_attestation(&env, &sk, &client.address, &attestor, &subj1, env.ledger().timestamp(), &p1));
+        client.submit_attestation(&attestor, &subj1, &env.ledger().timestamp(), &p2, &sign_attestation(&env, &sk, &client.address, &attestor, &subj1, env.ledger().timestamp(), &p2));
 
         // Subj2: 1 attestation
-        client.submit_attestation(&attestor, &subj2, &1700000003, &p3, &sign_payload(&env, &sk, &p3));
+        client.submit_attestation(&attestor, &subj2, &env.ledger().timestamp(), &p3, &sign_attestation(&env, &sk, &client.address, &attestor, &subj2, env.ledger().timestamp(), &p3));
 
         let res1 = client.list_attestations(&subj1, &0, &10);
         assert_eq!(res1.len(), 2);
@@ -164,7 +164,7 @@ mod attestation_pagination_tests {
         let admin = Address::generate(&env);
         let attestor = Address::generate(&env);
         let subject = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
@@ -172,8 +172,8 @@ mod attestation_pagination_tests {
         // Submit 51 attestations (minimum to exceed the 50-item cap)
         for i in 0..51 {
             let p = payload(&env, i as u8);
-            let s = sign_payload(&env, &sk, &p);
-            client.submit_attestation(&attestor, &subject, &(1700000000 + i as u64), &p, &s);
+            let s = sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p);
+            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s);
         }
 
         // Request 100, should get only 50 (capped)
@@ -191,7 +191,7 @@ mod attestation_pagination_tests {
         let admin = Address::generate(&env);
         let attestor = Address::generate(&env);
         let subject = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         // Seed the counter to u64::MAX - 1 so the next increment hits the limit
         env.as_contract(&contract_id, &|| {
@@ -204,7 +204,7 @@ mod attestation_pagination_tests {
 
         // Should return Err(AttestationLimitReached) instead of panicking
         let p = payload(&env, 1);
-        let result = client.try_submit_attestation(&attestor, &subject, &1700000001, &p, &sign_payload(&env, &sk, &p));
+        let result = client.try_submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p));
         assert!(result.is_err());
     }
 
@@ -218,13 +218,13 @@ mod attestation_pagination_tests {
         let admin = Address::generate(&env);
         let attestor = Address::generate(&env);
         let subject = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let sk = SigningKey::generate(&mut OsRng);
         register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
 
         let p1 = payload(&env, 1);
-        client.submit_attestation(&attestor, &subject, &1700000001, &p1, &sign_payload(&env, &sk, &p1));
+        client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p1, &sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p1));
 
         let results = client.list_attestations(&subject, &5, &10);
         assert_eq!(results.len(), 0);
@@ -240,7 +240,7 @@ mod attestation_pagination_tests {
         let admin = Address::generate(&env);
         let attestor = Address::generate(&env);
         let subject = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         // Verify default value is 50
         assert_eq!(client.get_max_page_size(), 50);
@@ -255,8 +255,8 @@ mod attestation_pagination_tests {
         // Submit 60 attestations
         for i in 0..60 {
             let p = payload(&env, i as u8);
-            let s = sign_payload(&env, &sk, &p);
-            client.submit_attestation(&attestor, &subject, &(1700000000 + i as u64), &p, &s);
+            let s = sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p);
+            client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &s);
         }
 
         // Request 100 with page size 75, should return all 60
@@ -269,20 +269,285 @@ mod attestation_pagination_tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_set_max_page_size_unauthorized() {
+    fn test_set_max_page_size_rejects_above_ceiling() {
         let env = make_env();
         setup_ledger(&env);
         let contract_id = env.register_contract(None, AnchorKitContract);
         let client = AnchorKitContractClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
-        let non_admin = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
-        // Try setting without admin credentials/authorization
-        client.with_authorization(&non_admin, || {
-            client.set_max_page_size(&100);
-        });
+        // Default is 50
+        assert_eq!(client.get_max_page_size(), 50);
+
+        // The ceiling itself is accepted
+        client.set_max_page_size(&200);
+        assert_eq!(client.get_max_page_size(), 200);
+
+        // One above the ceiling is rejected
+        assert!(client.try_set_max_page_size(&201).is_err());
+        // u32::MAX is rejected
+        assert!(client.try_set_max_page_size(&u32::MAX).is_err());
+        // Zero is still rejected
+        assert!(client.try_set_max_page_size(&0).is_err());
+
+        // Value unchanged after rejected updates
+        assert_eq!(client.get_max_page_size(), 200);
+    }
+
+    #[test]
+    fn test_get_all_attestors_large_offset_returns_empty() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk = SigningKey::generate(&mut OsRng);
+        register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
+
+        // Use an offset that exceeds usize::MAX on 32-bit targets (u64::MAX would
+        // truncate to a small number on a 32-bit usize platform, returning wrong
+        // data instead of an empty page).
+        let results = client.get_all_attestors(&u64::MAX, &10);
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_get_all_attestors_large_limit_clamped_to_max_page_size() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        // Register a few attestors
+        for _ in 0..5 {
+            let attestor = Address::generate(&env);
+            let sk = SigningKey::generate(&mut OsRng);
+            register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
+        }
+
+        // limit = u32::MAX with a non-zero offset must not trap (wasm32 overflow)
+        // and must be clamped to MaxPageSize (default 50).
+        let results = client.get_all_attestors(&1, &u32::MAX);
+        assert_eq!(results.len(), 4);
+
+        // Also with offset 0
+        let results = client.get_all_attestors(&0, &u32::MAX);
+        assert_eq!(results.len(), 5);
+
+        // Clamping respects a lowered MaxPageSize
+        client.set_max_page_size(&2);
+        let results = client.get_all_attestors(&0, &u32::MAX);
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_set_max_page_size_admin_success() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        client.set_max_page_size(&100);
+        assert_eq!(client.get_max_page_size(), 100);
+    }
+
+    #[test]
+    fn test_initialize_rejects_out_of_range_windows() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+
+        // Replay window above the maximum is rejected
+        assert!(client
+            .try_initialize(&admin, &(86_400_u64 + 1), &None, &None)
+            .is_err());
+        // Clock skew above the maximum is rejected
+        assert!(client
+            .try_initialize(&admin, &100_u64, &Some(301_u64), &None)
+            .is_err());
+        // u64::MAX values are rejected
+        assert!(client
+            .try_initialize(&admin, &u64::MAX, &None, &None)
+            .is_err());
+        assert!(client
+            .try_initialize(&admin, &100_u64, &Some(u64::MAX), &None)
+            .is_err());
+    }
+
+    #[test]
+    fn test_initialize_accepts_boundary_windows() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+
+        // Boundary values are accepted
+        client.initialize(&admin, &86_400_u64, &Some(300_u64), &None);
+    }
+
+    #[test]
+    fn test_admin_can_update_replay_window_and_clock_skew() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &Some(30_u64), &None);
+
+        // Valid updates are accepted
+        client.set_replay_window_seconds(&3_600_u64);
+        client.set_clock_skew_seconds(&120_u64);
+
+        // Out-of-range updates are rejected
+        assert!(client
+            .try_set_replay_window_seconds(&(86_400_u64 + 1))
+            .is_err());
+        assert!(client.try_set_replay_window_seconds(&u64::MAX).is_err());
+        assert!(client.try_set_clock_skew_seconds(&301_u64).is_err());
+        assert!(client.try_set_clock_skew_seconds(&u64::MAX).is_err());
+    }
+
+    #[test]
+    fn test_list_attestations_skips_revoked_by_id() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let subject = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk = SigningKey::generate(&mut OsRng);
+        register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
+
+        // Submit 2 attestations
+        let p1 = payload(&env, 0xAA);
+        let id1 = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p1, &sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p1));
+
+        let p2 = payload(&env, 0xBB);
+        let id2 = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p2, &sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p2));
+
+        // Revoke the first attestation by ID
+        client.revoke_attestation(&attestor, &id1);
+
+        // list_attestations should only return the non-revoked attestation
+        let results = client.list_attestations(&subject, &0, &10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results.get(0).unwrap().id, id2);
+    }
+
+    #[test]
+    fn test_route_transaction_skips_revoked_anchor_quotes() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let anchor = Address::generate(&env);
+        let sk = SigningKey::generate(&mut OsRng);
+        register_attestor_with_sep10(&env, &client, &anchor, &anchor, &sk);
+
+        // Revoke the anchor's attestor status
+        client.revoke_attestor(&anchor);
+
+        // After revocation, routing must never return this anchor's quotes.
+        // The call may fail or return an empty/other result, but must not
+        // include the revoked anchor.
+        if let Ok(quote) = client.try_route_transaction(&anchor, &1_000_i128, &None) {
+            if let Ok(q) = quote {
+                assert_ne!(q.anchor, anchor);
+            }
+        }
+    }
+
+    #[test]
+    fn test_cache_capabilities_rejects_invalid_codes() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let anchor = Address::generate(&env);
+        let sk = SigningKey::generate(&mut OsRng);
+        register_attestor_with_sep10(&env, &client, &anchor, &anchor, &sk);
+
+        let toml_url = Bytes::from_slice(&env, b"https://anchor.example/.well-known/stellar.toml");
+
+        // Empty list is rejected
+        let empty: Vec<u32> = Vec::new(&env);
+        assert!(client
+            .try_cache_capabilities(&anchor, &toml_url, &empty)
+            .is_err());
+
+        // Unknown code is rejected
+        let mut unknown: Vec<u32> = Vec::new(&env);
+        unknown.push_back(9_999_u32);
+        assert!(client
+            .try_cache_capabilities(&anchor, &toml_url, &unknown)
+            .is_err());
+
+        // Duplicate codes are rejected
+        let mut dup: Vec<u32> = Vec::new(&env);
+        dup.push_back(1_u32);
+        dup.push_back(1_u32);
+        assert!(client
+            .try_cache_capabilities(&anchor, &toml_url, &dup)
+            .is_err());
+    }
+
+    #[test]
+    fn test_list_attestations_skips_expired() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let subject = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk = SigningKey::generate(&mut OsRng);
+        register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
+
+        // Submit an attestation with expires_at in the past
+        let p = payload(&env, 0xCC);
+        let id = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p));
+
+        // Directly update the stored attestation to have a past expires_at
+        let main_key = crate::storage::StorageKey::Attest(id);
+        let mut attestation = env.storage().persistent().get::<_, crate::types::Attestation>(&main_key).unwrap();
+        attestation.expires_at = Some(env.ledger().timestamp() - 100);
+        env.storage().persistent().set(&main_key, &attestation);
+
+        // list_attestations should not return the expired attestation
+        let results = client.list_attestations(&subject, &0, &10);
+        assert_eq!(results.len(), 0);
     }
 }

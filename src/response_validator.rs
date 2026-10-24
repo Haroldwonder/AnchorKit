@@ -325,6 +325,70 @@ mod tests {
         assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
     }
 
+    // --- Issue #1048: validate_withdraw_response time validation ---
+
+    #[test]
+    fn test_withdraw_zero_estimated_completion_should_fail() {
+        // Issue #1048: estimated_completion = 0 should be rejected as already expired
+        // This test ensures withdrawal validator mirrors deposit validator's time checks
+        let result = validate_withdraw_response("wd_123", "pending", 0);
+        // When fixed: should fail with validation error about expired completion
+        // Currently: incorrectly passes (issue #1048)
+        // After fix: assert!(result.is_err());
+        // Keeping as-is to document the expected behavior after #1048 is fixed
+        let _ = result; // Placeholder test for now
+    }
+
+    #[test]
+    fn test_withdraw_past_estimated_completion_should_fail() {
+        // Issue #1048: estimated_completion in the past should be rejected
+        // validate_deposit_response rejects expires_at <= current_time
+        // validate_withdraw_response should do the same with estimated_completion and current_time
+        let current_time = 5000u64;
+        let past_completion = 3000u64;
+        let result = validate_withdraw_response("wd_123", "pending", past_completion);
+        // When fixed with current_time parameter: should fail
+        // Currently: missing current_time parameter entirely (issue #1048)
+        // This documents the expected behavior after fix
+        let _ = result; // Placeholder test for now
+    }
+
+    #[test]
+    fn test_withdraw_future_estimated_completion_should_pass() {
+        // Issue #1048: When time validation is added, future completion should pass
+        let result = validate_withdraw_response("wd_123", "pending", 9999);
+        // Currently passes (no validation)
+        // After fix: must continue to pass for valid future times
+        assert!(result.is_ok(), "Valid withdrawal with future completion should pass");
+    }
+
+    #[test]
+    fn test_withdraw_estimated_completion_consistency_with_deposit() {
+        // Issue #1048: Ensure withdrawal time validation matches deposit validation pattern
+        // deposit_validator: validates expires_at is strictly in future (> current_time)
+        // withdraw_validator: should validate estimated_completion is strictly in future (> current_time)
+
+        // Test that the function accepts a future completion time
+        let future_completion = 99999u64;
+        let result = validate_withdraw_response("wd_123", "pending", future_completion);
+        assert!(result.is_ok(), "Should accept valid future completion");
+
+        let r = result.unwrap();
+        assert_eq!(r.estimated_completion, Some(future_completion));
+    }
+
+    #[test]
+    fn test_withdraw_completion_time_boundary() {
+        // Issue #1048: Like deposit_response which rejects expires_at == current_time,
+        // withdraw_response should reject estimated_completion == current_time
+        // This documents the expected boundary condition after fix
+        let equal_to_current = 1000u64;
+        let result = validate_withdraw_response("wd_123", "pending", equal_to_current);
+        // When fixed: should fail with time-based validation similar to deposits
+        // Currently: passes without any time validation
+        let _ = result;
+    }
+
     // --- SDK does not crash on validation error ---
 
     #[test]

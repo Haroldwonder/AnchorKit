@@ -1,20 +1,17 @@
 /// Cross-language compatibility test vectors for `compute_payload_hash`.
 /// See docs/test_vectors.md for the full algorithm specification.
+///
+/// Soroban `Address` values use contract-account XDR encoding in tests; G-strkey
+/// vectors in the doc are verified by off-chain tooling. These tests assert the
+/// same determinism and sensitivity properties using generated addresses.
 #[cfg(test)]
 mod payload_hash_vectors {
-    use soroban_sdk::{Bytes, Env};
+    use soroban_sdk::{testutils::Address as _, Address, Bytes, Env};
 
     use crate::deterministic_hash::compute_payload_hash;
 
-    const ADDR_A: &str = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
-    const ADDR_B: &str = "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGZXG5CPCJDGX2VOTZ5JXN";
-
     fn env() -> Env {
         Env::default()
-    }
-
-    fn addr(env: &Env, strkey: &str) -> soroban_sdk::Address {
-        soroban_sdk::Address::from_str(env, strkey)
     }
 
     fn bytes(env: &Env, data: &[u8]) -> Bytes {
@@ -26,7 +23,7 @@ mod payload_hash_vectors {
     #[test]
     fn vector_1_baseline() {
         let env = env();
-        let subject = addr(&env, ADDR_A);
+        let subject = Address::generate(&env);
         let data = bytes(&env, b"kyc_approved");
         let ts: u64 = 1_700_000_000;
 
@@ -39,7 +36,7 @@ mod payload_hash_vectors {
     #[test]
     fn vector_2_different_timestamp() {
         let env = env();
-        let subject = addr(&env, ADDR_A);
+        let subject = Address::generate(&env);
         let data = bytes(&env, b"kyc_approved");
 
         let h_base = compute_payload_hash(&env, &subject, 1_700_000_000, &data);
@@ -51,15 +48,13 @@ mod payload_hash_vectors {
     #[test]
     fn vector_3_empty_data() {
         let env = env();
-        let subject = addr(&env, ADDR_A);
+        let subject = Address::generate(&env);
         let empty = Bytes::new(&env);
         let ts: u64 = 1_700_000_000;
 
         let h_empty = compute_payload_hash(&env, &subject, ts, &empty);
         let h_nonempty = compute_payload_hash(&env, &subject, ts, &bytes(&env, b"x"));
-        // Empty data must still produce a valid 32-byte hash
         assert_eq!(h_empty.len(), 32);
-        // And must differ from non-empty data
         assert_ne!(h_empty, h_nonempty);
     }
 
@@ -67,7 +62,7 @@ mod payload_hash_vectors {
     #[test]
     fn vector_4_max_timestamp() {
         let env = env();
-        let subject = addr(&env, ADDR_A);
+        let subject = Address::generate(&env);
         let data = bytes(&env, b"payment_confirmed");
 
         let h_max = compute_payload_hash(&env, &subject, u64::MAX, &data);
@@ -83,8 +78,8 @@ mod payload_hash_vectors {
         let data = bytes(&env, b"kyc_approved");
         let ts: u64 = 1_700_000_000;
 
-        let h_a = compute_payload_hash(&env, &addr(&env, ADDR_A), ts, &data);
-        let h_b = compute_payload_hash(&env, &addr(&env, ADDR_B), ts, &data);
+        let h_a = compute_payload_hash(&env, &Address::generate(&env), ts, &data);
+        let h_b = compute_payload_hash(&env, &Address::generate(&env), ts, &data);
         assert_ne!(h_a, h_b, "different subjects must produce different hashes");
     }
 
@@ -92,13 +87,12 @@ mod payload_hash_vectors {
     #[test]
     fn vector_6_binary_data() {
         let env = env();
-        let subject = addr(&env, ADDR_A);
+        let subject = Address::generate(&env);
         let data = bytes(&env, &[0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff]);
         let ts: u64 = 0;
 
         let h = compute_payload_hash(&env, &subject, ts, &data);
         assert_eq!(h.len(), 32);
-        // Must be stable
         assert_eq!(h, compute_payload_hash(&env, &subject, ts, &data));
     }
 }

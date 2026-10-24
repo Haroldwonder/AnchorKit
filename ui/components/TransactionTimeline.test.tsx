@@ -309,3 +309,330 @@ describe('TransactionTimeline', () => {
     });
   });
 });
+
+describe('Expandable Timeline Entries', () => {
+  const eventWithAll: TxEvent = {
+    status: 'pending',
+    timestamp: '2024-06-01T12:00:00Z',
+    errorMessage: 'Rate limit exceeded',
+    rawApiResponse: { status: 'pending', code: 429, message: 'Too many requests' },
+  };
+
+  const eventMinimal: TxEvent = {
+    status: 'initiated',
+  };
+
+  describe('Expand / collapse behavior', () => {
+    test('More button is present for a step that has an event', () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      expect(screen.getByRole('button', { name: /▼ More/i })).toBeInTheDocument();
+    });
+
+    test('no More button for steps without an event', () => {
+      // Only one event supplied (pending); initiated step has no event
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      // There is exactly one toggle button
+      const buttons = screen.getAllByRole('button', { name: /▼ More|▲ Less/i });
+      expect(buttons).toHaveLength(1);
+    });
+
+    test('clicking More expands the details panel', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      const toggle = screen.getByRole('button', { name: /▼ More/i });
+      await userEvent.click(toggle);
+      expect(screen.getByRole('region')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /▲ Less/i })).toBeInTheDocument();
+    });
+
+    test('clicking Less collapses the details panel', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      const toggle = screen.getByRole('button', { name: /▼ More/i });
+      await userEvent.click(toggle);
+      await userEvent.click(screen.getByRole('button', { name: /▲ Less/i }));
+      expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    });
+
+    test('expanding one step collapses another', async () => {
+      const events: TxEvent[] = [
+        { status: 'initiated', rawApiResponse: { step: 'init' } },
+        { status: 'pending',   rawApiResponse: { step: 'pend' } },
+      ];
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={events}
+        />
+      );
+      const [firstToggle, secondToggle] = screen.getAllByRole('button', { name: /▼ More/i });
+      await userEvent.click(firstToggle);
+      expect(screen.getAllByRole('region')).toHaveLength(1);
+
+      await userEvent.click(secondToggle);
+      // Only second is now open
+      expect(screen.getAllByRole('region')).toHaveLength(1);
+      expect(screen.getByText(/"step": "pend"/)).toBeInTheDocument();
+      expect(screen.queryByText(/"step": "init"/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Accessible semantics', () => {
+    test('toggle button has aria-expanded=false when collapsed', () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      const btn = screen.getByRole('button', { name: /▼ More/i });
+      expect(btn).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    test('toggle button has aria-expanded=true when expanded', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByRole('button', { name: /▲ Less/i })).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    test('toggle button has aria-controls pointing to panel id', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      const btn = screen.getByRole('button', { name: /▼ More/i });
+      const controls = btn.getAttribute('aria-controls');
+      expect(controls).toBe('step-details-pending');
+
+      await userEvent.click(btn);
+      const panel = document.getElementById('step-details-pending');
+      expect(panel).not.toBeNull();
+    });
+
+    test('expanded panel has role=region', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByRole('region')).toBeInTheDocument();
+    });
+  });
+
+  describe('Keyboard interaction', () => {
+    test('Enter key expands the step', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      const btn = screen.getByRole('button', { name: /▼ More/i });
+      btn.focus();
+      fireEvent.keyDown(btn, { key: 'Enter' });
+      expect(screen.getByRole('region')).toBeInTheDocument();
+    });
+
+    test('Space key expands the step', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      const btn = screen.getByRole('button', { name: /▼ More/i });
+      btn.focus();
+      fireEvent.keyDown(btn, { key: ' ' });
+      expect(screen.getByRole('region')).toBeInTheDocument();
+    });
+
+    test('Enter key collapses when already expanded', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      const btn = screen.getByRole('button', { name: /▼ More/i });
+      await userEvent.click(btn);
+      const lessBtn = screen.getByRole('button', { name: /▲ Less/i });
+      lessBtn.focus();
+      fireEvent.keyDown(lessBtn, { key: 'Enter' });
+      expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Raw API response rendering', () => {
+    test('renders stringified JSON when rawApiResponse is an object', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByText(/"code": 429/)).toBeInTheDocument();
+    });
+
+    test('renders string rawApiResponse as-is', async () => {
+      const event: TxEvent = { status: 'pending', rawApiResponse: 'raw string response' };
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[event]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByText('raw string response')).toBeInTheDocument();
+    });
+
+    test('shows placeholder when rawApiResponse is absent', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="initiated"
+          events={[eventMinimal]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByText('No response data available.')).toBeInTheDocument();
+    });
+  });
+
+  describe('Timestamp in expanded panel', () => {
+    test('shows formatted timestamp when present', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      const tsEls = screen.getAllByText((_, el) =>
+        !!el?.textContent?.includes('Jun') && !!el?.textContent?.includes('1')
+      );
+      expect(tsEls.length).toBeGreaterThan(0);
+    });
+
+    test('shows placeholder dash when timestamp is absent', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="initiated"
+          events={[eventMinimal]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByText('—')).toBeInTheDocument();
+    });
+  });
+
+  describe('Error message in expanded panel', () => {
+    test('shows error message when errorMessage is present', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[eventWithAll]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByText('Rate limit exceeded')).toBeInTheDocument();
+    });
+
+    test('shows fallback when errorMessage is empty string', async () => {
+      const event: TxEvent = { status: 'pending', errorMessage: '' };
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[event]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByText('No error message provided.')).toBeInTheDocument();
+    });
+
+    test('does not render error section when errorMessage is not set', async () => {
+      const event: TxEvent = { status: 'pending', rawApiResponse: { ok: true } };
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="pending"
+          events={[event]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.queryByText(/No error message provided\./)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Incomplete data handling', () => {
+    test('step with no event does not render a toggle button', () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="initiated"
+          events={[]}
+        />
+      );
+      expect(screen.queryByRole('button', { name: /▼ More|▲ Less/i })).not.toBeInTheDocument();
+    });
+
+    test('handles event with only status field (all optional fields absent)', async () => {
+      render(
+        <TransactionTimeline
+          {...baseProps}
+          currentStatus="initiated"
+          events={[{ status: 'initiated' }]}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /▼ More/i }));
+      expect(screen.getByText('—')).toBeInTheDocument();
+      expect(screen.getByText('No response data available.')).toBeInTheDocument();
+      expect(screen.queryByText(/No error message provided\./)).not.toBeInTheDocument();
+    });
+  });
+});

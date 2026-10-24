@@ -64,6 +64,11 @@ These functions only read state and never panic on missing auth.
 ## Error Codes
 
 Authorization failures surface as stable error codes (see `src/errors.rs`):
-- `NotInitialized` (101) — contract not yet initialized
-- `Unauthorized` (102) — caller is not the admin
-- `AttestorNotRegistered` (104) — attestor address not in registry
+- `NotInitialized` (26) — contract not yet initialized
+- `UnauthorizedAttestor` (4) — caller is not a registered/authorized attestor
+- `AttestorNotRegistered` (3) — attestor address not in registry
+
+> There is no bare `Unauthorized` variant. Admin-only rejections are enforced by
+> `require_auth()` (a Soroban host-level auth failure) rather than by a
+> dedicated error code; the closest contract-level authorization error is
+> `UnauthorizedAttestor` (4).

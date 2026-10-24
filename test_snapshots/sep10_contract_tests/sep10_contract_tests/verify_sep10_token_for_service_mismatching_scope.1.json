@@ -40,7 +40,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "7b6a9b1b4819d1e048e6a664e2f212ae9bb499b05889fdddf1fcf25c13880df1"
+                  "bytes": "f207baacc05961a4dc9c63a731f1888aa87725def8c03c648f92ad26fd130071"
                 }
               ]
             }
@@ -99,7 +99,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "7b6a9b1b4819d1e048e6a664e2f212ae9bb499b05889fdddf1fcf25c13880df1"
+                      "bytes": "f207baacc05961a4dc9c63a731f1888aa87725def8c03c648f92ad26fd130071"
                     }
                   ]
                 }
@@ -155,6 +155,18 @@
                         },
                         "val": {
                           "u64": 100
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MaxPageSize"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 50
                         }
                       },
                       {
@@ -348,7 +360,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "bytes": "7b6a9b1b4819d1e048e6a664e2f212ae9bb499b05889fdddf1fcf25c13880df1"
+                  "bytes": "f207baacc05961a4dc9c63a731f1888aa87725def8c03c648f92ad26fd130071"
                 }
               ]
             }
@@ -399,7 +411,7 @@
             "data": {
               "vec": [
                 {
-                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbnkiLCJleHAiOjIwMDAsInNjcCI6ImRlcG9zaXQifQ.gXp1FR707KCp12Jvm6fFphOQvr8qBv0OT8hek4kDsijCXSA04Xoc324D0Hlbz0tEYItYTGo00_sfzcP7T6qyAQ"
+                  "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbnkiLCJleHAiOjIwMDAsInNjcCI6ImRlcG9zaXQifQ.PnGASD0IjnHiMDEvGaGpSPnUiKIi3V7TZAr76qaPYu9hs7ZlNDi1WMSAJT6C6-NdL94i6xBN-g57SfblscXuBw"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -524,7 +536,7 @@
                 {
                   "vec": [
                     {
-                      "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbnkiLCJleHAiOjIwMDAsInNjcCI6ImRlcG9zaXQifQ.gXp1FR707KCp12Jvm6fFphOQvr8qBv0OT8hek4kDsijCXSA04Xoc324D0Hlbz0tEYItYTGo00_sfzcP7T6qyAQ"
+                      "string": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbnkiLCJleHAiOjIwMDAsInNjcCI6ImRlcG9zaXQifQ.PnGASD0IjnHiMDEvGaGpSPnUiKIi3V7TZAr76qaPYu9hs7ZlNDi1WMSAJT6C6-NdL94i6xBN-g57SfblscXuBw"
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"

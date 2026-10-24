@@ -87,17 +87,36 @@ The UI components are built with React and TypeScript.
 
 ## Makefile Shortcuts
 
-A `Makefile` is provided at the project root for common tasks:
+A `Makefile` is provided at the project root for common tasks. It defines
+these eleven targets:
 
 ```bash
+# Build & test
 make build          # cargo build --release
+make build-wasm     # cargo build --release --target wasm32-unknown-unknown
 make test           # cargo test
+make bench          # cargo bench (criterion benchmarks for contract hot paths)
+make coverage       # Rust (tarpaulin) + UI coverage, best-effort
+
+# Lint & format
 make lint           # cargo clippy -- -D warnings
 make fmt            # cargo fmt
+
+# UI
+make storybook      # cd ui && npm run storybook
+
+# Validation & deploy
+make validate       # ./validate_all.sh (repo config + Rust validation)
+make deploy-testnet # deploy to Stellar testnet (depends on build-wasm)
 make clean          # cargo clean
-make deploy-testnet # deploy to Stellar testnet
+
 make help           # list all targets
 ```
+
+`make build-wasm` produces the WASM artifact that `make deploy-testnet`
+uploads, so you can build and inspect the artifact without deploying.
+`make validate` runs the repository's config and Rust validation scripts and is
+the quickest way to check a change before opening a PR.
 
 > **Note**: Requires `make` (available by default on Linux and macOS).
 
@@ -282,10 +301,10 @@ When creating a PR, please include:
 
 ### Existing Documentation
 
-- **[QUICK_START.md](./QUICK_START.md)** - Quick reference guide with examples
-- **[README.md](./README.md)** - Main project documentation
-- **[API_SPEC.md](./API_SPEC.md)** - API specification and error codes
-- **[IMPLEMENTATION_GUIDE.md](./IMPLEMENTATION_GUIDE.md)** - Technical implementation details
+- **[QUICK_START.md](../../QUICK_START.md)** - Quick reference guide with examples
+- **[README.md](../../README.md)** - Main project documentation
+- **[API_REFERENCE.md](../API_REFERENCE.md)** - API specification and reference
+- **[ERROR_IMPLEMENTATION_GUIDE.md](./ERROR_IMPLEMENTATION_GUIDE.md)** - Technical implementation details
 
 ### Writing Documentation
 

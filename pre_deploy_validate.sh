@@ -45,11 +45,11 @@ for config in "$CONFIGS_DIR"/*.toml "$CONFIGS_DIR"/*.json; do
         echo -n "  Validating $(basename "$config")... "
         if python3 "$VALIDATOR" "$config" "$SCHEMA_FILE" > /dev/null 2>&1; then
             echo "✓"
-            ((PASSED++))
+            ((++PASSED))
         else
             echo "✗"
             python3 "$VALIDATOR" "$config" "$SCHEMA_FILE" 2>&1 | sed 's/^/    /'
-            ((FAILED++))
+            ((++FAILED))
         fi
     fi
 done

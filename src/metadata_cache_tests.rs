@@ -37,6 +37,7 @@ mod metadata_cache_tests {
             total_volume: 1_000_000,
             average_settlement_time: 300,
             is_active: true,
+            homepage_url: None,
         }
     }
 
@@ -49,7 +50,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let result = client.try_get_cached_metadata(&anchor);
         assert!(result.is_err());
@@ -64,7 +65,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let meta = sample_metadata(&env, &anchor);
         client.cache_metadata(&anchor, &meta, &3600u64);
@@ -75,7 +76,7 @@ mod metadata_cache_tests {
     }
 
     #[test]
-    #[should_panic(expected = "ValidationError")]
+    #[should_panic(expected = "HostError: Error(Contract, #15)")]
     fn test_cache_metadata_reputation_score_must_be_at_most_10000() {
         let env = make_env();
         set_ledger(&env, 0);
@@ -84,7 +85,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let mut meta = sample_metadata(&env, &anchor);
         meta.reputation_score = 10001;
@@ -92,7 +93,7 @@ mod metadata_cache_tests {
     }
 
     #[test]
-    #[should_panic(expected = "ValidationError")]
+    #[should_panic(expected = "HostError: Error(Contract, #15)")]
     fn test_cache_metadata_uptime_percentage_must_be_at_most_10000() {
         let env = make_env();
         set_ledger(&env, 0);
@@ -101,7 +102,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let mut meta = sample_metadata(&env, &anchor);
         meta.uptime_percentage = 10001;
@@ -117,7 +118,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let meta = sample_metadata(&env, &anchor);
         client.cache_metadata(&anchor, &meta, &10u64);
@@ -138,7 +139,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let meta = sample_metadata(&env, &anchor);
         client.cache_metadata(&anchor, &meta, &0u64);
@@ -159,7 +160,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let meta = sample_metadata(&env, &anchor);
         client.cache_metadata(&anchor, &meta, &3600u64);
@@ -186,7 +187,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let toml_url = String::from_str(&env, "https://anchor.example/.well-known/stellar.toml");
         let mut caps = soroban_sdk::Vec::new(&env);
@@ -208,7 +209,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let toml_url = String::from_str(&env, "https://anchor.example/.well-known/stellar.toml");
         let mut caps = soroban_sdk::Vec::new(&env);
@@ -229,7 +230,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let toml_url = String::from_str(&env, "https://anchor.example/.well-known/stellar.toml");
         let mut caps = soroban_sdk::Vec::new(&env);
@@ -252,7 +253,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let meta = sample_metadata(&env, &anchor);
         client.cache_metadata(&anchor, &meta, &3600u64);
@@ -277,7 +278,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         // No entry yet — must return Err(CacheNotFound), not Ok(0)
         assert!(client.try_get_cache_age_seconds(&anchor).is_err());
@@ -302,7 +303,7 @@ mod metadata_cache_tests {
         let admin = Address::generate(&env);
         let anchor1 = Address::generate(&env);
         let anchor2 = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         let meta1 = sample_metadata(&env, &anchor1);
         let meta2 = sample_metadata(&env, &anchor2);
@@ -334,7 +335,7 @@ mod metadata_cache_tests {
         let admin = Address::generate(&env);
         let anchor1 = Address::generate(&env);
         let anchor2 = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         // Initially empty
         let list = client.list_cached_anchors();
@@ -376,7 +377,7 @@ mod metadata_cache_tests {
 
         let admin = Address::generate(&env);
         let anchor = Address::generate(&env);
-        client.initialize(&admin, &100_u64, &None);
+        client.initialize(&admin, &100_u64, &None, &None);
 
         // Before caching, list is empty
         assert_eq!(client.list_cached_anchors().len(), 0);
@@ -392,5 +393,58 @@ mod metadata_cache_tests {
         // Calling cache_metadata again with same anchor must not duplicate it
         client.cache_metadata(&anchor, &sample_metadata(&env, &anchor), &7200u64);
         assert_eq!(client.list_cached_anchors().len(), 1);
+    }
+
+    #[test]
+    fn test_cache_metadata_rejects_ttl_above_u32_max() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+        let meta = sample_metadata(&env, &anchor);
+        let result = client.try_cache_metadata(&anchor, &meta, &(u32::MAX as u64 + 1));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cache_capabilities_rejects_ttl_above_u32_max() {
+        let env = make_env();
+        set_ledger(&env, 0);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+        let toml_url = String::from_str(&env, "https://anchor.example/.well-known/stellar.toml");
+        let caps = soroban_sdk::vec![&env, 1u32];
+        let result = client.try_cache_capabilities(
+            &anchor,
+            &toml_url,
+            &caps,
+            &(u32::MAX as u64 + 1),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cache_expiration_does_not_overflow_at_large_timestamp() {
+        let env = make_env();
+        set_ledger(&env, u64::MAX - 10);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let anchor = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+        let meta = sample_metadata(&env, &anchor);
+        client.cache_metadata(&anchor, &meta, &(u32::MAX as u64));
+        assert!(client.try_get_cached_metadata(&anchor).is_ok());
+
+        let toml_url = String::from_str(&env, "https://anchor.example/.well-known/stellar.toml");
+        let caps = soroban_sdk::vec![&env, 1u32];
+        client.cache_capabilities(&anchor, &toml_url, &caps, &(u32::MAX as u64));
+        assert!(client.try_get_cached_capabilities(&anchor).is_ok());
     }
 }
