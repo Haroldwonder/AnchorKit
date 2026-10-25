@@ -45,13 +45,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ matrix.feature-set }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Check (${{ matrix.feature-set }})
-        run: cargo check ${{ matrix.flags }}
+        run: cargo check --locked ${{ matrix.flags }}
 
       - name: Build (${{ matrix.feature-set }})
-        run: cargo build ${{ matrix.flags }}
+        run: cargo build --locked ${{ matrix.flags }}
 
       - name: Clippy (${{ matrix.feature-set }})
-        run: cargo clippy ${{ matrix.flags }} -- -D warnings
+        run: cargo clippy --locked ${{ matrix.flags }} -- -D warnings
 
   test-matrix:
     name: Test (${{ matrix.feature-set }})
@@ -87,4 +87,4 @@ jobs:
           key: ${{ runner.os }}-cargo-test-${{ matrix.feature-set }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Test (${{ matrix.feature-set }})
-        run: cargo test ${{ matrix.flags }}
+        run: cargo test --locked ${{ matrix.flags }}

@@ -177,7 +177,7 @@ function TokenDisplay({ jwt }: { jwt: string }) {
   const SENSITIVE_FIELDS = ["sub", "iss", "jti"];
 
   const handleCopy = () => {
-    copy(jwt);
+    if (revealed) copy(jwt);
   };
 
   const maskValue = (key: string, value: unknown): string => {
@@ -210,7 +210,7 @@ function TokenDisplay({ jwt }: { jwt: string }) {
                 textShadow: `0 0 10px ${colors[i]}60`,
               }}
             >
-              {part}
+              {i === 1 && !revealed ? "••••••" : part}
             </span>
             {i < 2 && <span style={{ color: "var(--ak-text-muted)" }}>.</span>}
           </span>
@@ -296,6 +296,7 @@ function TokenDisplay({ jwt }: { jwt: string }) {
 
       <button
         onClick={handleCopy}
+        disabled={!revealed}
         style={{
           alignSelf: "flex-end",
           padding: "6px 14px",
@@ -305,15 +306,16 @@ function TokenDisplay({ jwt }: { jwt: string }) {
           textTransform: "uppercase",
           fontFamily: "monospace",
           borderRadius: 5,
-          cursor: "pointer",
           transition: "all 0.2s",
           border: `1px solid ${isCopied ? "#00e5ff" : "var(--ak-border)"}`,
           color: isCopied ? "#00e5ff" : "var(--ak-text-muted)",
           background: isCopied ? "rgba(0,229,255,0.08)" : "transparent",
           boxShadow: isCopied ? "0 0 12px rgba(0,229,255,0.2)" : "none",
+          opacity: revealed ? 1 : 0.6,
+          cursor: revealed ? "pointer" : "not-allowed",
         }}
       >
-        {isCopied ? "✓ COPIED" : "COPY JWT"}
+        {isCopied ? "✓ COPIED" : revealed ? "COPY JWT" : "REVEAL TO COPY JWT"}
       </button>
     </div>
   );

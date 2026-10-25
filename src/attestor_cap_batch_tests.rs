@@ -314,7 +314,7 @@ mod attestor_cap_batch_tests {
                 &subject,
                 &ts,
                 &ph2,
-                &sig2,
+                &sig2, &None,
             );
         }));
         assert!(result.is_err(), "session path should be throttled when rate limit is exhausted");

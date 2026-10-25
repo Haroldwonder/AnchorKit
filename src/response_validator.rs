@@ -114,6 +114,9 @@ pub fn validate_quote_response(
     if amount == 0 {
         return Err(Error::validation_error("amount must be greater than zero"));
     }
+    if fee > amount {
+        return Err(Error::validation_error("fee must not exceed amount"));
+    }
 
     Ok(QuoteResponse {
         id: alloc::string::String::from(id),
@@ -293,6 +296,15 @@ mod tests {
         // fee = 0 is valid (free transaction); only amount must be > 0
         let result = validate_quote_response("quote_789", "quoted", 100_0000000, "USDC", 0);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_quote_fee_greater_than_amount_fails() {
+        let result = validate_quote_response("quote_789", "quoted", 100, "USDC", 101);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, crate::errors::ErrorCode::ValidationError);
+        assert!(err.context.as_deref().unwrap_or("").contains("fee must not exceed amount"));
     }
 
     // --- validate_anchor_info_response ---

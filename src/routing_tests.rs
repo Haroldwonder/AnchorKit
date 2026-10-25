@@ -83,6 +83,36 @@ mod routing_tests {
     }
 
     #[test]
+    fn test_quote_fee_rejects_values_above_10000_bps() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+
+        assert!(client.try_submit_quote(
+            &anchor,
+            &String::from_str(&env, "USD"),
+            &String::from_str(&env, "USDC"),
+            &10000u64,
+            &10_000u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
+        ).is_ok());
+        assert!(client.try_submit_quote(
+            &anchor,
+            &String::from_str(&env, "USD"),
+            &String::from_str(&env, "USDC"),
+            &10000u64,
+            &10_001u32,
+            &100u64,
+            &100000u64,
+            &1_003_600u64,
+        ).is_err());
+    }
+
+    #[test]
     fn test_select_lowest_fee_anchor() {
         let env = make_env();
         set_ledger(&env, 1_000_000);

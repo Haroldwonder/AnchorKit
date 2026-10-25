@@ -43,13 +43,13 @@ jobs:
 
       - name: Build benchmarks (compile check)
         # Verify the bench target compiles before attempting a timed run.
-        run: cargo build --benches
+        run: cargo build --locked --benches
 
       - name: Run criterion benchmarks
         # --profile bench applies opt-level = 3 (see Cargo.toml [profile.bench])
         # so results reflect runtime speed, not wasm size optimisation.
         # criterion writes machine-readable JSON to target/criterion/.
-        run: cargo bench -- --output-format bencher | tee bench_output.txt
+        run: cargo bench --locked -- --output-format bencher | tee bench_output.txt
 
       - name: Upload criterion results
         uses: actions/upload-artifact@v4

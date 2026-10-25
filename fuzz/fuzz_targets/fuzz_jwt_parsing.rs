@@ -1,41 +1,37 @@
 #![no_main]
 
-use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 
-#[derive(Arbitrary, Debug)]
-struct JwtInput {
-    // Generate arbitrary JWT-like structures with base64url components
-    #[arbitrary(with = "arbitrary_base64url")]
-    header: String,
-    #[arbitrary(with = "arbitrary_base64url")]
-    payload: String,
-    #[arbitrary(with = "arbitrary_base64url")]
-    signature: String,
-}
-
-fn arbitrary_base64url(u: &mut arbitrary::Unstructured) -> arbitrary::Result<String> {
-    // Generate valid base64url characters
-    const BASE64URL_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let len = u.int_in_range(0..=128)?;
-    let mut result = String::new();
-    for _ in 0..len {
-        let idx = u.int_in_range(0..BASE64URL_CHARS.len())?;
-        result.push(BASE64URL_CHARS[idx] as char);
+fn has_nonzero_trailing_bits(input: &[u8]) -> bool {
+    let mut end = input.len();
+    while end > 0 && input[end - 1] == b'=' {
+        end -= 1;
     }
-    Ok(result)
+    let input = &input[..end];
+    let mask = match input.len() % 4 {
+        2 => 0x0f,
+        3 => 0x03,
+        _ => return false,
+    };
+    let Some(&last) = input.last() else {
+        return false;
+    };
+    let value = match last {
+        b'A'..=b'Z' => last - b'A',
+        b'a'..=b'z' => last - b'a' + 26,
+        b'0'..=b'9' => last - b'0' + 52,
+        b'-' => 62,
+        b'_' => 63,
+        _ => return false,
+    };
+    value & mask != 0
 }
 
-fuzz_target!(|input: JwtInput| {
-    // Construct a JWT-like structure: header.payload.signature
-    let jwt = format!("{}.{}.{}", input.header, input.payload, input.signature);
-
-    // Test base64url decoding of individual components
-    let _ = anchorkit::sep10_jwt::base64url_decode(input.header.as_bytes());
-    let _ = anchorkit::sep10_jwt::base64url_decode(input.payload.as_bytes());
-    let _ = anchorkit::sep10_jwt::base64url_decode(input.signature.as_bytes());
-
-    // Ensure no panics occur during decoding operations
-    // Real JWT verification would be tested, but this focuses on panic-freedom
-    // for the low-level base64url decoder
+fuzz_target!(|input: &[u8]| {
+    for segment in input.split(|&byte| byte == b'.') {
+        let decoded = anchorkit::sep10_jwt::base64url_decode(segment);
+        if has_nonzero_trailing_bits(segment) {
+            assert!(decoded.is_err());
+        }
+    }
 });

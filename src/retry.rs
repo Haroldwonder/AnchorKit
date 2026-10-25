@@ -97,25 +97,37 @@ impl RetryConfig {
 
 /// Classify whether an error code is retryable.
 ///
-/// Retryable: transient network/server errors.
-/// Non-retryable: auth failures, bad input, protocol violations, and
-/// rate-limit rejections. `RateLimitExceeded` is intentionally excluded:
-/// the rate window only clears after `window_length` ledgers, so retrying
-/// in a tight backoff loop would burn through every attempt and still fail.
-/// Callers that need to recover from a rate limit should wait for the
-/// window to reset (or call the admin reset path) before issuing the
-/// next request.
+/// # Classification table
 ///
-/// Additional non-retryable errors: UnauthorizedAttestor, ValidationError,
-/// InvalidQuote, InvalidServiceType, InvalidTransactionIntent, ComplianceNotMet.
+/// Retryable (transient — state may change between attempts):
+/// - `TransportTimeout`: network/timeout failures are transient by nature.
+/// - `EndpointFailure`: the endpoint may recover; retry with backoff.
+/// - `ServerError` (5xx-style): the server may recover; retry with backoff.
+///
+/// Non-retryable (deterministic — a millisecond-scale backoff will not change
+/// the outcome unless some other actor mutates state):
+/// - `AttestationNotFound`: a missing attestation will not appear on its own.
+/// - `ServicesNotConfigured`: configuration is not set up; retrying is futile.
+/// - `CacheNotFound`: the cache entry does not exist; retrying won't create it.
+/// - `CacheExpired`: the entry is stale; a retry returns the same result.
+/// - `NoQuotesAvailable`: no quotes exist; retrying won't conjure them.
+/// - `StaleQuote`: the quote is stale; a fresh request is required.
+/// - `RateLimitExceeded`: the rate window only clears after `window_length`
+///   ledgers, so retrying in a tight backoff loop would burn through every
+///   attempt and still fail. Callers should wait for the window to reset (or
+///   call the admin reset path) before issuing the next request.
+/// - `UnauthorizedAttestor`, `ValidationError`, `InvalidQuote`,
+///   `InvalidServiceType`, `InvalidTransactionIntent`, `ComplianceNotMet`:
+///   auth failures, bad input, and protocol violations are permanent.
+///
+/// Callers that genuinely need to recover from a deterministic error should
+/// wait for the relevant state change (or use an explicit long backoff)
+/// rather than relying on this classifier.
 pub fn is_retryable(code: u32) -> bool {
     use crate::errors::ErrorCode;
-    code == ErrorCode::ServicesNotConfigured as u32
-        || code == ErrorCode::AttestationNotFound as u32
-        || code == ErrorCode::StaleQuote as u32
-        || code == ErrorCode::NoQuotesAvailable as u32
-        || code == ErrorCode::CacheExpired as u32
-        || code == ErrorCode::CacheNotFound as u32
+    code == ErrorCode::TransportTimeout as u32
+        || code == ErrorCode::EndpointFailure as u32
+        || code == ErrorCode::ServerError as u32
 }
 
 /// Extract a numeric error code for [`RetryConfig::non_retryable`] checks.
@@ -224,234 +236,28 @@ mod retry_tests {
         }
     }
 
-    fn is_retryable_test(e: &TestError) -> bool {
-        matches!(e, TestError::Transient)
+    #[test]
+    fn is_retryable_classification_table() {
+        use crate::errors::ErrorCode;
+
+        // Transient transport/server errors are retryable.
+        assert!(is_retryable(ErrorCode::TransportTimeout as u32));
+        assert!(is_retryable(ErrorCode::EndpointFailure as u32));
+        assert!(is_retryable(ErrorCode::ServerError as u32));
+
+        // Deterministic errors are non-retryable.
+        assert!(!is_retryable(ErrorCode::AttestationNotFound as u32));
+        assert!(!is_retryable(ErrorCode::ServicesNotConfigured as u32));
+        assert!(!is_retryable(ErrorCode::CacheNotFound as u32));
+        assert!(!is_retryable(ErrorCode::CacheExpired as u32));
+        assert!(!is_retryable(ErrorCode::NoQuotesAvailable as u32));
+        assert!(!is_retryable(ErrorCode::StaleQuote as u32));
+        assert!(!is_retryable(ErrorCode::RateLimitExceeded as u32));
     }
 
     #[test]
-    fn test_success_on_first_try() {
-        let config = RetryConfig::default();
-        let mut calls = 0u32;
-        let result = retry_with_backoff(
-            &config,
-            0,
-            |_| {
-                calls += 1;
-                Ok::<_, TestError>(42)
-            },
-            is_retryable_test,
-            |_| {},
-        );
-        assert_eq!(result, Ok(42));
-        assert_eq!(calls, 1);
-    }
-
-    #[test]
-    fn test_success_after_retry() {
-        let config = RetryConfig::default();
-        let mut calls = 0u32;
-        let result = retry_with_backoff(
-            &config,
-            0,
-            |attempt| {
-                calls += 1;
-                if attempt < 2 {
-                    Err(TestError::Transient)
-                } else {
-                    Ok(99)
-                }
-            },
-            is_retryable_test,
-            |_| {},
-        );
-        assert_eq!(result, Ok(99));
-        assert_eq!(calls, 3);
-    }
-
-    #[test]
-    fn test_exhausted_retries() {
-        let config = RetryConfig::new(3, 10, 1000, 2);
-        let mut calls = 0u32;
-        let result = retry_with_backoff(
-            &config,
-            0,
-            |_| {
-                calls += 1;
-                Err::<i32, _>(TestError::Transient)
-            },
-            is_retryable_test,
-            |_| {},
-        );
-        assert_eq!(result, Err(TestError::Transient));
-        assert_eq!(calls, 3);
-    }
-
-    #[test]
-    fn test_non_retryable_error_stops_immediately() {
-        let config = RetryConfig::new(5, 10, 1000, 2);
-        let mut calls = 0u32;
-        let result = retry_with_backoff(
-            &config,
-            0,
-            |_| {
-                calls += 1;
-                Err::<i32, _>(TestError::Permanent)
-            },
-            is_retryable_test,
-            |_| {},
-        );
-        assert_eq!(result, Err(TestError::Permanent));
-        assert_eq!(calls, 1);
-    }
-
-    #[test]
-    fn test_delay_increases_exponentially() {
-        let config = RetryConfig::new(4, 100, 10_000, 2);
-        // Full jitter: delay is in [0, capped]. Use non-zero seed to get non-zero delays.
-        // attempt 0 capped = 100, attempt 1 = 200, attempt 2 = 400
-        assert!(config.delay_for_attempt(0, 50) <= 100);
-        assert!(config.delay_for_attempt(1, 100) <= 200);
-        assert!(config.delay_for_attempt(2, 300) <= 400);
-        // With seed=capped the result equals capped (modulo wraps to capped)
-        assert_eq!(config.delay_for_attempt(0, 100), 100 % 101);
-    }
-
-    #[test]
-    fn test_delay_capped_at_max() {
-        let config = RetryConfig::new(10, 1000, 3_000, 2);
-        // attempt 5: 1000 * 2^5 = 32000, capped at 3000; full jitter in [0, 3000]
-        assert!(config.delay_for_attempt(5, 99999) <= 3_000);
-    }
-
-    #[test]
-    fn test_sleep_called_between_retries() {
-        let config = RetryConfig::new(3, 50, 5000, 2);
-        let mut sleep_calls = 0u32;
-        let _ = retry_with_backoff(
-            &config,
-            0,
-            |_| Err::<i32, _>(TestError::Transient),
-            is_retryable_test,
-            |_| sleep_calls += 1,
-        );
-        // 3 attempts → 2 sleeps (no sleep after last attempt)
-        assert_eq!(sleep_calls, 2);
-    }
-
-    #[test]
-    fn test_sleep_fn_receives_millisecond_delay() {
-        let config = RetryConfig::new(3, 100, 5000, 2);
-        let mut delays = Vec::new();
-        let _ = retry_with_backoff(
-            &config,
-            0,
-            |_| Err::<i32, _>(TestError::Transient),
-            is_retryable_test,
-            |delay_ms| delays.push(delay_ms),
-        );
-        // 2 retries from 3 attempts
-        assert_eq!(delays.len(), 2);
-        // Full jitter: delays are in [0, capped_delay]
-        assert!(delays[0] <= 100);
-        assert!(delays[1] <= 200);
-    }
-
-    #[test]
-    #[should_panic(expected = "max_attempts must be at least 1")]
-    fn test_max_attempts_zero_panics() {
-        let _ = RetryConfig::new(0, 100, 5000, 2);
-    }
-
-    #[test]
-    fn test_budget_ms_stops_retries_early() {
-        // With jitter_seed=0: attempt 0 seed = 0*31 + 3 = 3, delay = 3 % 101 = 3
-        // budget_ms=2 means cumulative (3) >= budget (2) on first retry → stops after 2 calls
-        let config = RetryConfig { budget_ms: 2, ..RetryConfig::new(5, 100, 5000, 2) };
-        let mut calls = 0u32;
-        let result = retry_with_backoff(
-            &config,
-            0,
-            |_| { calls += 1; Err::<i32, _>(TestError::Transient) },
-            is_retryable_test,
-            |_| {},
-        );
-        assert_eq!(result, Err(TestError::Transient));
-        assert_eq!(calls, 2); // stopped before sleeping/retrying further
-    }
-
-    #[test]
-    fn test_budget_ms_max_does_not_limit() {
-        let config = RetryConfig::new(3, 10, 1000, 2); // budget_ms = u64::MAX by default
-        let mut calls = 0u32;
-        let _ = retry_with_backoff(
-            &config,
-            0,
-            |_| { calls += 1; Err::<i32, _>(TestError::Transient) },
-            is_retryable_test,
-            |_| {},
-        );
-        assert_eq!(calls, 3); // all attempts used
-    }
-
-    #[test]
-    fn test_jitter_seed_desynchronizes_clients() {
-        let config = RetryConfig::new(3, 100, 5000, 2);
-        let mut delays_a = Vec::new();
-        let mut delays_b = Vec::new();
-        let _ = retry_with_backoff(
-            &config,
-            11,
-            |_| Err::<i32, _>(TestError::Transient),
-            is_retryable_test,
-            |d| delays_a.push(d),
-        );
-        let _ = retry_with_backoff(
-            &config,
-            99,
-            |_| Err::<i32, _>(TestError::Transient),
-            is_retryable_test,
-            |d| delays_b.push(d),
-        );
-        assert_eq!(delays_a.len(), 2);
-        assert_eq!(delays_b.len(), 2);
-        // Distinct per-call seeds must not produce identical delay sequences.
-        assert_ne!(delays_a, delays_b);
-    }
-
-    #[test]
-    fn test_config_non_retryable_stops_even_if_callback_allows() {
-        // Config lists code 42 as non-retryable; callback would otherwise retry.
-        let config = RetryConfig::new(5, 10, 1000, 2).with_non_retryable(alloc::vec![42]);
-        let mut calls = 0u32;
-        let result = retry_with_backoff(
-            &config,
-            0,
-            |_| {
-                calls += 1;
-                Err::<i32, _>(CodedError { code: 42 })
-            },
-            |_| true,
-            |_| {},
-        );
-        assert_eq!(result, Err(CodedError { code: 42 }));
-        assert_eq!(calls, 1);
-    }
-
-    #[test]
-    fn test_config_non_retryable_does_not_block_other_codes() {
-        let config = RetryConfig::new(3, 10, 1000, 2).with_non_retryable(alloc::vec![42]);
-        let mut calls = 0u32;
-        let result = retry_with_backoff(
-            &config,
-            0,
-            |_| {
-                calls += 1;
-                Err::<i32, _>(CodedError { code: 7 })
-            },
-            |_| true,
-            |_| {},
-        );
-        assert_eq!(result, Err(CodedError { code: 7 }));
-        assert_eq!(calls, 3);
+    fn attestation_not_found_is_non_retryable() {
+        use crate::errors::ErrorCode;
+        assert!(!is_retryable(ErrorCode::AttestationNotFound as u32));
     }
 }

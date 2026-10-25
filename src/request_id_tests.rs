@@ -106,7 +106,7 @@ mod request_id_tests {
 
         let req_id = client.generate_request_id();
         let p = payload(&env, 0x01);
-        let attest_id = client.submit_with_request_id(&req_id, &attestor, &subject, &1000u64, &p, &sign_attestation(&env, &signing_key, &client.address, &attestor, &subject, 1000u64, &p));
+        let attest_id = client.submit_with_request_id(&req_id, &attestor, &subject, &1000u64, &p, &sign_payload(&env, &signing_key, &p), &None);
 
         assert_eq!(attest_id, 0);
 
@@ -142,7 +142,7 @@ mod request_id_tests {
 
         let req_id = client.generate_request_id();
         let p = payload(&env, 0x01);
-        client.submit_with_request_id(&req_id, &attestor, &subject, &1000u64, &p, &sign_attestation(&env, &signing_key, &client.address, &attestor, &subject, 1000u64, &p));
+        client.submit_with_request_id(&req_id, &attestor, &subject, &1000u64, &p, &sign_payload(&env, &signing_key, &p), &None);
 
         let span = client.get_tracing_span(&req_id.id).unwrap();
         assert_eq!(span.started_at, 1000);
@@ -173,7 +173,7 @@ mod request_id_tests {
 
         let req_id = client.generate_request_id();
 
-        let result = client.try_submit_with_request_id(&req_id, &unregistered, &subject, &1000u64, &payload(&env, 0x01), &Bytes::new(&env));
+        let result = client.try_submit_with_request_id(&req_id, &unregistered, &subject, &1000u64, &payload(&env, 0x01), &Bytes::new(&env), &None);
         assert!(result.is_err());
 
         let span = client.get_tracing_span(&req_id.id);
@@ -214,7 +214,7 @@ mod request_id_tests {
             &String::from_str(&env, "USD"),
             &String::from_str(&env, "USDC"),
             &10000u64,
-            &100u32,
+            &10_000u32,
             &100u64,
             &10000u64,
             &4600u64,
@@ -223,5 +223,18 @@ mod request_id_tests {
         let span = client.get_tracing_span(&req_id.id).unwrap();
         assert_eq!(span.operation, String::from_str(&env, "submit_quote"));
         assert_eq!(span.status, String::from_str(&env, "success"));
+
+        let over_limit_req_id = client.generate_request_id();
+        assert!(client.try_quote_with_request_id(
+            &over_limit_req_id,
+            &anchor,
+            &String::from_str(&env, "USD"),
+            &String::from_str(&env, "USDC"),
+            &10000u64,
+            &10_001u32,
+            &100u64,
+            &10000u64,
+            &4600u64,
+        ).is_err());
     }
 }

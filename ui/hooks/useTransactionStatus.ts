@@ -29,6 +29,10 @@ export interface UseTransactionStatusResult {
   transitions: TransactionTransition[];
   /** True when status is terminal (completed, failed, or refunded). */
   isTerminal: boolean;
+  /** True while polling is active and the transaction is not terminal. */
+  isPolling: boolean;
+  /** True when maxRetries was reached before a terminal transaction status. */
+  retriesExhausted: boolean;
   /** True while the initial fetch is still waiting on the first successful poll. */
   isLoading: boolean;
   /** @deprecated Use isLoading instead. */
@@ -66,13 +70,20 @@ export function useTransactionStatus(
 
   const [snapshot, setSnapshot] = useState<TransactionSnapshot | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const [retriesExhausted, setRetriesExhausted] = useState(false);
 
   useEffect(() => {
     if (!txId || !enabled) {
       setSnapshot(null);
       setError(null);
+      setIsPolling(false);
+      setRetriesExhausted(false);
       return;
     }
+
+    setIsPolling(true);
+    setRetriesExhausted(false);
 
     const tracker = new TransactionStateTracker((id) => fetchStatusRef.current(id));
     let cancelled = false;
@@ -85,9 +96,12 @@ export function useTransactionStatus(
         if (cancelled) return;
         setSnapshot(snap);
         setError(null);
+        setRetriesExhausted(false);
         consecutiveErrors = 0; // reset on success
         if (!snap.isTerminal) {
           timerId = setTimeout(poll, interval);
+        } else {
+          setIsPolling(false);
         }
       } catch (err) {
         if (cancelled) return;
@@ -96,6 +110,8 @@ export function useTransactionStatus(
         
         // Stop retrying if max attempts reached
         if (consecutiveErrors >= maxRetries) {
+          setIsPolling(false);
+          setRetriesExhausted(true);
           return;
         }
         
@@ -123,6 +139,8 @@ export function useTransactionStatus(
     status: snapshot?.status ?? null,
     transitions: snapshot?.transitions ?? [],
     isTerminal: snapshot?.isTerminal ?? false,
+    isPolling,
+    retriesExhausted,
     isLoading,
     loading: isLoading,
     error,

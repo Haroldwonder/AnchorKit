@@ -26,6 +26,14 @@ pub enum TransactionStatus {
     Refunded,
     Expired,
     Error,
+    PendingStellar,
+    PendingCustomerInfoUpdate,
+    PendingTransactionInfoUpdate,
+    PendingUserTransferComplete,
+    NoMarket,
+    TooSmall,
+    TooLarge,
+    OnHold,
     Unknown(String),
 }
 
@@ -43,8 +51,42 @@ impl TransactionStatus {
             "incomplete" => Self::Incomplete,
             "pending" => Self::Pending,
             "error" => Self::Error,
+            "pending_stellar" => Self::PendingStellar,
+            "pending_customer_info_update" => Self::PendingCustomerInfoUpdate,
+            "pending_transaction_info_update" => Self::PendingTransactionInfoUpdate,
+            "pending_user_transfer_complete" => Self::PendingUserTransferComplete,
+            "no_market" => Self::NoMarket,
+            "too_small" => Self::TooSmall,
+            "too_large" => Self::TooLarge,
+            "on_hold" => Self::OnHold,
             _ => Self::Unknown(String::from(s)),
         }
+    }
+
+    /// True when the user (or customer) must act before the transaction can proceed.
+    pub fn requires_user_action(&self) -> bool {
+        matches!(
+            self,
+            Self::PendingUser
+                | Self::PendingCustomerInfoUpdate
+                | Self::PendingTransactionInfoUpdate
+                | Self::PendingUserTransferComplete
+                | Self::PendingTrust
+        )
+    }
+
+    /// True when no further status changes are expected.
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            Self::Completed
+                | Self::Refunded
+                | Self::Expired
+                | Self::Error
+                | Self::NoMarket
+                | Self::TooSmall
+                | Self::TooLarge
+        )
     }
 
     pub fn as_str(&self) -> &str {
@@ -59,6 +101,14 @@ impl TransactionStatus {
             Self::Refunded => "refunded",
             Self::Expired => "expired",
             Self::Error => "error",
+            Self::PendingStellar => "pending_stellar",
+            Self::PendingCustomerInfoUpdate => "pending_customer_info_update",
+            Self::PendingTransactionInfoUpdate => "pending_transaction_info_update",
+            Self::PendingUserTransferComplete => "pending_user_transfer_complete",
+            Self::NoMarket => "no_market",
+            Self::TooSmall => "too_small",
+            Self::TooLarge => "too_large",
+            Self::OnHold => "on_hold",
             Self::Unknown(s) => s.as_str(),
         }
     }
@@ -694,11 +744,19 @@ pub enum FeeOperation {
     Withdrawal,
 }
 
-/// Anchor fee data used by `get_fee_estimate`.
-pub struct AnchorFeeData {
+/// A single fee schedule (fixed fee plus percentage).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeSchedule {
     pub fee_fixed: u64,
     /// Fee percentage in basis points (e.g. `150` = 1.50%).
     pub fee_percent_bps: u32,
+}
+
+/// Anchor fee data used by `get_fee_estimate`, with separate deposit and
+/// withdrawal schedules selected by `FeeOperation`.
+pub struct AnchorFeeData {
+    pub deposit: FeeSchedule,
+    pub withdrawal: FeeSchedule,
 }
 
 /// Estimated fee for a given asset, amount, and operation.
@@ -725,17 +783,20 @@ pub fn get_fee_estimate(
     if amount == 0 {
         return Err(Error::invalid_amount());
     }
-    if fee_data.fee_percent_bps > 10_000 {
+    let schedule = match operation {
+        FeeOperation::Deposit => &fee_data.deposit,
+        FeeOperation::Withdrawal => &fee_data.withdrawal,
+    };
+    if schedule.fee_percent_bps > 10_000 {
         return Err(Error::with_context(
             ErrorCode::ValidationError,
             "fee_percent_bps exceeds maximum (10000)",
             "fee_percent_bps",
         ));
     }
-    let _ = operation;
-    let percent_fee = (amount as u128 * fee_data.fee_percent_bps as u128 / 10_000) as u64;
-    let total_fee = fee_data.fee_fixed.saturating_add(percent_fee);
-    Ok(FeeEstimate { total_fee, fee_fixed: fee_data.fee_fixed, fee_percent_bps: fee_data.fee_percent_bps })
+    let percent_fee = (amount as u128 * schedule.fee_percent_bps as u128 / 10_000) as u64;
+    let total_fee = schedule.fee_fixed.saturating_add(percent_fee);
+    Ok(FeeEstimate { total_fee, fee_fixed: schedule.fee_fixed, fee_percent_bps: schedule.fee_percent_bps })
 }
 
 // ── #653 get_transactions ─────────────────────────────────────────────────────
@@ -774,6 +835,27 @@ pub fn get_transactions(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn all_sep6_statuses_round_trip() {
+        let all = [
+            "pending_user_transfer_start", "pending_user_transfer_complete",
+            "pending_external", "pending_anchor", "pending_stellar", "pending_trust",
+            "pending_user", "pending_customer_info_update",
+            "pending_transaction_info_update", "incomplete", "no_market", "too_small",
+            "too_large", "completed", "refunded", "expired", "error", "on_hold", "pending",
+        ];
+        for s in all {
+            let st = TransactionStatus::from_str(s);
+            assert!(!matches!(st, TransactionStatus::Unknown(_)), "{s}");
+            // `pending_user_transfer_start` is a legacy alias for `pending_user`.
+            let expected = if s == "pending_user_transfer_start" { "pending_user" } else { s };
+            assert_eq!(st.as_str(), expected);
+        }
+        assert!(TransactionStatus::TooSmall.is_terminal());
+        assert!(TransactionStatus::PendingCustomerInfoUpdate.requires_user_action());
+        assert!(!TransactionStatus::OnHold.is_terminal());
+    }
+
     use super::*;
     use alloc::string::ToString;
 
@@ -1476,7 +1558,10 @@ mod tests {
     // ── get_fee_estimate tests (#652) ────────────────────────────────────────
 
     fn fee_data() -> AnchorFeeData {
-        AnchorFeeData { fee_fixed: 5, fee_percent_bps: 100 } // 1%
+        AnchorFeeData {
+            deposit: FeeSchedule { fee_fixed: 5, fee_percent_bps: 100 },     // 1%
+            withdrawal: FeeSchedule { fee_fixed: 2, fee_percent_bps: 200 },  // 2%
+        }
     }
 
     #[test]
@@ -1490,7 +1575,19 @@ mod tests {
     #[test]
     fn test_get_fee_estimate_withdrawal() {
         let est = get_fee_estimate("USDC", 500, FeeOperation::Withdrawal, &fee_data()).unwrap();
-        assert_eq!(est.total_fee, 5 + 5); // 5 fixed + 5 percent
+        // fixed=2, percent=500*200/10000=10 => total=12
+        assert_eq!(est.fee_fixed, 2);
+        assert_eq!(est.fee_percent_bps, 200);
+        assert_eq!(est.total_fee, 12);
+    }
+
+    #[test]
+    fn test_get_fee_estimate_selects_schedule_by_operation() {
+        let data = fee_data();
+        let deposit = get_fee_estimate("USDC", 1000, FeeOperation::Deposit, &data).unwrap();
+        let withdrawal = get_fee_estimate("USDC", 1000, FeeOperation::Withdrawal, &data).unwrap();
+        assert_eq!(deposit.total_fee, 15);
+        assert_eq!(withdrawal.total_fee, 22);
     }
 
     #[test]

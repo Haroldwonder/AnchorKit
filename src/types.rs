@@ -186,6 +186,7 @@ pub struct Quote {
     pub base_asset: String,
     pub quote_asset: String,
     pub rate: u64,
+    /// Fee in basis points (bps), where 10,000 bps equals 100%.
     pub fee_percentage: u32,
     pub minimum_amount: u64,
     pub maximum_amount: u64,

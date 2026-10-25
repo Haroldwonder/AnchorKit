@@ -58,6 +58,9 @@ pub fn base64url_decode(input: &[u8]) -> Result<Vec<u8>, ()> {
             out.push(((buffer >> bits) & 0xFF) as u8);
         }
     }
+    if buffer & ((1u32 << bits) - 1) != 0 {
+        return Err(());
+    }
     Ok(out)
 }
 
@@ -118,6 +121,7 @@ fn find_top_level_key(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 /// Parse top-level `"exp": <digits>`.
 fn parse_json_exp(payload: &[u8]) -> Result<u64, ()> {
+    reject_duplicate_top_level_key(payload, b"\"exp\":")?;
     let key = b"\"exp\":";
     let pos = find_top_level_key(payload, key).ok_or(())?;
     let mut i = pos + key.len();
@@ -145,6 +149,7 @@ fn parse_json_exp(payload: &[u8]) -> Result<u64, ()> {
 
 /// Parse top-level `"sub":"..."` string value, handling `\"` escape sequences.
 fn parse_json_sub(env: &Env, payload: &[u8]) -> Result<String, ()> {
+    reject_duplicate_top_level_key(payload, b"\"sub\":")?;
     let key = b"\"sub\":";
     let pos = find_top_level_key(payload, key).ok_or(())?;
     let mut i = pos + key.len();
@@ -176,6 +181,7 @@ fn parse_json_sub(env: &Env, payload: &[u8]) -> Result<String, ()> {
 
 /// Parse top-level `"scp":"..."` string value from the JWT payload.
 fn parse_json_scp(payload: &[u8]) -> Result<Vec<u8>, ()> {
+    reject_duplicate_top_level_key(payload, b"\"scp\":")?;
     let key = b"\"scp\":";
     let pos = find_top_level_key(payload, key).ok_or(())?;
     let mut i = pos + key.len();
@@ -205,6 +211,7 @@ fn parse_json_scp(payload: &[u8]) -> Result<Vec<u8>, ()> {
 
 /// Parse top-level `"alg":"..."` string value from the JWT header.
 fn parse_json_alg(header: &[u8]) -> Result<Vec<u8>, ()> {
+    reject_duplicate_top_level_key(header, b"\"alg\":")?;
     let key = b"\"alg\":";
     let pos = find_top_level_key(header, key).ok_or(())?;
     let mut i = pos + key.len();
@@ -438,7 +445,8 @@ pub fn verify_sep10_jwt(
 /// distinct-signer bookkeeping cannot silently overflow (#891).
 ///
 /// Returns `Ok(())` if the signature threshold is met and the payload is valid
-/// (non-expired, correct `sub` if supplied). Returns `Err(())` otherwise.
+/// (non-expired, correct `sub` if supplied, and required `scp` scope if supplied).
+/// Returns `Err(())` otherwise.
 pub fn verify_sep10_jwt_multisig(
     env: &Env,
     tokens: &soroban_sdk::Vec<soroban_sdk::String>,
@@ -446,6 +454,7 @@ pub fn verify_sep10_jwt_multisig(
     threshold: u32,
     expected_sub: Option<&soroban_sdk::String>,
     clock_skew_seconds: u64,
+    required_scope: Option<u32>,
 ) -> Result<(), ()> {
     // #891: enforce the same key-set bound used by on-chain storage so used-key
     // tracking cannot silently skip indices.
@@ -495,6 +504,9 @@ pub fn verify_sep10_jwt_multisig(
     let sub = parse_json_sub(env, &payload_dec)?;
     if let Some(expected) = expected_sub {
         if sub != *expected { return Err(()); }
+    }
+    if let Some(service_code) = required_scope {
+        check_payload_scope(&payload_dec, service_code)?;
     }
 
     // Count how many distinct keys produce a valid signature across all tokens.
@@ -607,6 +619,8 @@ mod tests {
 
         // Invalid character should still error
         assert!(base64url_decode(b"SGVs!G8").is_err());
+        assert_eq!(base64url_decode(b"AA").unwrap(), [0]);
+        assert!(base64url_decode(b"AB").is_err());
     }
 
     #[test]
@@ -658,6 +672,30 @@ mod tests {
         keys.push_back(pk);
         assert!(verify_sep10_jwt(&env, &token, &keys, Some(&sub), 0, None).is_ok());
         assert!(verify_sep10_jwt(&env, &token, &keys, None, 0, None).is_ok());
+    }
+
+    #[test]
+    fn verify_rejects_noncanonical_signature_encoding() {
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let pk = Bytes::from_slice(&env, signing_key.verifying_key().as_bytes());
+
+        let attestor = Address::generate(&env);
+        let sub = attestor.to_string();
+        let sub_str: std::string::String = sub.to_string();
+        let mut jwt = build_jwt(&signing_key, sub_str.as_str(), 2_000);
+        let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let last = *jwt.as_bytes().last().unwrap();
+        let index = alphabet.iter().position(|&ch| ch == last).unwrap();
+        assert_eq!(index % 16, 0);
+        jwt.pop();
+        jwt.push(alphabet[index + 1] as char);
+        let token = String::from_str(&env, jwt.as_str());
+
+        let mut keys = soroban_sdk::Vec::new(&env);
+        keys.push_back(pk);
+        assert!(verify_sep10_jwt(&env, &token, &keys, Some(&sub), 0, None).is_err());
     }
 
     #[test]
@@ -881,7 +919,7 @@ mod tests {
         }
         let mut tokens = soroban_sdk::Vec::new(&env);
         tokens.push_back(token);
-        assert!(verify_sep10_jwt_multisig(&env, &tokens, &keys, 1, None, 0).is_err());
+        assert!(verify_sep10_jwt_multisig(&env, &tokens, &keys, 1, None, 0, None).is_err());
     }
 
     #[test]
@@ -906,7 +944,76 @@ mod tests {
         tokens.push_back(String::from_str(&env, jwt1.as_str()));
         tokens.push_back(String::from_str(&env, jwt2.as_str()));
 
-        assert!(verify_sep10_jwt_multisig(&env, &tokens, &keys, 2, None, 0).is_ok());
-        assert!(verify_sep10_jwt_multisig(&env, &tokens, &keys, 2, None, 0).is_ok());
+        assert!(verify_sep10_jwt_multisig(&env, &tokens, &keys, 2, None, 0, None).is_ok());
+        assert!(verify_sep10_jwt_multisig(&env, &tokens, &keys, 2, None, 0, None).is_ok());
+    }
+
+    fn multisig_pair_with_scope(
+        env: &Env,
+        sub: &str,
+        scope: &str,
+    ) -> (soroban_sdk::Vec<String>, soroban_sdk::Vec<Bytes>) {
+        let sk1 = SigningKey::generate(&mut OsRng);
+        let sk2 = SigningKey::generate(&mut OsRng);
+        let jwt1 = build_jwt_with_scope(&sk1, sub, 2_000, scope);
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let parts: std::vec::Vec<&str> = jwt1.split('.').collect();
+        let signing_input = format!("{}.{}", parts[0], parts[1]);
+        let sig2 = sk2.sign(signing_input.as_bytes());
+        let jwt2 = format!(
+            "{}.{}",
+            signing_input,
+            URL_SAFE_NO_PAD.encode(sig2.to_bytes())
+        );
+
+        let mut keys = soroban_sdk::Vec::new(env);
+        keys.push_back(Bytes::from_slice(env, sk1.verifying_key().as_bytes()));
+        keys.push_back(Bytes::from_slice(env, sk2.verifying_key().as_bytes()));
+        let mut tokens = soroban_sdk::Vec::new(env);
+        tokens.push_back(String::from_str(env, jwt1.as_str()));
+        tokens.push_back(String::from_str(env, jwt2.as_str()));
+        (tokens, keys)
+    }
+
+    #[test]
+    fn multisig_enforces_required_scope() {
+        // #1391: multisig path must honor required_scope like verify_sep10_jwt.
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let (tokens, keys) = multisig_pair_with_scope(&env, "GA_TEST_SUB", "deposit");
+
+        assert!(verify_sep10_jwt_multisig(&env, &tokens, &keys, 2, None, 0, Some(1)).is_ok());
+        assert!(verify_sep10_jwt_multisig(&env, &tokens, &keys, 2, None, 0, Some(2)).is_err());
+    }
+
+    #[test]
+    fn multisig_enforces_expected_sub() {
+        // #1391: expected_sub must be enforceable on the multisig path.
+        let env = Env::default();
+        ledger(&env, 1_000);
+        let sub = String::from_str(&env, "GA_TEST_SUB");
+        let wrong = String::from_str(&env, "GA_WRONG_SUB");
+        let (tokens, keys) = multisig_pair_with_scope(&env, "GA_TEST_SUB", "deposit");
+
+        assert!(verify_sep10_jwt_multisig(
+            &env,
+            &tokens,
+            &keys,
+            2,
+            Some(&sub),
+            0,
+            Some(1)
+        )
+        .is_ok());
+        assert!(verify_sep10_jwt_multisig(
+            &env,
+            &tokens,
+            &keys,
+            2,
+            Some(&wrong),
+            0,
+            Some(1)
+        )
+        .is_err());
     }
 }

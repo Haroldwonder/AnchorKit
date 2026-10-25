@@ -319,7 +319,7 @@ describe('SEP10AuthFlow', () => {
       }, { timeout: 3000 });
 
       await waitFor(() => {
-        expect(screen.getByText(/COPY JWT/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /REVEAL TO COPY JWT/ })).toBeDisabled();
       }, { timeout: 3000 });
     });
 
@@ -347,7 +347,8 @@ describe('SEP10AuthFlow', () => {
       }, { timeout: 3000 });
 
       await waitFor(() => {
-        const copyButton = screen.getByText(/COPY JWT/);
+        fireEvent.click(screen.getByRole('button', { name: 'Reveal sensitive JWT fields' }));
+        const copyButton = screen.getByRole('button', { name: 'COPY JWT' });
         fireEvent.click(copyButton);
       }, { timeout: 3000 });
 
@@ -842,16 +843,74 @@ describe('SEP-10 Integration Tests', () => {
     expect(screen.getByText(/HEADER/)).toBeInTheDocument();
     expect(screen.getByText(/PAYLOAD/)).toBeInTheDocument();
     expect(screen.getByText(/SIGNATURE/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(mockAnchorServer.jwt.split('.')[1]);
 
     // Verify copy functionality works
-    const copyButton = screen.getByText(/COPY JWT/);
-    fireEvent.click(copyButton);
+    const copyButton = screen.getByRole('button', { name: /REVEAL TO COPY JWT/ });
+    expect(copyButton).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal sensitive JWT fields' }));
+    expect(screen.getByRole('button', { name: 'COPY JWT' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'COPY JWT' }));
     
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
         expect.stringMatching(/^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/)
       );
     });
+  });
+
+  it('masks the encoded JWT payload and blocks copying until fields are revealed', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          transaction: mockAnchorServer.challenge,
+          network_passphrase: 'Test SDF Network ; September 2015'
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ token: mockAnchorServer.jwt })
+      });
+
+    render(<SEP10AuthFlow />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Connect Wallet/ }));
+    }, { timeout: 3000 });
+    await waitFor(() => expect(screen.getByText(/CONNECTED ACCOUNT/)).toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /Fetch Challenge/ }));
+    }, { timeout: 3000 });
+    await waitFor(() => expect(screen.getByText(/CHALLENGE XDR/)).toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Sign with Wallet/));
+    }, { timeout: 3000 });
+    await waitFor(() => expect(screen.getByText(/SIGNED XDR/)).toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Submit & Get Token/));
+    }, { timeout: 3000 });
+    await waitFor(() => expect(screen.getByText(/DECODED PAYLOAD/)).toBeInTheDocument(), { timeout: 3000 });
+
+    const hiddenCopyButton = screen.getByRole('button', { name: /REVEAL TO COPY JWT/ });
+    expect(hiddenCopyButton).toBeDisabled();
+    fireEvent.click(hiddenCopyButton);
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal sensitive JWT fields' }));
+    fireEvent.click(screen.getByRole('button', { name: 'COPY JWT' }));
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalled();
+    });
+
+    const copiedJwt = (navigator.clipboard.writeText as jest.Mock).mock.calls[0][0] as string;
+    const encodedPayload = copiedJwt.split('.')[1];
+    expect(document.body.textContent).toContain(encodedPayload);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide sensitive JWT fields' }));
+    expect(document.body.textContent).not.toContain(encodedPayload);
+    const hiddenCopyButtonAfterHide = screen.getByRole('button', { name: /COPIED/ });
+    expect(hiddenCopyButtonAfterHide).toBeDisabled();
+    fireEvent.click(hiddenCopyButtonAfterHide);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
   });
 
   it('tests complete challenge-response cryptographic flow', async () => {
