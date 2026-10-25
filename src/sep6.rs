@@ -476,6 +476,13 @@ pub fn initiate_withdrawal(raw: RawWithdrawalResponse, asset_code: &str) -> Resu
     if raw.transaction_id.is_empty() || raw.account_id.is_empty() {
         return Err(Error::invalid_transaction_intent());
     }
+    if !is_valid_stellar_address(&raw.account_id) {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "Invalid account_id: must be a valid Stellar address",
+            &raw.account_id,
+        ));
+    }
 
     Ok(WithdrawalResponse {
         transaction_id: raw.transaction_id,
@@ -519,8 +526,22 @@ pub fn withdraw_exchange(
             destination_asset,
         ));
     }
+    if source_asset == destination_asset {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "source and destination assets must differ",
+            source_asset,
+        ));
+    }
     if raw.transaction_id.is_empty() || raw.account_id.is_empty() {
         return Err(Error::invalid_transaction_intent());
+    }
+    if !is_valid_stellar_address(&raw.account_id) {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "Invalid account_id: must be a valid Stellar address",
+            &raw.account_id,
+        ));
     }
     Ok(WithdrawalResponse {
         transaction_id: raw.transaction_id,
@@ -569,8 +590,10 @@ pub fn fetch_transaction_status(
 /// Fetch and normalize transaction status, handling HTTP status codes separately.
 ///
 /// Maps HTTP status codes to specific errors:
-/// - 404 → AttestationNotFound
+/// - 404 → TransactionNotFound
+/// - 408 → TransportTimeout (retryable)
 /// - 429 → RateLimitExceeded
+/// - 5xx → ServerError (retryable)
 /// - Other non-2xx → Generic HTTP error
 /// - 2xx → Normalizes the raw response to TransactionStatusResponse
 ///
@@ -580,8 +603,10 @@ pub fn get_transaction_status(
     raw: RawTransactionResponse,
 ) -> Result<TransactionStatusResponse, Error> {
     match http_status {
-        404 => Err(Error::attestation_not_found()),
+        404 => Err(Error::from_code(ErrorCode::TransactionNotFound)),
+        408 => Err(Error::from_code(ErrorCode::TransportTimeout)),
         429 => Err(Error::rate_limit_exceeded()),
+        500..=599 => Err(Error::from_code(ErrorCode::ServerError)),
         200..=299 => fetch_transaction_status(raw),
         _ => Err(Error::with_context(
             ErrorCode::ValidationError,
@@ -698,6 +723,13 @@ pub fn deposit_exchange(
             ErrorCode::ValidationError,
             "Invalid destination_asset code",
             &req.destination_asset,
+        ));
+    }
+    if req.source_asset == req.destination_asset {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "source and destination assets must differ",
+            &req.source_asset,
         ));
     }
     if req.amount == 0 {
@@ -824,11 +856,14 @@ pub fn get_transactions(
         limit: filters.limit,
         cursor: filters.cursor,
     };
-    let mut results = list_transactions(req, raw_items)?;
-    if let Some(status_filter) = filters.status {
-        results.retain(|tx| tx.status == status_filter);
-    }
-    Ok(results)
+    let status_filter = filters.status;
+    let limit = req.limit;
+    let all = list_transactions(RawTransactionListRequest { limit: u32::MAX, ..req }, raw_items)?;
+    Ok(all
+        .into_iter()
+        .filter(|tx| status_filter.as_ref().map_or(true, |s| tx.status == *s))
+        .take(limit as usize)
+        .collect())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -877,7 +912,7 @@ mod tests {
     fn raw_withdrawal() -> RawWithdrawalResponse {
         RawWithdrawalResponse {
             transaction_id: "txn-002".to_string(),
-            account_id: "GABC123".to_string(),
+            account_id: VALID_ACCOUNT.to_string(),
             dest_account_id: Some("bank-account-9876".to_string()),
             memo: Some("12345".to_string()),
             memo_type: Some("id".to_string()),
@@ -1123,10 +1158,18 @@ mod tests {
     }
 
     #[test]
-    fn test_get_transaction_status_404_returns_attestation_not_found() {
-        let raw = raw_tx_status();
-        let err = get_transaction_status(404, raw).unwrap_err();
-        assert_eq!(err.code, ErrorCode::AttestationNotFound);
+    fn test_get_transaction_status_error_mapping_table() {
+        for (status, code) in [
+            (400, ErrorCode::ValidationError),
+            (404, ErrorCode::TransactionNotFound),
+            (408, ErrorCode::TransportTimeout),
+            (429, ErrorCode::RateLimitExceeded),
+            (500, ErrorCode::ServerError),
+            (503, ErrorCode::ServerError),
+        ] {
+            let err = get_transaction_status(status, raw_tx_status()).unwrap_err();
+            assert_eq!(err.code, code);
+        }
     }
 
     #[test]
@@ -1137,10 +1180,9 @@ mod tests {
     }
 
     #[test]
-    fn test_get_transaction_status_500_returns_generic_error() {
-        let raw = raw_tx_status();
-        let err = get_transaction_status(500, raw).unwrap_err();
-        assert_eq!(err.code, ErrorCode::ValidationError);
+    fn test_get_transaction_status_500_is_retryable() {
+        let err = get_transaction_status(500, raw_tx_status()).unwrap_err();
+        assert!(crate::retry::is_retryable(err.code as u32));
     }
 
     #[test]
@@ -1422,7 +1464,7 @@ mod tests {
     fn raw_withdraw_exchange() -> RawWithdrawExchangeResponse {
         RawWithdrawExchangeResponse {
             transaction_id: "txn-003".to_string(),
-            account_id: "GABC456".to_string(),
+            account_id: VALID_ACCOUNT.to_string(),
             dest_account_id: Some("bank-789".to_string()),
             memo: Some("99".to_string()),
             memo_type: Some("id".to_string()),
@@ -1663,5 +1705,44 @@ mod tests {
         let result = get_transactions(f, items).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].transaction_id, "t2");
+    }
+
+    // ── #1410 / #1411 / #1412 ────────────────────────────────────────────────
+
+    #[test]
+    fn test_exchange_same_asset_rejected() {
+        let mut req = exchange_req();
+        req.destination_asset = req.source_asset.clone();
+        let err = deposit_exchange(req, raw_deposit()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+        let err = withdraw_exchange(raw_withdraw_exchange(), "USDC", "USDC").unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn test_withdrawal_invalid_account_id_rejected() {
+        let mut raw = raw_withdrawal();
+        raw.account_id = "GABC123".to_string();
+        assert_eq!(initiate_withdrawal(raw, "USDC").unwrap_err().code, ErrorCode::ValidationError);
+        let mut raw = raw_withdraw_exchange();
+        raw.account_id = "GABC123".to_string();
+        assert_eq!(withdraw_exchange(raw, "USD", "USDC").unwrap_err().code, ErrorCode::ValidationError);
+        assert!(initiate_withdrawal(raw_withdrawal(), "USDC").is_ok());
+    }
+
+    #[test]
+    fn test_get_transactions_status_filter_applied_before_limit() {
+        let mut items = Vec::new();
+        for i in 0..10 {
+            items.push(make_raw_tx(&alloc::format!("p{}", i), "pending_external"));
+        }
+        for i in 0..6 {
+            items.push(make_raw_tx(&alloc::format!("c{}", i), "completed"));
+        }
+        let mut f = tx_filters();
+        f.limit = 5;
+        f.status = Some(TransactionStatus::Completed);
+        let result = get_transactions(f, items).unwrap();
+        assert_eq!(result.len(), 5);
     }
 }
