@@ -74,7 +74,10 @@ pub struct TransactionStateRecord {
 #[derive(Clone)]
 #[allow(dead_code)]
 pub struct TransactionStateTracker {
-    cache: alloc::vec::Vec<TransactionStateRecord>,
+    cache: alloc::collections::BTreeMap<u64, TransactionStateRecord>,
+    /// Maximum number of cached records; `None` means unbounded. When exceeded,
+    /// the oldest terminal (Completed/Failed) records are evicted.
+    capacity: Option<usize>,
     /// Per-state counters indexed by TransactionState discriminant (1-based).
     /// Index 0 is unused; indices 1-5 map to Pending/InProgress/Completed/Failed/Unknown.
     state_counts: [u64; 6],
@@ -85,8 +88,45 @@ impl TransactionStateTracker {
     /// Create a new transaction state tracker
     pub fn new() -> Self {
         TransactionStateTracker {
-            cache: alloc::vec::Vec::new(),
+            cache: alloc::collections::BTreeMap::new(),
+            capacity: None,
             state_counts: [0u64; 6],
+        }
+    }
+
+    /// Create a tracker that evicts the oldest terminal records once more than
+    /// `capacity` records are cached.
+    pub fn with_capacity(capacity: usize) -> Self {
+        let mut t = Self::new();
+        t.capacity = Some(capacity);
+        t
+    }
+
+    /// Remove a single record by ID, returning it if present.
+    pub fn remove(&mut self, transaction_id: u64) -> Option<TransactionStateRecord> {
+        let record = self.cache.remove(&transaction_id)?;
+        let c = &mut self.state_counts[record.state as usize];
+        *c = c.saturating_sub(1);
+        Some(record)
+    }
+
+    fn evict_terminal(&mut self) {
+        let Some(cap) = self.capacity else { return };
+        while self.cache.len() > cap {
+            let oldest = self
+                .cache
+                .values()
+                .filter(|r| {
+                    matches!(r.state, TransactionState::Completed | TransactionState::Failed)
+                })
+                .min_by_key(|r| r.last_updated)
+                .map(|r| r.transaction_id);
+            match oldest {
+                Some(id) => {
+                    self.remove(id);
+                }
+                None => break,
+            }
         }
     }
 
@@ -98,7 +138,7 @@ impl TransactionStateTracker {
         env: &Env,
     ) -> Result<TransactionStateRecord, String> {
         // #909: reject duplicate transaction IDs to prevent orphaned records
-        if self.cache.iter().any(|r| r.transaction_id == transaction_id) {
+        if self.cache.contains_key(&transaction_id) {
             return Err(String::from_str(
                 env,
                 "Transaction with this ID already exists",
@@ -124,8 +164,9 @@ impl TransactionStateTracker {
             },
         };
 
-        self.cache.push(record.clone());
+        self.cache.insert(transaction_id, record.clone());
         self.state_counts[TransactionState::Pending as usize] += 1;
+        self.evict_terminal();
 
         Ok(record)
     }
@@ -197,38 +238,31 @@ impl TransactionStateTracker {
     ) -> Result<TransactionStateRecord, String> {
         let current_time = env.ledger().timestamp();
 
-        // Search and update in cache
-        for record in self.cache.iter_mut() {
-            if record.transaction_id == transaction_id {
-                let old_state = record.state;
+        let Some(record) = self.cache.get_mut(&transaction_id) else {
+            return Err(String::from_str(env, "Transaction not found in cache"));
+        };
+        let old_state = record.state;
 
-                // Enforce the documented state machine.
-                if !Self::is_valid_transition(old_state, new_state) {
-                    return Err(String::from_str(
-                        env,
-                        "Invalid state transition",
-                    ));
-                }
-
-                record.state = new_state;
-                record.last_updated = current_time;
-                record.error_message = error_message;
-                record.history.push_back(StateTransition {
-                    state: new_state,
-                    timestamp: current_time,
-                });
-                // Update state counts
-                if self.state_counts[old_state as usize] > 0 {
-                    self.state_counts[old_state as usize] -= 1;
-                }
-                self.state_counts[new_state as usize] += 1;
-                return Ok(record.clone());
-            }
+        // Enforce the documented state machine.
+        if !Self::is_valid_transition(old_state, new_state) {
+            return Err(String::from_str(env, "Invalid state transition"));
         }
-        Err(String::from_str(
-            env,
-            "Transaction not found in cache",
-        ))
+
+        record.state = new_state;
+        record.last_updated = current_time;
+        record.error_message = error_message;
+        record.history.push_back(StateTransition {
+            state: new_state,
+            timestamp: current_time,
+        });
+        let result = record.clone();
+        // Update state counts
+        if self.state_counts[old_state as usize] > 0 {
+            self.state_counts[old_state as usize] -= 1;
+        }
+        self.state_counts[new_state as usize] += 1;
+        self.evict_terminal();
+        Ok(result)
     }
 
     /// Get transaction state by ID
@@ -237,12 +271,7 @@ impl TransactionStateTracker {
         transaction_id: u64,
         _env: &Env,
     ) -> Result<Option<TransactionStateRecord>, String> {
-        for record in self.cache.iter() {
-            if record.transaction_id == transaction_id {
-                return Ok(Some(record.clone()));
-            }
-        }
-        Ok(None)
+        Ok(self.cache.get(&transaction_id).cloned())
     }
 
     /// Get transaction history by ID
@@ -251,12 +280,10 @@ impl TransactionStateTracker {
         transaction_id: u64,
         _env: &Env,
     ) -> Result<soroban_sdk::Vec<StateTransition>, String> {
-        for record in self.cache.iter() {
-            if record.transaction_id == transaction_id {
-                return Ok(record.history.clone());
-            }
+        match self.cache.get(&transaction_id) {
+            Some(record) => Ok(record.history.clone()),
+            None => Err(String::from_str(_env, "Transaction not found")),
         }
-        Err(String::from_str(_env, "Transaction not found"))
     }
 
 
@@ -266,7 +293,7 @@ impl TransactionStateTracker {
         state: TransactionState,
     ) -> Result<alloc::vec::Vec<TransactionStateRecord>, String> {
         let mut result = alloc::vec::Vec::new();
-        for record in self.cache.iter() {
+        for record in self.cache.values() {
             if record.state == state {
                 result.push(record.clone());
             }
@@ -276,7 +303,7 @@ impl TransactionStateTracker {
 
     /// Get all transactions
     pub fn get_all_transactions(&self) -> Result<alloc::vec::Vec<TransactionStateRecord>, String> {
-        Ok(self.cache.clone())
+        Ok(self.cache.values().cloned().collect())
     }
 
     /// Clear all cached transactions.
@@ -293,7 +320,7 @@ impl TransactionStateTracker {
             return Err(String::from_str(env, "Only the contract admin can clear the cache"));
         }
         admin.require_auth();
-        self.cache = alloc::vec::Vec::new();
+        self.cache = alloc::collections::BTreeMap::new();
         self.state_counts = [0u64; 6];
         Ok(())
     }
@@ -442,6 +469,30 @@ mod tests {
         tracker.create_transaction(1, initiator.clone(), &env).ok();
         tracker.create_transaction(2, initiator.clone(), &env).ok();
 
+        assert_eq!(tracker.cache_size(), 2);
+    }
+
+    #[test]
+    fn test_capacity_evicts_terminal_and_remove() {
+        let env = Env::default();
+        let mut tracker = TransactionStateTracker::with_capacity(2);
+        let initiator = <soroban_sdk::Address as soroban_sdk::testutils::Address>::generate(&env);
+
+        tracker.create_transaction(1, initiator.clone(), &env).unwrap();
+        tracker.fail_transaction(1, String::from_str(&env, "e"), &env).unwrap();
+        tracker.create_transaction(2, initiator.clone(), &env).unwrap();
+        tracker.create_transaction(3, initiator.clone(), &env).unwrap();
+
+        assert_eq!(tracker.cache_size(), 2);
+        assert!(tracker.get_transaction_state(1, &env).unwrap().is_none());
+        assert_eq!(tracker.get_transaction_count_by_state(TransactionState::Failed), 0);
+
+        // Non-terminal records are never evicted.
+        tracker.create_transaction(4, initiator, &env).unwrap();
+        assert_eq!(tracker.cache_size(), 3);
+
+        assert!(tracker.remove(2).is_some());
+        assert!(tracker.remove(2).is_none());
         assert_eq!(tracker.cache_size(), 2);
     }
 

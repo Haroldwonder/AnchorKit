@@ -7,7 +7,6 @@
 
 # Node / UI
 ui/node_modules/
-test_snapshots/
 coverage/
 dist/
 *.log

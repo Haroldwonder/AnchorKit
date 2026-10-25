@@ -120,3 +120,9 @@ test_snapshots/
 │   └── capability_detection_tests/    ← tests in src/capability_detection_tests.rs
 └── ...
 ```
+
+## Policy: snapshots are tracked
+
+`test_snapshots/` is **not** gitignored. Snapshots are committed so CI compares
+against them rather than regenerating. After adding a test, commit the new
+snapshot files that appear in `git status`.
