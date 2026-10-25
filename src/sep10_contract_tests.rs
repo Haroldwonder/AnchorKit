@@ -130,6 +130,32 @@ mod sep10_contract_tests {
     }
 
     #[test]
+    fn remove_missing_key_fails_and_removing_last_key_deletes_entry() {
+        let env = make_env();
+        ledger(&env, 1000);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let issuer = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        let sk = SigningKey::generate(&mut OsRng);
+        let pk = Bytes::from_slice(&env, sk.verifying_key().as_bytes());
+        let other = Bytes::from_slice(&env, &[7u8; 32]);
+        client.set_sep10_jwt_verifying_key(&issuer, &pk);
+
+        assert!(client.try_remove_sep10_verifying_key(&issuer, &other).is_err());
+        client.remove_sep10_verifying_key(&issuer, &pk);
+        env.as_contract(&contract_id, || {
+            assert!(!env
+                .storage()
+                .persistent()
+                .has(&crate::storage::StorageKey::Sep10Key(issuer.clone())));
+        });
+        assert!(client.try_remove_sep10_verifying_key(&issuer, &pk).is_err());
+    }
+
+    #[test]
     fn key_rotation_new_key_still_works_after_removal() {
         let env = make_env();
         ledger(&env, 1000);

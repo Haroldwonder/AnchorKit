@@ -12,7 +12,7 @@ mod retry;
 pub mod sep10_jwt;
 pub mod sdk_config;
 mod storage;
-mod transaction_state_tracker;
+pub mod transaction_state_tracker;
 pub mod transport;
 mod types;
 pub mod sep6;
@@ -40,6 +40,9 @@ pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
 pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
 pub use events::EndpointUpdated;
+pub use transaction_state_tracker::{
+    StateTransition, TransactionState, TransactionStateRecord, TransactionStateTracker,
+};
 
 // Generated contract client, re-exported for the criterion benchmark suite
 // (`benches/`, issue #738) which drives the contract through the Soroban test

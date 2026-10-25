@@ -349,7 +349,7 @@ fn is_valid_stellar_address(s: &str) -> bool {
 
 fn is_valid_asset_code(s: &str) -> bool {
     let len = s.len();
-    len >= 1 && len <= 12 && s.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    len >= 1 && len <= 12 && s.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
 /// Classifies whether an HTTP status code represents a retryable error.
@@ -417,7 +417,7 @@ where
 
 /// Normalize a raw anchor deposit response into a canonical [`DepositResponse`].
 ///
-/// Validates that asset_code is non-empty and matches the Stellar asset code format (1-12 uppercase alphanumeric).
+/// Validates that asset_code is non-empty and matches the Stellar asset code format (1-12 alphanumeric).
 ///
 /// Returns `Err(Error::invalid_transaction_intent())` if required fields are missing.
 /// Returns `Err(Error::ValidationError)` if asset_code is invalid.
@@ -425,7 +425,7 @@ pub fn initiate_deposit(raw: RawDepositResponse, asset_code: &str) -> Result<Dep
     if !is_valid_asset_code(asset_code) {
         return Err(Error::with_context(
             ErrorCode::ValidationError,
-            "Invalid asset code format: must be 1-12 uppercase alphanumeric characters",
+            "Invalid asset code format: must be 1-12 alphanumeric characters",
             asset_code,
         ));
     }
@@ -461,7 +461,7 @@ pub fn initiate_deposit(raw: RawDepositResponse, asset_code: &str) -> Result<Dep
 
 /// Normalize a raw anchor withdrawal response into a canonical [`WithdrawalResponse`].
 ///
-/// Validates that asset_code is non-empty and matches the Stellar asset code format (1-12 uppercase alphanumeric).
+/// Validates that asset_code is non-empty and matches the Stellar asset code format (1-12 alphanumeric).
 ///
 /// Returns `Err(Error::invalid_transaction_intent())` if required fields are missing.
 /// Returns `Err(Error::ValidationError)` if asset_code is invalid.
@@ -469,7 +469,7 @@ pub fn initiate_withdrawal(raw: RawWithdrawalResponse, asset_code: &str) -> Resu
     if !is_valid_asset_code(asset_code) {
         return Err(Error::with_context(
             ErrorCode::ValidationError,
-            "Invalid asset code format: must be 1-12 uppercase alphanumeric characters",
+            "Invalid asset code format: must be 1-12 alphanumeric characters",
             asset_code,
         ));
     }
@@ -922,8 +922,13 @@ mod tests {
     }
 
     #[test]
-    fn test_initiate_deposit_asset_code_with_lowercase_returns_error() {
-        let err = initiate_deposit(raw_deposit(), "usdc").unwrap_err();
+    fn test_initiate_deposit_asset_code_with_lowercase_is_valid() {
+        assert!(initiate_deposit(raw_deposit(), "yXLM").is_ok());
+    }
+
+    #[test]
+    fn test_initiate_deposit_asset_code_with_symbol_returns_error() {
+        let err = initiate_deposit(raw_deposit(), "US-DC").unwrap_err();
         assert_eq!(err.code, ErrorCode::ValidationError);
     }
 
