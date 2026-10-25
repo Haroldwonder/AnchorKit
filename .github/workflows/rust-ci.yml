@@ -7,8 +7,99 @@ on:
     branches: [main, master]
 
 jobs:
-  fmt:
-    name: Rustfmt
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build
+        run: cargo build --locked --verbose --examples
+
+      - name: Check test compilation
+        run: cargo check --locked --tests
+        # Explicitly verify the test target compiles before running tests.
+        # This catches syntax errors in #[cfg(test)] mod blocks (e.g. missing
+        # closing braces) as early as possible and surfaces them as a distinct
+        # CI step rather than a buried cargo test failure. Closes #884.
+
+      - name: Run tests
+        run: cargo test --locked --verbose
+
+      - name: Run clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit dependencies
+        run: cargo audit --deny warnings
+
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [fuzz_deterministic_hash, fuzz_domain_validator]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            fuzz/target
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('fuzz/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-fuzz-
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Run fuzz target (${{ matrix.target }})
+        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=60
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+
+  proptest-tests:
+    name: Proptest Tests (replay window)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,7 +107,56 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: clippy
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-proptest-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-proptest-
+
+      - name: Check proptest test compilation
+        run: cargo check --locked --tests --features proptest-tests
+
+      - name: Run proptest tests
+        run: cargo test --locked --features proptest-tests --verbose
+
+      - name: Clippy (proptest-tests)
+        run: cargo clippy --locked --features proptest-tests -- -D warnings
+
+  testnet-integration:
+    name: Testnet Integration Tests (SEP-6)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-testnet-integration-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-testnet-integration-
+
+      - name: Check testnet-integration test compilation
+        run: cargo check --locked --tests --features testnet-integration
+
+      - name: Run testnet-integration tests
+        run: cargo test --locked --features testnet-integration --verbose
+
+      - name: Clippy (testnet-integration)
+        run: cargo clippy --locked --features testnet-integration -- -D warnings

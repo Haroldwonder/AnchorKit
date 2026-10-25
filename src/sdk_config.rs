@@ -9,6 +9,7 @@ use crate::errors::Error;
 pub enum Network {
     Testnet,
     Mainnet,
+    Futurenet,
 }
 
 /// SDK configuration for anchor operations
