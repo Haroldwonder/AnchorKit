@@ -15,6 +15,7 @@ pub enum TransactionStatus {
     PendingAnchor,
     PendingTrust,
     PendingUser,
+    PendingUserTransferStart,
     Completed,
     Refunded,
     Expired,
@@ -29,7 +30,8 @@ impl TransactionStatus {
             "pending_external" => Self::PendingExternal,
             "pending_anchor" => Self::PendingAnchor,
             "pending_trust" => Self::PendingTrust,
-            "pending_user" | "pending_user_transfer_start" => Self::PendingUser,
+            "pending_user" => Self::PendingUser,
+            "pending_user_transfer_start" => Self::PendingUserTransferStart,
             "completed" => Self::Completed,
             "refunded" => Self::Refunded,
             "expired" => Self::Expired,
@@ -48,6 +50,7 @@ impl TransactionStatus {
             Self::PendingAnchor => "pending_anchor",
             Self::PendingTrust => "pending_trust",
             Self::PendingUser => "pending_user",
+            Self::PendingUserTransferStart => "pending_user_transfer_start",
             Self::Completed => "completed",
             Self::Refunded => "refunded",
             Self::Expired => "expired",
@@ -607,4 +610,45 @@ pub struct StoredCredential {
     pub encrypted_value: String,
     pub expires_at: u64,
     pub updated_at: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transaction_status_round_trip() {
+        let statuses = [
+            "pending",
+            "incomplete",
+            "pending_external",
+            "pending_anchor",
+            "pending_trust",
+            "pending_user",
+            "pending_user_transfer_start",
+            "completed",
+            "refunded",
+            "expired",
+            "error",
+        ];
+
+        for s in statuses {
+            let parsed = TransactionStatus::from_str(s);
+            assert_eq!(parsed.as_str(), s, "Status {} failed round-trip", s);
+        }
+
+        // Distinct variant verification (#1406)
+        assert_ne!(
+            TransactionStatus::PendingUser,
+            TransactionStatus::PendingUserTransferStart
+        );
+        assert_eq!(
+            TransactionStatus::from_str("pending_user_transfer_start"),
+            TransactionStatus::PendingUserTransferStart
+        );
+        assert_eq!(
+            TransactionStatus::PendingUserTransferStart.as_str(),
+            "pending_user_transfer_start"
+        );
+    }
 }
