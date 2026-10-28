@@ -22,6 +22,7 @@ pub enum TransactionStatus {
     PendingAnchor,
     PendingTrust,
     PendingUser,
+    PendingUserTransferStart,
     Completed,
     Refunded,
     Expired,
@@ -44,7 +45,8 @@ impl TransactionStatus {
             "pending_external" => Self::PendingExternal,
             "pending_anchor" => Self::PendingAnchor,
             "pending_trust" => Self::PendingTrust,
-            "pending_user" | "pending_user_transfer_start" => Self::PendingUser,
+            "pending_user" => Self::PendingUser,
+            "pending_user_transfer_start" => Self::PendingUserTransferStart,
             "completed" => Self::Completed,
             "refunded" => Self::Refunded,
             "expired" => Self::Expired,
@@ -68,6 +70,7 @@ impl TransactionStatus {
         matches!(
             self,
             Self::PendingUser
+                | Self::PendingUserTransferStart
                 | Self::PendingCustomerInfoUpdate
                 | Self::PendingTransactionInfoUpdate
                 | Self::PendingUserTransferComplete
@@ -97,6 +100,7 @@ impl TransactionStatus {
             Self::PendingAnchor => "pending_anchor",
             Self::PendingTrust => "pending_trust",
             Self::PendingUser => "pending_user",
+            Self::PendingUserTransferStart => "pending_user_transfer_start",
             Self::Completed => "completed",
             Self::Refunded => "refunded",
             Self::Expired => "expired",
@@ -407,10 +411,34 @@ where
     F: FnMut(u32) -> Result<RawTransactionResponse, Error>,
     S: FnMut(u64),
 {
-    use crate::retry::retry_with_backoff;
+    fetch_transaction_status_with_retry_jitter(fetch_fn, retry_config, 0, sleep_fn)
+}
+
+/// Wraps transaction status fetching with automatic exponential backoff retry logic,
+/// allowing caller-supplied jitter entropy to prevent synchronized client retry storms.
+///
+/// Only transient errors (classified by [`is_retryable`](crate::retry::is_retryable)) are retried.
+/// Permanent errors (such as client validation errors) fail immediately on the first attempt.
+pub fn fetch_transaction_status_with_retry_jitter<F, S>(
+    fetch_fn: F,
+    retry_config: Option<RetryConfig>,
+    jitter_seed: u64,
+    sleep_fn: S,
+) -> Result<TransactionStatusResponse, Error>
+where
+    F: FnMut(u32) -> Result<RawTransactionResponse, Error>,
+    S: FnMut(u64),
+{
+    use crate::retry::{is_retryable, retry_with_backoff};
 
     let config = retry_config.unwrap_or_default();
-    let raw_result = retry_with_backoff(&config, 0, fetch_fn, |_err| true, sleep_fn);
+    let raw_result = retry_with_backoff(
+        &config,
+        jitter_seed,
+        fetch_fn,
+        |err| is_retryable(err.code as u32),
+        sleep_fn,
+    );
 
     raw_result.and_then(|raw| fetch_transaction_status(raw))
 }
@@ -1409,7 +1437,7 @@ mod tests {
 
     #[test]
     fn test_fetch_transaction_status_with_retry_simulates_503_then_success() {
-        // Test retry on transient errors: first attempt fails, second succeeds
+        // Test retry on transient errors: first attempt fails with ServerError, second succeeds
         let raw = raw_tx_status();
         let mut attempt_count = 0;
         let mut sleep_calls = 0;
@@ -1419,7 +1447,7 @@ mod tests {
                 attempt_count += 1;
                 if attempt_count == 1 {
                     Err(Error::with_context(
-                        ErrorCode::ValidationError,
+                        ErrorCode::ServerError,
                         "Transient error (simulated 503)",
                         "HTTP 503",
                     ))
@@ -1436,6 +1464,107 @@ mod tests {
         assert_eq!(resp.transaction_id, "txn-001");
         assert_eq!(attempt_count, 2);
         assert_eq!(sleep_calls, 1);
+    }
+
+    #[test]
+    fn test_fetch_transaction_status_with_retry_does_not_retry_non_retryable_error() {
+        // Issue #1407: Non-retryable errors (e.g. ValidationError) must return after 1 attempt
+        let mut attempt_count = 0;
+        let mut sleep_calls = 0;
+
+        let result = fetch_transaction_status_with_retry(
+            |_attempt| {
+                attempt_count += 1;
+                Err(Error::with_context(
+                    ErrorCode::ValidationError,
+                    "Client validation failure",
+                    "HTTP 400",
+                ))
+            },
+            None,
+            |_| sleep_calls += 1,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code, ErrorCode::ValidationError);
+        assert_eq!(attempt_count, 1, "Non-retryable error should only be attempted once");
+        assert_eq!(sleep_calls, 0, "No backoff sleep should occur for non-retryable error");
+    }
+
+    #[test]
+    fn test_fetch_transaction_status_with_retry_jitter_caller_entropy() {
+        // Issue #1407: Callers can supply jitter entropy
+        let raw = raw_tx_status();
+        let mut attempt_count = 0;
+        let mut sleep_calls = 0;
+
+        let result = fetch_transaction_status_with_retry_jitter(
+            |_attempt| {
+                attempt_count += 1;
+                if attempt_count == 1 {
+                    Err(Error::with_context(
+                        ErrorCode::TransportTimeout,
+                        "Gateway timeout",
+                        "HTTP 504",
+                    ))
+                } else {
+                    Ok(raw.clone())
+                }
+            },
+            None,
+            123456789, // caller jitter seed
+            |_| sleep_calls += 1,
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(attempt_count, 2);
+        assert_eq!(sleep_calls, 1);
+    }
+
+    #[test]
+    fn test_sep6_transaction_status_round_trip() {
+        // Issue #1406: All known statuses must round-trip cleanly
+        let statuses = [
+            "pending",
+            "incomplete",
+            "pending_external",
+            "pending_anchor",
+            "pending_trust",
+            "pending_user",
+            "pending_user_transfer_start",
+            "completed",
+            "refunded",
+            "expired",
+            "error",
+            "pending_stellar",
+            "pending_customer_info_update",
+            "pending_transaction_info_update",
+            "pending_user_transfer_complete",
+            "no_market",
+            "too_small",
+            "too_large",
+            "on_hold",
+        ];
+
+        for s in statuses {
+            let parsed = TransactionStatus::from_str(s);
+            assert_eq!(parsed.as_str(), s, "Status {} failed round-trip in sep6", s);
+        }
+
+        assert_ne!(
+            TransactionStatus::PendingUser,
+            TransactionStatus::PendingUserTransferStart
+        );
+        assert_eq!(
+            TransactionStatus::from_str("pending_user_transfer_start"),
+            TransactionStatus::PendingUserTransferStart
+        );
+        assert_eq!(
+            TransactionStatus::PendingUserTransferStart.as_str(),
+            "pending_user_transfer_start"
+        );
+        assert!(TransactionStatus::PendingUserTransferStart.requires_user_action());
+        assert!(!TransactionStatus::PendingUserTransferStart.is_terminal());
     }
 
     #[test]
