@@ -51,13 +51,13 @@ pub fn validate_anchor_domain(domain: &str) -> Result<(), AnchorKitError> {
         return Err(AnchorKitError::invalid_endpoint_format());
     }
 
-    // Ensure HTTPS protocol
-    if !domain.starts_with("https://") {
+    // Ensure HTTPS protocol (case-insensitive scheme per RFC 3986 §3.1)
+    if domain.len() < 8 || !domain[..8].eq_ignore_ascii_case("https://") {
         return Err(AnchorKitError::invalid_endpoint_format());
     }
 
     // Extract domain part after protocol
-    let domain_part = &domain[8..]; // Skip "https://"
+    let domain_part = &domain[8..]; // Skip scheme
 
     // Check for empty domain after protocol
     if domain_part.is_empty() {
@@ -852,5 +852,20 @@ mod tests {
         let result = percent_decode_simple(encoded);
         // Should handle incomplete sequences gracefully
         assert!(result.len() > 0, "Should handle incomplete sequences");
+    }
+
+    #[test]
+    fn test_validate_anchor_domain_scheme_case_insensitivity() {
+        // Issue #1403: URL schemes are case-insensitive per RFC 3986 §3.1
+        assert!(validate_anchor_domain("HTTPS://example.com").is_ok());
+        assert!(validate_anchor_domain("Https://example.com").is_ok());
+        assert!(validate_anchor_domain("hTtPs://anchor.example.com/sep6").is_ok());
+        assert!(validate_anchor_domain("HTTPS://anchor.example.com:443/sep6").is_ok());
+
+        // HTTP should still be strictly rejected regardless of case
+        assert!(validate_anchor_domain("HTTP://example.com").is_err());
+        assert!(validate_anchor_domain("Http://example.com").is_err());
+        assert!(validate_anchor_domain("http://example.com").is_err());
+        assert!(validate_anchor_domain("FTP://example.com").is_err());
     }
 }

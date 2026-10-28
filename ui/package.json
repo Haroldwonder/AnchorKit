@@ -16,14 +16,14 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json --noEmitOnError false",
+    "build": "node init && tsc --project tsconfig.build.json --noEmitOnError false",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint \"{components,hooks,src,.storybook}/**/*.{ts,tsx}\"",
     "type-check": "tsc --noEmit",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "node init && storybook build"
   },
   "keywords": [
     "anchorkit",

@@ -22,16 +22,17 @@ pub use errors::{AnchorKitError, ErrorCode};
 pub use errors::Error;
 pub use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitState, RateLimitStatus};
 pub use response_validator::{
-    validate_anchor_info_response, validate_deposit_response, validate_quote_response,
-    validate_withdraw_response, AnchorInfoResponse, QuoteResponse,
+    validate_anchor_info_response, validate_deposit_response, validate_simple_deposit_response,
+    validate_quote_response, validate_withdraw_response, AnchorInfoResponse, QuoteResponse,
 };
 pub use retry::{retry_with_backoff, is_retryable, RetryConfig, RetryErrorCode};
 pub use deterministic_hash::{compute_payload_hash, verify_payload_hash};
 pub use domain_validator::validate_anchor_domain;
 
 pub use sep6::{
-    fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
-    deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
+    fetch_transaction_status, fetch_transaction_status_with_retry,
+    fetch_transaction_status_with_retry_jitter, initiate_deposit, initiate_withdrawal,
+    withdraw_exchange, deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
     RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
