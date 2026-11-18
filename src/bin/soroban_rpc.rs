@@ -92,30 +92,33 @@ fn contract_data_value(
 }
 
 fn session_from_value(value: ScVal) -> Result<SessionData, String> {
-    let fields = match value {
-        ScVal::Vec(Some(fields)) => fields,
+    // `#[contracttype]` structs with named fields are encoded as an `ScVal::Map`
+    // keyed by field-name symbols, so decode by name rather than by position.
+    let entries = match value {
+        ScVal::Map(Some(entries)) => entries,
         _ => return Err("Contract returned an invalid session record".to_string()),
     };
-    if fields.len() != 5 {
-        return Err(format!(
-            "Contract returned a session record with {} fields; expected 5",
-            fields.len()
-        ));
-    }
-    let as_u64 = |index: usize, name: &str| match &fields[index] {
-        ScVal::U64(value) => Ok(*value),
-        _ => Err(format!("Contract returned an invalid session {name}")),
+    let field = |name: &str| -> Result<&ScVal, String> {
+        entries
+            .iter()
+            .find(|entry| matches!(&entry.key, ScVal::Symbol(sym) if sym.to_utf8_string_lossy() == name))
+            .map(|entry| &entry.val)
+            .ok_or_else(|| format!("Contract returned a session record without `{name}`"))
     };
-    let initiator = Address::from_sc_val(&fields[1])
+    let as_u64 = |name: &str| match field(name)? {
+        ScVal::U64(value) => Ok(*value),
+        _ => Err(format!("Contract returned an invalid session `{name}`")),
+    };
+    let initiator = Address::from_sc_val(field("initiator")?)
         .map_err(|e| format!("Contract returned an invalid session initiator: {e}"))?
         .to_string();
 
     Ok(SessionData {
-        session_id: as_u64(0, "ID")?,
+        session_id: as_u64("session_id")?,
         initiator,
-        created_at: as_u64(2, "creation time")?,
-        operation_count: as_u64(3, "operation count")?,
-        expires_at: as_u64(4, "expiry time")?,
+        created_at: as_u64("created_at")?,
+        operation_count: as_u64("operation_count")?,
+        expires_at: as_u64("expires_at")?,
     })
 }
 
@@ -535,26 +538,33 @@ mod tests {
 
     #[test]
     fn session_records_decode_from_contract_values() {
-        let initiator = Address::new("GBRPYHIL2CI3C65PL7DH65O6PXARPG63G2GQRFDW6XQVFVVL6UUEZFX")
-            .unwrap()
-            .to_sc_address()
-            .unwrap();
-        let record = session_from_value(ScVal::Vec(Some(
-            VecM::try_from(vec![
-                ScVal::U64(7),
-                ScVal::Address(initiator),
-                ScVal::U64(100),
-                ScVal::U64(3),
-                ScVal::U64(200),
-            ])
-            .unwrap(),
-        )))
-        .unwrap();
+        use soroban_client::xdr::{Limits, ReadXdr};
+        use soroban_sdk::{
+            xdr::{Limits as SdkLimits, ScVal as SdkScVal, WriteXdr},
+            Address as SdkAddress, Env, IntoVal, TryFromVal, Val,
+        };
+
+        const INITIATOR: &str = "GBRPYHIL2CI3C65PL7DH65O6PXARPG63G2GQRFDW6XQVFVVL6UUEZFX";
+
+        // Serialize a real `Session` contract type, exactly as the contract stores it.
+        let env = Env::default();
+        let session = anchorkit::Session {
+            session_id: 7,
+            initiator: SdkAddress::from_str(&env, INITIATOR),
+            created_at: 100,
+            operation_count: 3,
+            expires_at: 200,
+        };
+        let val: Val = session.into_val(&env);
+        let sdk_val = SdkScVal::try_from_val(&env, &val).unwrap();
+        let bytes = sdk_val.to_xdr(SdkLimits::none()).unwrap();
+        let value = ScVal::from_xdr(bytes, Limits::none()).unwrap();
+        assert!(matches!(value, ScVal::Map(Some(_))));
+
+        let record = session_from_value(value).unwrap();
         assert_eq!(record.session_id, 7);
-        assert_eq!(
-            record.initiator,
-            "GBRPYHIL2CI3C65PL7DH65O6PXARPG63G2GQRFDW6XQVFVVL6UUEZFX"
-        );
+        assert_eq!(record.initiator, INITIATOR);
+        assert_eq!(record.created_at, 100);
         assert_eq!(record.operation_count, 3);
         assert_eq!(record.expires_at, 200);
     }
