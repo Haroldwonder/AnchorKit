@@ -37,6 +37,7 @@ pub use sep6::{
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
 };
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
+pub use types::Session;
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
 pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
 pub use events::EndpointUpdated;

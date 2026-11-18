@@ -52,7 +52,11 @@ pub fn validate_anchor_domain(domain: &str) -> Result<(), AnchorKitError> {
     }
 
     // Ensure HTTPS protocol
-    if !domain.starts_with("https://") {
+    // URL schemes are case-insensitive (RFC 3986 §3.1).
+    if !domain
+        .get(..8)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))
+    {
         return Err(AnchorKitError::invalid_endpoint_format());
     }
 
@@ -390,6 +394,17 @@ mod tests {
         assert!(validate_anchor_domain("ftp://example.com").is_err());
         assert!(validate_anchor_domain("ws://example.com").is_err());
         assert!(validate_anchor_domain("wss://example.com").is_err());
+    }
+
+    #[test]
+    fn test_scheme_is_case_insensitive() {
+        assert!(validate_anchor_domain("HTTPS://anchor.example.com").is_ok());
+        assert!(validate_anchor_domain("Https://anchor.example.com").is_ok());
+        assert!(validate_anchor_domain("hTtPs://anchor.example.com/path").is_ok());
+
+        // Uppercase plain HTTP is still rejected
+        assert!(validate_anchor_domain("HTTP://anchor.example.com").is_err());
+        assert!(validate_anchor_domain("Http://anchor.example.com").is_err());
     }
 
     #[test]

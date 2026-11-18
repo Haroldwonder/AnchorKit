@@ -79,6 +79,9 @@ use alloc::string::String;
 /// | 124  | ServerError                 |
 /// | 125  | TransportTimeout            |
 /// | 126  | TransactionNotFound         |
+/// | 127  | QuoteNotFound               |
+/// | 128  | EndpointNotSet              |
+/// | 129  | AuditLogNotFound            |
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -126,6 +129,9 @@ pub enum ErrorCode {
     ServerError = 124,
     TransportTimeout = 125,
     TransactionNotFound = 126,
+    QuoteNotFound = 127,
+    EndpointNotSet = 128,
+    AuditLogNotFound = 129,
 }
 
 impl ErrorCode {
@@ -174,6 +180,9 @@ impl ErrorCode {
             ErrorCode::ServerError => "Server error",
             ErrorCode::TransportTimeout => "Transport timeout",
             ErrorCode::TransactionNotFound => "Transaction not found",
+            ErrorCode::QuoteNotFound => "Quote not found",
+            ErrorCode::EndpointNotSet => "Attestor has no endpoint configured",
+            ErrorCode::AuditLogNotFound => "Audit log entry not found",
             ErrorCode::NotInitialized => "Contract is not initialized",
         }
     }
@@ -476,6 +485,9 @@ mod tests {
             ErrorCode::ContractPaused,
             ErrorCode::AdminTransferPending,
             ErrorCode::AuditLogMaxSizeInvalid,
+            ErrorCode::QuoteNotFound,
+            ErrorCode::EndpointNotSet,
+            ErrorCode::AuditLogNotFound,
         ];
         for code in codes {
             assert!(!code.default_message().is_empty());

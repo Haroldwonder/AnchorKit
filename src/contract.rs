@@ -974,7 +974,7 @@ impl AnchorKitContract {
             .storage()
             .persistent()
             .get::<_, String>(&StorageKey::Endpoint(attestor))
-            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestorNotRegistered));
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::EndpointNotSet));
 
         // Re-validate on read: a storage entry written by an older contract version
         // with looser validation rules must not be returned as a trusted URL.
@@ -1474,7 +1474,7 @@ impl AnchorKitContract {
         receiver.require_auth();
         let q_key = StorageKey::Quote(anchor.clone(), quote_id);
         let quote: Quote = env.storage().persistent().get(&q_key)
-            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::QuoteNotFound));
 
         // Reject expired quotes — ErrorCode::StaleQuote (#1349).
         if env.ledger().timestamp() > quote.valid_until {
@@ -1748,14 +1748,14 @@ impl AnchorKitContract {
         env.storage()
             .persistent()
             .get::<_, Session>(&StorageKey::Session(session_id))
-            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound))
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::SessionNotFound))
     }
 
     pub fn get_audit_log(env: Env, log_id: u64) -> AuditLog {
         env.storage()
             .persistent()
             .get::<_, AuditLog>(&StorageKey::AuditLog(log_id))
-            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound))
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AuditLogNotFound))
     }
 
     /// Return audit log entries in [from_id, to_id], capped at 100 entries.

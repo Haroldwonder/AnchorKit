@@ -40,7 +40,7 @@ Error codes are non-contiguous. See the table below for the current values.
 | 52   | PendingAdminAlreadyExists | An admin transfer is already pending |
 | 53   | NoPendingAdmin           | No pending admin transfer found |
 | 54   | NotPendingAdmin          | Caller is not the pending admin **(reserved, never raised)** |
-| 55   | SessionNotFound          | Session not found |
+| 55   | SessionNotFound          | Session not found (`get_session`, session expiry checks) |
 | 56   | SessionExpired           | Session has expired |
 | 57   | MissingSigningKey        | Anchor TOML does not publish a signing key |
 | 58   | UnauthorizedProposeAdmin | Only admin can propose new admin **(reserved, never raised)** |
@@ -53,3 +53,6 @@ Error codes are non-contiguous. See the table below for the current values.
 | 121  | AttestationExpired       | Attestation has expired |
 | 122  | ContractPaused           | Contract is paused |
 | 123  | AdminTransferPending     | Admin transfer is already pending **(reserved, duplicates 52; never raised)** |
+| 127  | QuoteNotFound            | Quote not found (e.g. `receive_quote` with an unknown quote ID) |
+| 128  | EndpointNotSet           | Attestor is registered but has no endpoint configured (`get_endpoint`) |
+| 129  | AuditLogNotFound         | Audit log entry not found (`get_audit_log`) |
