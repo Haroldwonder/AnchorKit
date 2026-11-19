@@ -108,8 +108,13 @@ const PERSISTENT_TTL: u32 = 1_555_200;
 const SPAN_TTL: u32 = 17_280;
 /// Instance-storage TTL: ~30 days at 5 s/ledger.
 const INSTANCE_TTL: u32 = 518_400;
-/// Session TTL in seconds (~24 hours).
+/// Default session lifetime in seconds (~24 hours), used until the admin
+/// configures one via `set_session_timeout_seconds`.
 const SESSION_TTL: u64 = 86_400;
+/// Minimum configurable session lifetime (matches `sessions.session_timeout_seconds`).
+const MIN_SESSION_TIMEOUT_SECONDS: u64 = 60;
+/// Maximum configurable session lifetime (matches `sessions.session_timeout_seconds`).
+const MAX_SESSION_TIMEOUT_SECONDS: u64 = 86_400;
 /// Session storage TTL in ledgers (~24 hours at 5s/ledger).
 const SESSION_LEDGER_TTL: u32 = 17_280;
 /// Maximum caller-supplied TTL for cached entries (~136 years). Prevents u64
@@ -344,6 +349,32 @@ impl AnchorKitContract {
             (symbol_short!("clockskew"), symbol_short!("updated")),
             seconds,
         );
+    }
+
+    /// Set the session lifetime in seconds (admin only).
+    ///
+    /// Mirrors the `sessions.session_timeout_seconds` config setting and must be
+    /// in `60..=86_400`. Applies to sessions created after the call (#1427).
+    pub fn set_session_timeout_seconds(env: Env, seconds: u64) {
+        Self::require_admin(&env);
+        if !(MIN_SESSION_TIMEOUT_SECONDS..=MAX_SESSION_TIMEOUT_SECONDS).contains(&seconds) {
+            panic_with_error!(&env, ErrorCode::ValidationError);
+        }
+        let inst = env.storage().instance();
+        inst.set(&StorageKey::SessionTtlSeconds, &seconds);
+        inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
+        env.events().publish(
+            (symbol_short!("sesttl"), symbol_short!("updated")),
+            seconds,
+        );
+    }
+
+    /// Return the configured session lifetime in seconds (default 86_400).
+    pub fn get_session_timeout_seconds(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&StorageKey::SessionTtlSeconds)
+            .unwrap_or(SESSION_TTL)
     }
 
     /// Pause the contract (admin only).
@@ -1384,12 +1415,13 @@ impl AnchorKitContract {
         inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
 
         let now = env.ledger().timestamp();
+        let session_ttl = Self::get_session_timeout_seconds(env.clone());
         let session = Session {
             session_id,
             initiator: initiator.clone(),
             created_at: now,
             operation_count: 0,
-            expires_at: now + SESSION_TTL,
+            expires_at: now.saturating_add(session_ttl),
         };
         let sess_key = StorageKey::Session(session_id);
         env.storage().persistent().set(&sess_key, &session);

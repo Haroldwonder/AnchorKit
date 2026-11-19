@@ -83,6 +83,8 @@ pub enum StorageKey {
     CredentialPolicy(Address),
     /// Stored credential for an attestor (persistent).
     StoredCredential(Address),
+    /// Admin-configured session lifetime in seconds (instance storage).
+    SessionTtlSeconds,
     // --- Instance-storage counters (stored as Vec<Symbol> keys) ---
     // These are kept as plain symbol_short! vecs because instance storage
     // requires a Vec<Symbol> key; they are defined as named constants below.
