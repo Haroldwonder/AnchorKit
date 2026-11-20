@@ -126,6 +126,9 @@ mod anchor_health_score_tests;
 mod issue_1355_1362_1364_tests;
 
 #[cfg(test)]
+mod close_session_tests;
+
+#[cfg(test)]
 mod compute_payload_hash_tests;
 
 #[cfg(test)]
