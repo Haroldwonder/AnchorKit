@@ -3,6 +3,14 @@ name = "anchorkit"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+documentation = "https://docs.rs/anchorkit"
+repository = "https://github.com/Haroldwonder/AnchorKit"
+keywords = ["stellar", "soroban", "attestation", "blockchain"]
+categories = ["cryptography", "development-tools"]
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["wasm32-unknown-unknown", "x86_64-unknown-linux-gnu"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
