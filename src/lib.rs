@@ -16,6 +16,7 @@ pub mod transaction_state_tracker;
 pub mod transport;
 mod types;
 pub mod sep6;
+pub mod sep38;
 
 pub use errors::{AnchorKitError, ErrorCode};
 
@@ -35,6 +36,18 @@ pub use sep6::{
     RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
+};
+pub use sep38::{
+    get_sep38_info, get_sep38_prices, get_sep38_price, post_sep38_quote,
+    sep38_quote_to_contract_quote, handle_sep38_http_status,
+    RawSep38InfoResponse, RawSep38Asset, RawDeliveryMethod,
+    RawSep38PricesResponse, RawSep38Price,
+    RawSep38PriceResponse, RawSep38Fee, RawFeeDetail,
+    RawSep38QuoteResponse,
+    Sep38InfoResponse, Sep38Asset, Sep38DeliveryMethod,
+    Sep38PricesResponse, Sep38Price,
+    Sep38PriceResponse, Sep38Fee, Sep38FeeDetail,
+    Sep38QuoteResponse,
 };
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::Session;
