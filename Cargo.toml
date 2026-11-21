@@ -2,6 +2,9 @@
 name = "anchorkit"
 version = "0.1.0"
 edition = "2021"
+# MSRV: must equal `channel` in rust-toolchain.toml (soroban-sdk 26 requires 1.91).
+# Verified by the `msrv` job in .github/workflows/rust-ci.yml.
+rust-version = "1.91.0"
 license = "MIT"
 
 [lib]
