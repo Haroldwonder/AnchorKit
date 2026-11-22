@@ -472,7 +472,10 @@ Returns the number of operations logged in the session, or `None` if the session
 ### Session CLI commands
 
 The `anchorkit session create`, `get`, and `list` commands use Soroban RPC. Set
-`SOROBAN_CONTRACT_ID` (or `ANCHORKIT_CONTRACT_ID`) to the deployed contract ID.
+the deployed contract ID with the global `--contract-id` flag, the
+`ANCHORKIT_CONTRACT_ID` (or `SOROBAN_CONTRACT_ID`) env var, or the
+`deployment.contract_id` key of the `--config` / `ANCHORKIT_CONFIG` file, in
+that order of precedence.
 `SOROBAN_RPC_URL` (or `ANCHORKIT_RPC_URL`) selects the RPC endpoint and defaults
 to Stellar testnet. Creating a session also requires a signing secret in
 `STELLAR_SECRET_KEY`, `SOROBAN_SECRET_KEY`, or `ANCHORKIT_SECRET_KEY`; the

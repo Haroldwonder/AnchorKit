@@ -1,4 +1,4 @@
-﻿/// Soroban RPC client for session operations exposed by the AnchorKit CLI.
+﻿/// Soroban RPC client for session and attestation reads exposed by the AnchorKit CLI.
 use soroban_client::{
     address::{Address, AddressTrait},
     authorize_entry::{authorize_entry, AuthorizeEntryParams},
@@ -18,10 +18,6 @@ use std::{env, str::FromStr, time::Duration};
 const RPC_URL_VAR: &str = "SOROBAN_RPC_URL";
 const RPC_URL_ALT: &str = "ANCHORKIT_RPC_URL";
 
-/// Environment variable for contract ID
-const CONTRACT_ID_VAR: &str = "SOROBAN_CONTRACT_ID";
-const CONTRACT_ID_ALT: &str = "ANCHORKIT_CONTRACT_ID";
-
 const MAX_SESSION_LIST_LIMIT: u64 = 1_000;
 
 /// Get RPC URL from environment or use testnet default
@@ -31,11 +27,29 @@ pub fn get_rpc_url() -> String {
         .unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string())
 }
 
-/// Get contract ID from environment
+/// Get the RPC URL for `network`: `SOROBAN_RPC_URL` / `ANCHORKIT_RPC_URL`
+/// when set, otherwise the public endpoint for testnet or futurenet. Mainnet
+/// has no public default, so it must be configured explicitly.
+pub fn get_rpc_url_for_network(network: &str) -> Result<String, String> {
+    if let Ok(url) = env::var(RPC_URL_VAR).or_else(|_| env::var(RPC_URL_ALT)) {
+        if !url.trim().is_empty() {
+            return Ok(url);
+        }
+    }
+    match network {
+        "testnet" => Ok("https://soroban-testnet.stellar.org".to_string()),
+        "futurenet" => Ok("https://rpc-futurenet.stellar.org".to_string()),
+        other => Err(format!(
+            "no Soroban RPC endpoint configured for {other} — set {RPC_URL_VAR} or {RPC_URL_ALT}"
+        )),
+    }
+}
+
+/// Get the contract ID from the global `--contract-id` flag, the
+/// `ANCHORKIT_CONTRACT_ID` / `SOROBAN_CONTRACT_ID` env vars or the config
+/// file (see `settings.rs` for the precedence).
 pub fn get_contract_id() -> Result<String, String> {
-    env::var(CONTRACT_ID_VAR)
-        .or_else(|_| env::var(CONTRACT_ID_ALT))
-        .map_err(|_| "SOROBAN_CONTRACT_ID or ANCHORKIT_CONTRACT_ID not set".to_string())
+    crate::settings::require_contract_id()
 }
 
 /// Get secret key for signing transactions
@@ -56,6 +70,21 @@ pub struct SessionData {
     pub created_at: u64,
     pub operation_count: u64,
     pub expires_at: u64,
+}
+
+/// Attestation record decoded from contract storage (`StorageKey::Attest`).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AttestationData {
+    pub id: u64,
+    pub issuer: String,
+    pub subject: String,
+    pub timestamp: u64,
+    /// Hex-encoded payload hash.
+    pub payload_hash: String,
+    /// Hex-encoded issuer signature.
+    pub signature: String,
+    pub issuer_revoked: bool,
+    pub expires_at: Option<u64>,
 }
 
 fn run_rpc<T: Send + 'static>(
@@ -119,6 +148,56 @@ fn session_from_value(value: ScVal) -> Result<SessionData, String> {
         created_at: as_u64("created_at")?,
         operation_count: as_u64("operation_count")?,
         expires_at: as_u64("expires_at")?,
+    })
+}
+
+fn attestation_from_value(value: ScVal) -> Result<AttestationData, String> {
+    // `Attestation` is a `#[contracttype]` struct with named fields, so it is
+    // encoded as an `ScVal::Map` keyed by field-name symbols.
+    let entries = match value {
+        ScVal::Map(Some(entries)) => entries,
+        _ => return Err("Contract returned an invalid attestation record".to_string()),
+    };
+    let field = |name: &str| -> Result<&ScVal, String> {
+        entries
+            .iter()
+            .find(|entry| matches!(&entry.key, ScVal::Symbol(sym) if sym.to_utf8_string_lossy() == name))
+            .map(|entry| &entry.val)
+            .ok_or_else(|| format!("Contract returned an attestation record without `{name}`"))
+    };
+    let as_u64 = |name: &str| match field(name)? {
+        ScVal::U64(value) => Ok(*value),
+        _ => Err(format!("Contract returned an invalid attestation `{name}`")),
+    };
+    let as_hex = |name: &str| match field(name)? {
+        ScVal::Bytes(bytes) => Ok(hex::encode(bytes.0.as_slice())),
+        _ => Err(format!("Contract returned an invalid attestation `{name}`")),
+    };
+    let as_address = |name: &str| {
+        Address::from_sc_val(field(name)?)
+            .map(|address| address.to_string())
+            .map_err(|e| format!("Contract returned an invalid attestation `{name}`: {e}"))
+    };
+    let issuer_revoked = match field("issuer_revoked")? {
+        ScVal::Bool(value) => *value,
+        _ => return Err("Contract returned an invalid attestation `issuer_revoked`".to_string()),
+    };
+    // `Option<u64>` is encoded as `Void` for `None` and the bare value for `Some`.
+    let expires_at = match field("expires_at") {
+        Err(_) | Ok(ScVal::Void) => None,
+        Ok(ScVal::U64(value)) => Some(*value),
+        Ok(_) => return Err("Contract returned an invalid attestation `expires_at`".to_string()),
+    };
+
+    Ok(AttestationData {
+        id: as_u64("id")?,
+        issuer: as_address("issuer")?,
+        subject: as_address("subject")?,
+        timestamp: as_u64("timestamp")?,
+        payload_hash: as_hex("payload_hash")?,
+        signature: as_hex("signature")?,
+        issuer_revoked,
+        expires_at,
     })
 }
 
@@ -324,6 +403,58 @@ pub fn get_session_rpc(session_id: u64) -> Result<SessionData, String> {
             }
         };
         Ok(session)
+    })
+}
+
+/// Fetch an attestation by ID, mirroring the contract's `get_attestation`:
+/// read `StorageKey::Attest(id)` from persistent storage and flag it as
+/// `issuer_revoked` when the issuer has an `AttestorRevoked` entry.
+pub fn get_attestation_rpc(attestation_id: u64, rpc_url: &str) -> Result<AttestationData, String> {
+    let contract_id = get_contract_id()?;
+    let rpc_url = rpc_url.to_string();
+    eprintln!("ℹ  Fetching attestation {attestation_id} from contract {contract_id}");
+    eprintln!("ℹ  Using RPC endpoint: {rpc_url}");
+
+    run_rpc(async move {
+        let rpc = Server::new(&rpc_url, Options::default()).map_err(|e| e.to_string())?;
+        let key = contract_data_key(
+            &contract_id,
+            storage_key("Attest", Some(attestation_id))?,
+            ContractDataDurability::Persistent,
+        )?;
+        let entries = rpc
+            .get_ledger_entries(vec![key])
+            .await
+            .map_err(|e| format!("Could not fetch attestation {attestation_id}: {e}"))?
+            .entries
+            .unwrap_or_default();
+        let entry = entries
+            .first()
+            .ok_or_else(|| format!("Attestation {attestation_id} not found"))?;
+        let mut attestation = attestation_from_value(contract_data_value(entry)?)?;
+
+        if !attestation.issuer_revoked {
+            let issuer = Address::new(&attestation.issuer)
+                .map_err(|e| format!("Invalid issuer address: {e}"))?
+                .to_sc_val()
+                .map_err(|e| e.to_string())?;
+            let revoked_key = VecM::try_from(vec![scval_symbol("AttestorRevoked")?, issuer])
+                .map_err(|e| format!("Invalid storage key: {e}"))?;
+            let revoked_key = contract_data_key(
+                &contract_id,
+                ScVal::Vec(Some(revoked_key)),
+                ContractDataDurability::Persistent,
+            )?;
+            let revoked = rpc
+                .get_ledger_entries(vec![revoked_key])
+                .await
+                .map_err(|e| format!("Could not check issuer revocation status: {e}"))?
+                .entries
+                .unwrap_or_default();
+            attestation.issuer_revoked = !revoked.is_empty();
+        }
+
+        Ok(attestation)
     })
 }
 

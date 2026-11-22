@@ -330,6 +330,31 @@ Each command includes:
 - All available options and flags
 - Network selection support
 
+### Contract ID
+
+Commands that talk to the deployed contract (`query`, `health`, `attest`,
+`session`, `audit` and `export-audit`) read its ID from the first of these
+that is set:
+
+1. the global `--contract-id <CONTRACT_ID>` flag
+2. the `ANCHORKIT_CONTRACT_ID` env var
+3. the `SOROBAN_CONTRACT_ID` env var
+4. the `deployment.contract_id` key of the config file passed with the global
+   `--config <PATH>` flag, or with the `ANCHORKIT_CONFIG` env var (JSON or
+   TOML, e.g. the file written by `anchorkit config init`)
+
+```bash
+anchorkit --contract-id CABC... query --transaction-id 42 --output json
+ANCHORKIT_CONTRACT_ID=CABC... anchorkit session list
+anchorkit --config configs/my-anchor.json audit get 7
+```
+
+`query` reads the attestation from contract storage over Soroban RPC
+(`SOROBAN_RPC_URL` / `ANCHORKIT_RPC_URL`, defaulting to the public testnet or
+futurenet endpoint for `--network`). It exits non-zero with an error when the
+contract ID or RPC endpoint is not configured or the attestation does not
+exist.
+
 ### Environment Diagnostics
 
 The `doctor` command helps troubleshoot environment setup issues:

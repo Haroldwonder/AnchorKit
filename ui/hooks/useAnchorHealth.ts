@@ -48,7 +48,7 @@ export const MIN_POLL_INTERVAL_MS = 1000;
  * - When `attestor` changes the timer is cancelled, all state is reset, and a
  *   fresh polling cycle begins.  When only `interval` changes the timer is *
  *   restarted but state is NOT reset (the latest score remains visible).
- * - `loading` is only `true` during the very first fetch after mounting or
+ * - `isLoading` (and its deprecated alias `loading`) is only `true` during the very first fetch after mounting or
  *   after the attestor changes; background polls run silently.
  * - The `interval` is validated: if it is not a positive finite number, or if
  *   it is less than `MIN_POLL_INTERVAL_MS`, it is clamped to that minimum and
@@ -142,5 +142,13 @@ export function useAnchorHealth(
       clearInterval(timerId);
     };
   }, [attestor, interval]); // getHealthScore intentionally excluded - kept in ref
-  return { score, loading, error, lastUpdated };
+
+  return {
+    score,
+    isLoading: loading,
+    loading,
+    error,
+    errorMessage: error ? error.message : null,
+    lastUpdated,
+  };
 }

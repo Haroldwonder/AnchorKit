@@ -9,12 +9,12 @@ crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "anchorkit"
-path = "src/bin/anchorkit.rs"
+path = "src/bin/anchorkit/main.rs"
 required-features = ["std"]
 
 [features]
 default = ["std"]
-std = ["serde", "serde_json", "toml", "regex", "reqwest", "dep:soroban-client", "dep:tokio"]
+std = ["serde", "serde_json", "toml", "regex", "reqwest", "dep:base64", "dep:soroban-client", "dep:tokio"]
 wasm = []
 mock-only = []
 stress-tests = []
@@ -33,6 +33,7 @@ regex = { version = "1.10", optional = true }
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
 soroban-client = { version = "0.6.0", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "time"], optional = true }
+base64 = { version = "0.22", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap = { version = "4.5", features = ["derive"] }

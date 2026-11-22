@@ -106,6 +106,57 @@ describe('useAnchorHealth — initial state', () => {
   });
 });
 
+// ── Result shape ───────────────────────────────────────────────────────────────
+
+describe('useAnchorHealth — result shape', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => { jest.runOnlyPendingTimers(); jest.useRealTimers(); });
+
+  test('returns every documented field of UseAnchorHealthResult', () => {
+    const { result } = renderHook(() =>
+      useAnchorHealth(null, INTERVAL, makeGetHealthScore()),
+    );
+    for (const key of ['score', 'isLoading', 'loading', 'error', 'errorMessage', 'lastUpdated']) {
+      expect(result.current).toHaveProperty(key);
+    }
+  });
+
+  test('isLoading and loading stay in sync', async () => {
+    const mockFn = makeGetHealthScore(70);
+    const { result } = renderHook(() =>
+      useAnchorHealth(ATTESTOR, INTERVAL, mockFn),
+    );
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => { await Promise.resolve(); });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.loading).toBe(false);
+  });
+
+  test('errorMessage mirrors error.message and is null when healthy', async () => {
+    const mockFn = jest.fn()
+      .mockRejectedValueOnce(new Error('Contract call failed'))
+      .mockResolvedValueOnce(80);
+    const { result } = renderHook(() =>
+      useAnchorHealth(ATTESTOR, INTERVAL, mockFn),
+    );
+    expect(result.current.errorMessage).toBeNull();
+
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.errorMessage).toBe('Contract call failed');
+
+    await act(async () => {
+      jest.advanceTimersByTime(INTERVAL);
+      await Promise.resolve();
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.errorMessage).toBeNull();
+  });
+});
+
 // ── Successful polling ─────────────────────────────────────────────────────────
 
 describe('useAnchorHealth — successful polling', () => {
@@ -282,7 +333,7 @@ describe('useAnchorHealth — error handling', () => {
 
     expect(result.current.loading).toBe(false);
     expect(result.current.score).toBeNull();
-    expect(result.current.error).toBe('Contract call failed');
+    expect(result.current.error?.message).toBe('Contract call failed');
     expect(result.current.lastUpdated).toBeNull();
   });
 
@@ -294,7 +345,7 @@ describe('useAnchorHealth — error handling', () => {
 
     await act(async () => { await Promise.resolve(); });
 
-    expect(result.current.error).toBe(
+    expect(result.current.error?.message).toBe(
       'Failed to fetch health score. Please try again.',
     );
   });
@@ -318,7 +369,7 @@ describe('useAnchorHealth — error handling', () => {
     });
 
     expect(result.current.score).toBe(65);       // stale score preserved
-    expect(result.current.error).toBe('Network timeout');
+    expect(result.current.error?.message).toBe('Network timeout');
   });
 
   test('successful poll after an error clears the error', async () => {
@@ -331,7 +382,7 @@ describe('useAnchorHealth — error handling', () => {
     );
 
     await act(async () => { await Promise.resolve(); });
-    expect(result.current.error).toBe('Timeout');
+    expect(result.current.error?.message).toBe('Timeout');
 
     await act(async () => {
       jest.advanceTimersByTime(INTERVAL);
@@ -353,7 +404,7 @@ describe('useAnchorHealth — error handling', () => {
     );
 
     await act(async () => { await Promise.resolve(); });
-    expect(result.current.error).toBe('Bad attestor');
+    expect(result.current.error?.message).toBe('Bad attestor');
 
     const OTHER = 'G' + 'B'.repeat(55);
     rerender({ a: OTHER });
