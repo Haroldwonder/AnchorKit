@@ -1999,19 +1999,39 @@ impl AnchorKitContract {
         // Ensure score is capped at 100
         let final_score = if health_score > 100 { 100 } else { health_score as u32 };
 
-        // Issue #464: enforce configurable minimum acceptable health score.
-        // When key_health_threshold is set (> 0), reject anchors whose computed
-        // score falls below it so callers cannot route to unhealthy anchors.
+        // The getter is read-only and returns the score unconditionally; policy
+        // checks against the configured minimum live in `is_anchor_healthy`.
+        final_score
+    }
+
+    /// Returns `true` when the anchor's health score meets the configured
+    /// minimum acceptable score (set via `set_health_failure_threshold`).
+    ///
+    /// When no threshold is configured (or it is `0`) every anchor with a
+    /// computable score is considered healthy. Unlike `get_anchor_health_score`,
+    /// a score below the threshold is reported as `false` rather than an error,
+    /// so callers can distinguish "anchor unhealthy" from bad input.
+    ///
+    /// # Errors
+    ///
+    /// - `CacheNotFound` (49): No metadata cached for this anchor
+    /// - `CacheExpired` (48): Metadata cache has expired
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// if !client.is_anchor_healthy(&anchor_addr) {
+    ///     // skip this anchor when routing
+    /// }
+    /// ```
+    pub fn is_anchor_healthy(env: Env, anchor: Address) -> bool {
+        let score = Self::get_anchor_health_score(env.clone(), anchor);
         let threshold: u32 = env
             .storage()
             .instance()
             .get(&key_health_threshold(&env))
             .unwrap_or(0u32);
-        if threshold > 0 && final_score < threshold {
-            panic_with_error!(&env, ErrorCode::ValidationError);
-        }
-
-        final_score
+        threshold == 0 || score >= threshold
     }
 
 

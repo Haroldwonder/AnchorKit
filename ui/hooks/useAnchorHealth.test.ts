@@ -1,5 +1,11 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useAnchorHealth, isValidAttestor, GetHealthScoreFn } from './useAnchorHealth';
+import {
+  useAnchorHealth,
+  isValidAttestor,
+  computeBackoffDelay,
+  DEFAULT_MAX_BACKOFF_MS,
+  GetHealthScoreFn,
+} from './useAnchorHealth';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
@@ -663,5 +669,267 @@ describe('useAnchorHealth — adapter reference stability', () => {
 
     expect(result.current.score).toBe(20);
     expect(v2).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Visibility-aware polling ───────────────────────────────────────────────────
+
+describe('useAnchorHealth — pauses while the tab is hidden', () => {
+  let visibility: DocumentVisibilityState = 'visible';
+
+  function setVisibility(state: DocumentVisibilityState) {
+    visibility = state;
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    visibility = 'visible';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    });
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+    // Remove the instance override so the jsdom prototype getter applies again.
+    delete (document as unknown as Record<string, unknown>).visibilityState;
+  });
+
+  test('no polls fire while the document is hidden', async () => {
+    const mockFn = makeGetHealthScore(80);
+    renderHook(() => useAnchorHealth(ATTESTOR, INTERVAL, mockFn));
+
+    await act(async () => { await Promise.resolve(); });
+    expect(mockFn).toHaveBeenCalledTimes(1);
+
+    setVisibility('hidden');
+
+    await act(async () => {
+      jest.advanceTimersByTime(INTERVAL * 5);
+      await Promise.resolve();
+    });
+
+    expect(mockFn).toHaveBeenCalledTimes(1);
+  });
+
+  test('becoming visible triggers an immediate refresh and resumes the timer', async () => {
+    const mockFn = jest.fn()
+      .mockResolvedValueOnce(40)
+      .mockResolvedValueOnce(70)
+      .mockResolvedValue(75);
+
+    const { result } = renderHook(() => useAnchorHealth(ATTESTOR, INTERVAL, mockFn));
+
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.score).toBe(40);
+
+    setVisibility('hidden');
+    await act(async () => {
+      jest.advanceTimersByTime(INTERVAL * 3);
+      await Promise.resolve();
+    });
+    expect(mockFn).toHaveBeenCalledTimes(1);
+
+    setVisibility('visible');
+    await act(async () => { await Promise.resolve(); });
+
+    // Immediate refresh, without waiting for the interval.
+    expect(mockFn).toHaveBeenCalledTimes(2);
+    expect(result.current.score).toBe(70);
+
+    await act(async () => {
+      jest.advanceTimersByTime(INTERVAL);
+      await Promise.resolve();
+    });
+    expect(mockFn).toHaveBeenCalledTimes(3);
+  });
+
+  test('pauseWhenHidden: false keeps polling in the background', async () => {
+    const mockFn = makeGetHealthScore(80);
+    renderHook(() =>
+      useAnchorHealth(ATTESTOR, INTERVAL, mockFn, { pauseWhenHidden: false }),
+    );
+
+    await act(async () => { await Promise.resolve(); });
+    setVisibility('hidden');
+
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(INTERVAL);
+        await Promise.resolve();
+      });
+    }
+
+    expect(mockFn).toHaveBeenCalledTimes(3);
+  });
+
+  test('visibility listener is removed on unmount', async () => {
+    const mockFn = makeGetHealthScore(80);
+    const { unmount } = renderHook(() => useAnchorHealth(ATTESTOR, INTERVAL, mockFn));
+
+    await act(async () => { await Promise.resolve(); });
+    unmount();
+
+    setVisibility('hidden');
+    setVisibility('visible');
+    await act(async () => { await Promise.resolve(); });
+
+    expect(mockFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Error backoff ──────────────────────────────────────────────────────────────
+
+describe('computeBackoffDelay', () => {
+  test('returns the base interval when there are no errors', () => {
+    expect(computeBackoffDelay(INTERVAL, 0)).toBe(INTERVAL);
+  });
+
+  test('doubles the delay for each consecutive error', () => {
+    expect(computeBackoffDelay(INTERVAL, 1)).toBe(INTERVAL);
+    expect(computeBackoffDelay(INTERVAL, 2)).toBe(INTERVAL * 2);
+    expect(computeBackoffDelay(INTERVAL, 3)).toBe(INTERVAL * 4);
+  });
+
+  test('is capped at maxBackoff', () => {
+    expect(computeBackoffDelay(INTERVAL, 20, 30_000)).toBe(30_000);
+    expect(computeBackoffDelay(INTERVAL, 20)).toBe(DEFAULT_MAX_BACKOFF_MS);
+  });
+
+  test('never drops below the base interval', () => {
+    expect(computeBackoffDelay(INTERVAL, 5, 1_000)).toBe(INTERVAL);
+  });
+});
+
+describe('useAnchorHealth — error backoff', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => { jest.runOnlyPendingTimers(); jest.useRealTimers(); });
+
+  async function advance(ms: number) {
+    await act(async () => {
+      jest.advanceTimersByTime(ms);
+      await Promise.resolve();
+    });
+  }
+
+  test('consecutiveErrors starts at 0', () => {
+    const { result } = renderHook(() =>
+      useAnchorHealth(ATTESTOR, INTERVAL, makeGetHealthScore()),
+    );
+    expect(result.current.consecutiveErrors).toBe(0);
+  });
+
+  test('delay grows exponentially after consecutive errors', async () => {
+    const mockFn = jest.fn().mockRejectedValue(new Error('down'));
+    const { result } = renderHook(() => useAnchorHealth(ATTESTOR, INTERVAL, mockFn));
+
+    await act(async () => { await Promise.resolve(); });
+    expect(mockFn).toHaveBeenCalledTimes(1);
+    expect(result.current.consecutiveErrors).toBe(1);
+
+    // 1 error → next poll after 1× interval
+    await advance(INTERVAL);
+    expect(mockFn).toHaveBeenCalledTimes(2);
+    expect(result.current.consecutiveErrors).toBe(2);
+
+    // 2 errors → next poll after 2× interval
+    await advance(INTERVAL);
+    expect(mockFn).toHaveBeenCalledTimes(2);
+    await advance(INTERVAL);
+    expect(mockFn).toHaveBeenCalledTimes(3);
+    expect(result.current.consecutiveErrors).toBe(3);
+
+    // 3 errors → next poll after 4× interval
+    await advance(INTERVAL * 3);
+    expect(mockFn).toHaveBeenCalledTimes(3);
+    await advance(INTERVAL);
+    expect(mockFn).toHaveBeenCalledTimes(4);
+  });
+
+  test('backoff is capped at maxBackoff', async () => {
+    const mockFn = jest.fn().mockRejectedValue(new Error('down'));
+    const maxBackoff = INTERVAL * 2;
+    renderHook(() => useAnchorHealth(ATTESTOR, INTERVAL, mockFn, { maxBackoff }));
+
+    await act(async () => { await Promise.resolve(); });
+    await advance(INTERVAL);       // 2nd call (1 error → 1×)
+    await advance(maxBackoff);     // 3rd call (2 errors → 2×)
+    await advance(maxBackoff);     // 4th call (3 errors → capped at 2×)
+    await advance(maxBackoff);     // 5th call (still capped)
+
+    expect(mockFn).toHaveBeenCalledTimes(5);
+  });
+
+  test('a successful poll resets consecutiveErrors and the delay', async () => {
+    const mockFn = jest.fn()
+      .mockRejectedValueOnce(new Error('down'))
+      .mockRejectedValueOnce(new Error('down'))
+      .mockResolvedValue(90);
+
+    const { result } = renderHook(() => useAnchorHealth(ATTESTOR, INTERVAL, mockFn));
+
+    await act(async () => { await Promise.resolve(); });
+    await advance(INTERVAL);           // 2nd call fails
+    expect(result.current.consecutiveErrors).toBe(2);
+
+    await advance(INTERVAL * 2);       // 3rd call succeeds
+    expect(result.current.consecutiveErrors).toBe(0);
+    expect(result.current.score).toBe(90);
+
+    await advance(INTERVAL);           // back to the base interval
+    expect(mockFn).toHaveBeenCalledTimes(4);
+  });
+});
+
+// ── Invalid interval warning ───────────────────────────────────────────────────
+
+describe('useAnchorHealth — invalid interval warning', () => {
+  const originalEnv = process.env.NODE_ENV;
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+    warnSpy.mockRestore();
+    process.env.NODE_ENV = originalEnv;
+  });
+
+  test('warns once per hook instance outside production', async () => {
+    const mockFn = makeGetHealthScore();
+    const { rerender } = renderHook(
+      ({ iv }: { iv: number }) => useAnchorHealth(ATTESTOR, iv, mockFn),
+      { initialProps: { iv: 0 } },
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    rerender({ iv: -1 });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not warn in production', async () => {
+    process.env.NODE_ENV = 'production';
+    renderHook(() => useAnchorHealth(ATTESTOR, 0, makeGetHealthScore()));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('does not warn for a valid interval', async () => {
+    renderHook(() => useAnchorHealth(ATTESTOR, INTERVAL, makeGetHealthScore()));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
