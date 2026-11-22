@@ -79,6 +79,8 @@ mod sep10_contract_tests;
 
 #[cfg(test)]
 mod routing_tests;
+#[cfg(test)]
+mod quote_lifecycle_tests;
 
 #[cfg(test)]
 mod routing_score_tests;
