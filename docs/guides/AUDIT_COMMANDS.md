@@ -302,7 +302,7 @@ This allows quick filtering without requiring contract-side session index querie
 **Solution**:
 1. Check wallet is configured: `anchorkit doctor`
 2. Verify secret key: `echo $STELLAR_SECRET_KEY | wc -c` (should be ~56 chars)
-3. Re-authenticate: `soroban config identity show default`
+3. Re-authenticate: `stellar keys show default`
 4. Use correct network: ensure RPC endpoint matches wallet's network
 
 ---
