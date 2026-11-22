@@ -330,6 +330,46 @@ Each command includes:
 - All available options and flags
 - Network selection support
 
+### Exit Codes
+
+The CLI uses distinct exit codes so scripts can tell failure classes apart
+(also listed at the bottom of `anchorkit --help`):
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Generic failure (build/test failure, I/O error, unexpected error) |
+| `2` | Usage or validation error (invalid arguments or flag values, malformed address, config file fails validation) |
+| `3` | Configuration missing (e.g. `ANCHORKIT_CONTRACT_ID`, `STELLAR_SECRET_KEY`, or the config path is not set / does not exist) |
+| `4` | Network or RPC failure (endpoint unreachable, request rejected) |
+| `5` | Contract error or requested record not found |
+
+```bash
+anchorkit session get 42
+case $? in
+  0) echo "ok" ;;
+  3) echo "set ANCHORKIT_CONTRACT_ID first" ;;
+  4) echo "RPC unreachable, retry later" ;;
+  5) echo "session not found" ;;
+esac
+```
+
+### Plain Output
+
+By default the CLI decorates output with emoji and box-drawing characters
+(🔍, ✅, ❌, 💡, ...). These are replaced with plain ASCII labels such as
+`[OK]`, `[FAIL]`, `[ERROR]` and `[WARN]` (other emoji are dropped) when:
+
+- `--plain` (alias `--no-emoji`) is passed to any command
+- the `NO_COLOR` environment variable is set to a non-empty value ([no-color.org](https://no-color.org))
+- the output stream is not a TTY (e.g. piped to a file or another program)
+
+```bash
+anchorkit doctor --plain
+NO_COLOR=1 anchorkit health
+anchorkit health --output json > health.json   # non-TTY: plain automatically
+```
+
 ### Environment Diagnostics
 
 The `doctor` command helps troubleshoot environment setup issues:
