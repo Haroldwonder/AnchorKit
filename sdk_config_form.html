@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnchorKit SDK Configuration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 32px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a202c;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #718096;
+            font-size: 14px;
+            margin-bottom: 32px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+
+        .required {
+            color: #e53e3e;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+        }
+
+        .help-text {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 4px;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #4299e1;
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            background: #3182ce;
+        }
+
+        .error {
+            color: #e53e3e;
+            font-size: 12px;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .output {
+            margin-top: 32px;
+            padding: 16px;
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .output.show {
+            display: block;
+        }
+
+        .output h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 12px;
+        }
+
+        .output pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SDK Configuration</h1>
+        <p class="subtitle">Configure your AnchorKit SDK connection settings</p>
+
+        <form id="sdkConfigForm">
+            <div class="form-group">
+                <label for="network">Network <span class="required">*</span></label>
+                <select id="network" name="network" required>
+                    <option value="testnet">Testnet</option>
+                    <option value="mainnet">Mainnet</option>
+                </select>
+                <div class="help-text">Select the Stellar network to connect to</div>
+            </div>
+
+            <div class="form-group">
+                <label for="defaultAnchor">Default Anchor <span class="required">*</span></label>
+                <input 
+                    type="text" 
+                    id="defaultAnchor" 
+                    name="defaultAnchor" 
+                    placeholder="https://testanchor.stellar.org"
+                    required
+                    minlength="3"
+                    maxlength="256"
+                />
+                <div class="help-text">Default anchor URL (3-256 characters, HTTPS only)</div>
+                <div class="error" id="domainError">Invalid anchor URL (must use HTTPS)</div>
+            </div>
+
+            <div class="form-group">
+                <label for="timeout">Timeout (seconds) <span class="required">*</span></label>
+                <input 
+                    type="number" 
+                    id="timeout" 
+                    name="timeout" 
+                    value="30"
+                    min="5"
+                    max="300"
+                    required
+                />
+                <div class="help-text">Request timeout in seconds (5-300)</div>
+            </div>
+
+            <div class="form-group">
+                <label for="retryAttempts">Retry Attempts <span class="required">*</span></label>
+                <input 
+                    type="number" 
+                    id="retryAttempts" 
+                    name="retryAttempts" 
+                    value="3"
+                    min="0"
+                    max="10"
+                    required
+                />
+                <div class="help-text">Number of retry attempts (0-10)</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Generate Configuration</button>
+        </form>
+
+        <div class="output" id="output">
+            <h3>Configuration Output</h3>
+            <pre id="configOutput"></pre>
+        </div>
+    </div>
+
+    <script>
+        function validateAnchor(anchor) {
+            try {
+                const url = new URL(anchor);
+                return url.protocol === 'https:' && url.hostname.length > 0 && anchor.length >= 3 && anchor.length <= 256;
+            } catch {
+                return false;
+            }
+        }
+
+        document.getElementById('defaultAnchor').addEventListener('blur', function() {
+            const anchor = this.value.trim();
+            const errorElement = document.getElementById('domainError');
+            
+            if (anchor && !validateAnchor(anchor)) {
+                errorElement.classList.add('show');
+                this.style.borderColor = '#e53e3e';
+            } else {
+                errorElement.classList.remove('show');
+                this.style.borderColor = '#cbd5e0';
+            }
+        });
+
+        document.getElementById('sdkConfigForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const network = document.getElementById('network').value;
+            const defaultAnchor = document.getElementById('defaultAnchor').value.trim();
+            const timeout = parseInt(document.getElementById('timeout').value, 10);
+            const retryAttempts = parseInt(document.getElementById('retryAttempts').value, 10);
+
+            // Validate default anchor
+            if (!validateAnchor(defaultAnchor)) {
+                document.getElementById('domainError').classList.add('show');
+                return;
+            }
+
+            // Create config object matching SdkConfig struct
+            const config = {
+                network: network === 'testnet' ? 'Testnet' : 'Mainnet',
+                timeout_seconds: timeout,
+                retry_attempts: retryAttempts,
+                default_anchor: defaultAnchor
+            };
+
+            // Display output
+            const outputElement = document.getElementById('configOutput');
+            outputElement.textContent = JSON.stringify(config, null, 2);
+            document.getElementById('output').classList.add('show');
+
+            // Scroll to output
+            document.getElementById('output').scrollIntoView({ behavior: 'smooth' });
+        });
+    </script>
+</body>
+</html>

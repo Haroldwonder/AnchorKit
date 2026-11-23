@@ -1,0 +1,90 @@
+name: Feature Flag Build Matrix
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-matrix:
+    name: Build (${{ matrix.feature-set }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - feature-set: "default"
+            flags: ""
+          - feature-set: "no-default-features"
+            flags: "--no-default-features"
+          - feature-set: "wasm"
+            flags: "--no-default-features --features wasm"
+          - feature-set: "mock-only"
+            flags: "--no-default-features --features mock-only"
+          - feature-set: "proptest-tests"
+            flags: "--features proptest-tests"
+          - feature-set: "testnet-integration"
+            flags: "--features testnet-integration"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ matrix.feature-set }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check (${{ matrix.feature-set }})
+        run: cargo check --locked ${{ matrix.flags }}
+
+      - name: Build (${{ matrix.feature-set }})
+        run: cargo build --locked ${{ matrix.flags }}
+
+      - name: Clippy (${{ matrix.feature-set }})
+        run: cargo clippy --locked ${{ matrix.flags }} -- -D warnings
+
+  test-matrix:
+    name: Test (${{ matrix.feature-set }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - feature-set: "default"
+            flags: ""
+          - feature-set: "no-default-features"
+            flags: "--no-default-features"
+          - feature-set: "mock-only"
+            flags: "--no-default-features --features mock-only"
+          - feature-set: "proptest-tests"
+            flags: "--features proptest-tests"
+          - feature-set: "testnet-integration"
+            flags: "--features testnet-integration"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ matrix.feature-set }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test (${{ matrix.feature-set }})
+        run: cargo test --locked ${{ matrix.flags }}

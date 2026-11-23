@@ -1,282 +1,133 @@
-use soroban_sdk::{Address, BytesN, Env, IntoVal};
+use soroban_sdk::{contracttype, Address, Bytes};
 
-use crate::{types::{Attestation, Endpoint, InteractionSession, OperationContext, AuditLog}, Error};
-
+/// Typed storage keys for all contract state.
+///
+/// Using an enum prevents typos in raw string literals and makes every
+/// storage access site self-documenting.
+///
+/// Note: the admin address is stored under the `key_admin(env)` Vec<Symbol>
+/// key in instance storage (see the helper below). There is no `Admin` variant
+/// here to avoid having two representations for the same logical key.
+#[contracttype]
 #[derive(Clone)]
-enum StorageKey {
-    Admin,
+pub enum StorageKey {
+    /// SEP-10 JWT verifying key for an attestor (persistent).
+    Sep10Key(Address),
+    /// Ed25519 attestation-signing keys for an issuer (persistent). Kept separate
+    /// from `Sep10Key` so web-auth key rotation never affects attestation signing.
+    AttestationKey(Address),
+    /// Whether an address is a registered attestor (persistent).
     Attestor(Address),
-    Counter,
-    Attestation(u64),
-    UsedHash(BytesN<32>),
+    /// Revocation marker for an attestor — present when the attestor has been
+    /// revoked. Used by `get_attestation` to populate `issuer_revoked` without
+    /// rewriting every stored attestation (persistent).
+    AttestorRevoked(Address),
+    /// First attestation ID not covered by the attestor's latest revocation.
+    /// Attestations with a lower ID remain revoked after re-registration.
+    AttestorRevokedBefore(Address),
+    /// HTTPS endpoint URL for an attestor (persistent).
     Endpoint(Address),
-    SessionCounter,
+    /// Supported services record for an anchor (persistent).
+    Services(Address),
+    /// Replay-protection flag for a payload hash (persistent).
+    Used(Bytes),
+    /// Attestation record by ID (persistent).
+    Attest(u64),
+    /// Per-subject attestation count (persistent).
+    SubjectCount(Address),
+    /// Per-subject attestation index entry (persistent).
+    SubjectAttestation(Address, u64),
+    /// Tracing span keyed by request-ID bytes (temporary).
+    Span(Bytes),
+    /// Session record by session ID (persistent).
     Session(u64),
-    SessionNonce(u64),
-    AuditLogCounter,
+    /// Session operation count by session ID (persistent).
+    SessionOpCount(u64),
+    /// Audit log entry by log ID (persistent).
     AuditLog(u64),
-    SessionOperationCount(u64),
+    /// Maximum number of audit log entries to retain (instance storage).
+    AuditLogMaxSize,
+    /// Maximum page size allowed when listing attestations (instance storage).
+    MaxPageSize,
+    /// Quote record keyed by anchor + quote ID (persistent).
+    Quote(Address, u64),
+    /// Latest quote ID for an anchor (persistent).
+    LatestQuote(Address),
+    /// Metadata cache for an anchor (temporary).
+    MetadataCache(Address),
+    /// Capabilities cache for an anchor (temporary).
+    CapabilitiesCache(Address),
+    /// Health status for an anchor (persistent).
+    Health(Address),
+    /// Routing metadata for an anchor (persistent).
+    AnchorMeta(Address),
+    /// ISO 3166-1 alpha-3 jurisdiction for an anchor (persistent).
+    AnchorJurisdiction(Address),
+    /// Stellar.toml cache for an anchor (temporary).
+    TomlCache(Address),
+    /// Running count of registered attestors (instance storage via key_attestor_count).
+    AttestorCount,
+    /// Per-attestor rate-limit state — submission count + window start (persistent).
+    RateLimitState(Address),
+    /// Per-attestor rate-limit configuration override (persistent).
+    RateLimitOverride(Address),
+    /// Per-attestor attestation count (persistent).
+    PerAttestorCount(Address),
+    /// Revocation marker for an individual attestation (persistent).
+    AttestationRevoked(u64),
+    /// Marker that `QuoteExpiredEvent` was already emitted for an anchor's quote (persistent).
+    ExpiredNotified(Address, u64),
+    /// Contract pause state (instance storage).
+    IsPaused,
+    /// Credential policy for an attestor (persistent).
+    CredentialPolicy(Address),
+    /// Stored credential for an attestor (persistent).
+    StoredCredential(Address),
+    // --- Instance-storage counters (stored as Vec<Symbol> keys) ---
+    // These are kept as plain symbol_short! vecs because instance storage
+    // requires a Vec<Symbol> key; they are defined as named constants below.
 }
 
-impl StorageKey {
-    fn to_storage_key(&self, env: &Env) -> soroban_sdk::Val {
-        match self {
-            StorageKey::Admin => (soroban_sdk::symbol_short!("ADMIN"),).into_val(env),
-            StorageKey::Attestor(addr) => {
-                (soroban_sdk::symbol_short!("ATTESTOR"), addr).into_val(env)
-            }
-            StorageKey::Counter => (soroban_sdk::symbol_short!("COUNTER"),).into_val(env),
-            StorageKey::Attestation(id) => {
-                (soroban_sdk::symbol_short!("ATTEST"), *id).into_val(env)
-            }
-            StorageKey::UsedHash(hash) => {
-                (soroban_sdk::symbol_short!("USED"), hash.clone()).into_val(env)
-            }
-            StorageKey::Endpoint(addr) => {
-                (soroban_sdk::symbol_short!("ENDPOINT"), addr).into_val(env)
-            }
-            StorageKey::SessionCounter => (soroban_sdk::symbol_short!("SCNT"),).into_val(env),
-            StorageKey::Session(id) => {
-                (soroban_sdk::symbol_short!("SESS"), *id).into_val(env)
-            }
-            StorageKey::SessionNonce(id) => {
-                (soroban_sdk::symbol_short!("SNONCE"), *id).into_val(env)
-            }
-            StorageKey::AuditLogCounter => (soroban_sdk::symbol_short!("ACNT"),).into_val(env),
-            StorageKey::AuditLog(id) => {
-                (soroban_sdk::symbol_short!("AUDIT"), *id).into_val(env)
-            }
-            StorageKey::SessionOperationCount(id) => {
-                (soroban_sdk::symbol_short!("SOPCNT"), *id).into_val(env)
-            }
-        }
-    }
+// Instance-storage counter keys (Vec<Symbol>).
+// Defined as functions returning the canonical key to avoid repetition.
+use soroban_sdk::{symbol_short, Env, Symbol, Vec};
+
+pub fn key_admin(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("ADMIN")]
 }
-
-pub struct Storage;
-
-impl Storage {
-    const DAY_IN_LEDGERS: u32 = 17280;
-    const INSTANCE_LIFETIME: u32 = Self::DAY_IN_LEDGERS * 30; // 30 days
-    const PERSISTENT_LIFETIME: u32 = Self::DAY_IN_LEDGERS * 90; // 90 days
-
-    pub fn has_admin(env: &Env) -> bool {
-        let key = StorageKey::Admin.to_storage_key(env);
-        env.storage().instance().has(&key)
-    }
-
-    pub fn set_admin(env: &Env, admin: &Address) {
-        let key = StorageKey::Admin.to_storage_key(env);
-        env.storage().instance().set(&key, admin);
-        env.storage()
-            .instance()
-            .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
-    }
-
-    pub fn get_admin(env: &Env) -> Result<Address, Error> {
-        let key = StorageKey::Admin.to_storage_key(env);
-        env.storage()
-            .instance()
-            .get(&key)
-            .ok_or(Error::NotInitialized)
-    }
-
-    pub fn set_attestor(env: &Env, attestor: &Address, is_registered: bool) {
-        let key = StorageKey::Attestor(attestor.clone()).to_storage_key(env);
-        env.storage().persistent().set(&key, &is_registered);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
-    }
-
-    pub fn is_attestor(env: &Env, attestor: &Address) -> bool {
-        let key = StorageKey::Attestor(attestor.clone()).to_storage_key(env);
-        env.storage()
-            .persistent()
-            .get(&key)
-            .unwrap_or(false)
-    }
-
-    pub fn get_and_increment_counter(env: &Env) -> u64 {
-        let key = StorageKey::Counter.to_storage_key(env);
-        let counter: u64 = env.storage().instance().get(&key).unwrap_or(0);
-        env.storage().instance().set(&key, &(counter + 1));
-        env.storage()
-            .instance()
-            .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
-        counter
-    }
-
-    pub fn set_attestation(env: &Env, id: u64, attestation: &Attestation) {
-        let key = StorageKey::Attestation(id).to_storage_key(env);
-        env.storage().persistent().set(&key, attestation);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
-    }
-
-    pub fn get_attestation(env: &Env, id: u64) -> Result<Attestation, Error> {
-        let key = StorageKey::Attestation(id).to_storage_key(env);
-        env.storage()
-            .persistent()
-            .get(&key)
-            .ok_or(Error::AttestationNotFound)
-    }
-
-    pub fn mark_hash_used(env: &Env, hash: &BytesN<32>) {
-        let key = StorageKey::UsedHash(hash.clone()).to_storage_key(env);
-        env.storage().persistent().set(&key, &true);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
-    }
-
-    pub fn is_hash_used(env: &Env, hash: &BytesN<32>) -> bool {
-        let key = StorageKey::UsedHash(hash.clone()).to_storage_key(env);
-        env.storage()
-            .persistent()
-            .get(&key)
-            .unwrap_or(false)
-    }
-
-    pub fn set_endpoint(env: &Env, endpoint: &Endpoint) {
-        let key = StorageKey::Endpoint(endpoint.attestor.clone()).to_storage_key(env);
-        env.storage().persistent().set(&key, endpoint);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
-    }
-
-    pub fn get_endpoint(env: &Env, attestor: &Address) -> Result<Endpoint, Error> {
-        let key = StorageKey::Endpoint(attestor.clone()).to_storage_key(env);
-        env.storage()
-            .persistent()
-            .get(&key)
-            .ok_or(Error::EndpointNotFound)
-    }
-
-    pub fn has_endpoint(env: &Env, attestor: &Address) -> bool {
-        let key = StorageKey::Endpoint(attestor.clone()).to_storage_key(env);
-        env.storage().persistent().has(&key)
-    }
-
-    pub fn remove_endpoint(env: &Env, attestor: &Address) {
-        let key = StorageKey::Endpoint(attestor.clone()).to_storage_key(env);
-        env.storage().persistent().remove(&key);
-    }
-
-    // ============ Session Management ============
-
-    pub fn create_session(env: &Env, initiator: &Address) -> u64 {
-        let session_id = Self::get_and_increment_session_counter(env);
-        let nonce = env.ledger().sequence() as u64;
-        
-        let session = InteractionSession {
-            session_id,
-            initiator: initiator.clone(),
-            created_at: env.ledger().timestamp(),
-            operation_count: 0,
-            nonce,
-        };
-
-        let key = StorageKey::Session(session_id).to_storage_key(env);
-        env.storage().persistent().set(&key, &session);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
-
-        // Store nonce for replay protection
-        let nonce_key = StorageKey::SessionNonce(session_id).to_storage_key(env);
-        env.storage().persistent().set(&nonce_key, &nonce);
-        env.storage()
-            .persistent()
-            .extend_ttl(&nonce_key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
-
-        session_id
-    }
-
-    pub fn get_session(env: &Env, session_id: u64) -> Result<InteractionSession, Error> {
-        let key = StorageKey::Session(session_id).to_storage_key(env);
-        env.storage()
-            .persistent()
-            .get(&key)
-            .ok_or(Error::SessionNotFound)
-    }
-
-    pub fn increment_session_operation_count(env: &Env, session_id: u64) -> u64 {
-        let key = StorageKey::SessionOperationCount(session_id).to_storage_key(env);
-        let count: u64 = env.storage().persistent().get(&key).unwrap_or(0);
-        env.storage().persistent().set(&key, &(count + 1));
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
-        count
-    }
-
-    pub fn get_session_operation_count(env: &Env, session_id: u64) -> u64 {
-        let key = StorageKey::SessionOperationCount(session_id).to_storage_key(env);
-        env.storage().persistent().get(&key).unwrap_or(0)
-    }
-
-    pub fn verify_session_nonce(env: &Env, session_id: u64, nonce: u64) -> Result<(), Error> {
-        let key = StorageKey::SessionNonce(session_id).to_storage_key(env);
-        let stored_nonce: u64 = env.storage()
-            .persistent()
-            .get(&key)
-            .ok_or(Error::SessionNotFound)?;
-        
-        if stored_nonce != nonce {
-            return Err(Error::SessionReplayAttack);
-        }
-        Ok(())
-    }
-
-    fn get_and_increment_session_counter(env: &Env) -> u64 {
-        let key = StorageKey::SessionCounter.to_storage_key(env);
-        let counter: u64 = env.storage().instance().get(&key).unwrap_or(0);
-        env.storage().instance().set(&key, &(counter + 1));
-        env.storage()
-            .instance()
-            .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
-        counter
-    }
-
-    // ============ Audit Logging ============
-
-    pub fn log_operation(env: &Env, session_id: u64, actor: &Address, operation: &OperationContext) -> u64 {
-        let log_id = Self::get_and_increment_audit_counter(env);
-        
-        let audit_log = AuditLog {
-            log_id,
-            session_id,
-            operation: operation.clone(),
-            actor: actor.clone(),
-        };
-
-        let key = StorageKey::AuditLog(log_id).to_storage_key(env);
-        env.storage().persistent().set(&key, &audit_log);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, Self::PERSISTENT_LIFETIME, Self::PERSISTENT_LIFETIME);
-
-        log_id
-    }
-
-    pub fn get_audit_log(env: &Env, log_id: u64) -> Result<AuditLog, Error> {
-        let key = StorageKey::AuditLog(log_id).to_storage_key(env);
-        env.storage()
-            .persistent()
-            .get(&key)
-            .ok_or(Error::SessionNotFound)
-    }
-
-    fn get_and_increment_audit_counter(env: &Env) -> u64 {
-        let key = StorageKey::AuditLogCounter.to_storage_key(env);
-        let counter: u64 = env.storage().instance().get(&key).unwrap_or(0);
-        env.storage().instance().set(&key, &(counter + 1));
-        env.storage()
-            .instance()
-            .extend_ttl(Self::INSTANCE_LIFETIME, Self::INSTANCE_LIFETIME);
-        counter
-    }
+pub fn key_counter(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("ATST_CNT")]
+}
+pub fn key_session_counter(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("SESS_CNT")]
+}
+pub fn key_quote_counter(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("QUOT_CNT")]
+}
+pub fn key_audit_counter(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("AUD_CNT")]
+}
+pub fn key_total_count(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("TOTALCNT")]
+}
+pub fn key_audit_log_offset(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("AUD_OFF")]
+}
+pub fn key_anchor_list(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("ANCHORS")]
+}
+pub fn key_health_threshold(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("HLTH_TR")]
+}
+pub fn key_replay_window(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("REPL_WIN")]
+}
+pub fn key_clock_skew(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("CLK_SKEW")]
+}
+pub fn key_attestor_count(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("ATTCNT")]
+}
+pub fn key_attestor_list(env: &Env) -> Vec<Symbol> {
+    soroban_sdk::vec![env, symbol_short!("ATTLST")]
 }

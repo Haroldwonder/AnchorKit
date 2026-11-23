@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnchorKit Webhook Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 24px 32px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a202c;
+        }
+
+        .subtitle {
+            color: #718096;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .status.listening {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status.stopped {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status.listening .status-dot {
+            background: #38a169;
+        }
+
+        .status.stopped .status-dot {
+            background: #e53e3e;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #4299e1;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #3182ce;
+        }
+
+        .btn-danger {
+            background: #e53e3e;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c53030;
+        }
+
+        .btn-secondary {
+            background: #edf2f7;
+            color: #2d3748;
+        }
+
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+
+        .filters {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 16px 24px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-group label {
+            font-size: 14px;
+            color: #4a5568;
+            font-weight: 500;
+        }
+
+        select {
+            padding: 6px 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 600;
+            color: #1a202c;
+        }
+
+        .events-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .events-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .events-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a202c;
+        }
+
+        .events-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .event-item {
+            padding: 16px 24px;
+            border-bottom: 1px solid #e2e8f0;
+            transition: background 0.2s;
+        }
+
+        .event-item:hover {
+            background: #f7fafc;
+        }
+
+        .event-item:last-child {
+            border-bottom: none;
+        }
+
+        .event-item.new {
+            animation: highlight 1s ease-out;
+        }
+
+        @keyframes highlight {
+            0% { background: #bee3f8; }
+            100% { background: transparent; }
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 8px;
+        }
+
+        .event-type {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .event-type.deposit {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .event-type.withdrawal {
+            background: #feebc8;
+            color: #7c2d12;
+        }
+
+        .event-type.kyc {
+            background: #bee3f8;
+            color: #1a365d;
+        }
+
+        .event-type.quote {
+            background: #e9d8fd;
+            color: #44337a;
+        }
+
+        .event-type.transfer {
+            background: #fed7e2;
+            color: #702459;
+        }
+
+        .event-type.session {
+            background: #fef5e7;
+            color: #744210;
+        }
+
+        .event-type.attestation {
+            background: #e2e8f0;
+            color: #2d3748;
+        }
+
+        .event-type.other {
+            background: #edf2f7;
+            color: #4a5568;
+        }
+
+        .event-icon {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .event-time {
+            font-size: 12px;
+            color: #718096;
+        }
+
+        .event-id {
+            font-size: 12px;
+            color: #a0aec0;
+            margin-top: 4px;
+        }
+
+        .event-details {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px 16px;
+            margin-top: 12px;
+            font-size: 13px;
+        }
+
+        .detail-label {
+            color: #718096;
+            font-weight: 500;
+        }
+
+        .detail-value {
+            color: #2d3748;
+            word-break: break-all;
+        }
+
+        .payload-toggle {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: #edf2f7;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #4a5568;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .payload-toggle:hover {
+            background: #e2e8f0;
+        }
+
+        .payload-toggle-icon {
+            transition: transform 0.2s;
+        }
+
+        .payload-toggle.expanded .payload-toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .payload-content {
+            display: none;
+            margin-top: 8px;
+            padding: 12px;
+            background: #2d3748;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .payload-content.show {
+            display: block;
+        }
+
+        .payload-content pre {
+            margin: 0;
+            color: #e2e8f0;
+            font-size: 12px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            line-height: 1.5;
+        }
+
+        .empty-state {
+            padding: 60px 24px;
+            text-align: center;
+            color: #718096;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .empty-state-subtext {
+            font-size: 14px;
+            color: #a0aec0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Webhook Event Monitor</h1>
+                <p class="subtitle">Real-time anchor callback debugging</p>
+            </div>
+            <div class="controls">
+                <div class="status listening" id="status">
+                    <span class="status-dot"></span>
+                    <span id="statusText">Listening</span>
+                </div>
+                <button class="btn btn-secondary" onclick="clearEvents()">Clear</button>
+                <button class="btn btn-danger" id="toggleBtn" onclick="toggleMonitoring()">Stop</button>
+            </div>
+        </div>
+
+        <div class="filters">
+            <div class="filter-group">
+                <label for="eventTypeFilter">Event Type:</label>
+                <select id="eventTypeFilter" onchange="filterEvents()">
+                    <option value="all">All Events</option>
+                    <option value="deposit">Deposits</option>
+                    <option value="withdrawal">Withdrawals</option>
+                    <option value="kyc">KYC Updates</option>
+                    <option value="quote">Quotes</option>
+                    <option value="transfer">Transfers</option>
+                    <option value="session">Sessions</option>
+                    <option value="attestation">Attestations</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Total Events</div>
+                <div class="stat-value" id="totalEvents">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Last Event</div>
+                <div class="stat-value" id="lastEvent" style="font-size: 16px; color: #718096;">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Events/Min</div>
+                <div class="stat-value" id="eventsPerMin">0</div>
+            </div>
+        </div>
+
+        <div class="events-container">
+            <div class="events-header">
+                <h2>Events</h2>
+                <span id="eventCount" style="color: #718096; font-size: 14px;">0 events</span>
+            </div>
+            <div class="events-list" id="eventsList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📡</div>
+                    <div class="empty-state-text">Waiting for webhook events...</div>
+                    <div class="empty-state-subtext">Events will appear here in real-time</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let events = [];
+        let isMonitoring = true;
+        let eventCounter = 0;
+        let recentEvents = [];
+
+        // Simulate webhook events for demo (replace with actual WebSocket/SSE in production)
+        function simulateWebhookEvent() {
+            if (!isMonitoring) return;
+
+            const eventTypes = [
+                { type: 'deposit', data: { amount: 1000, asset: 'USDC', user: 'GABC...XYZ' } },
+                { type: 'withdrawal', data: { amount: 500, asset: 'USDC', user: 'GDEF...ABC', destination: '0x123...789' } },
+                { type: 'kyc', data: { user: 'GHIJ...DEF', status: 'approved', level: 2 } },
+                { type: 'quote', data: { pair: 'USDC/USD', rate: 1.0, quote_id: 42 } },
+                { type: 'transfer', data: { transfer_id: 123, from: 'GABC...XYZ', to: 'GDEF...ABC', amount: 250 } },
+                { type: 'session', data: { session_id: 789, initiator: 'GABC...XYZ' } },
+                { type: 'attestation', data: { attestation_id: 456, subject: 'GDEF...ABC', issuer: 'GHIJ...DEF' } }
+            ];
+
+            const randomEvent = eventTypes[Math.floor(Math.random() * eventTypes.length)];
+            
+            const event = {
+                id: ++eventCounter,
+                type: randomEvent.type,
+                timestamp: new Date().toISOString(),
+                payload: randomEvent.data
+            };
+
+            addEvent(event);
+        }
+
+        function addEvent(event) {
+            events.unshift(event);
+            recentEvents.push(Date.now());
+            
+            // Keep only last 100 events
+            if (events.length > 100) {
+                events.pop();
+            }
+
+            // Keep only events from last minute for rate calculation
+            const oneMinuteAgo = Date.now() - 60000;
+            recentEvents = recentEvents.filter(time => time > oneMinuteAgo);
+
+            updateStats();
+            renderEvents();
+        }
+
+        function renderEvents() {
+            const eventsList = document.getElementById('eventsList');
+            const filter = document.getElementById('eventTypeFilter').value;
+            
+            const filteredEvents = filter === 'all' 
+                ? events 
+                : events.filter(e => e.type === filter);
+
+            if (filteredEvents.length === 0) {
+                eventsList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📡</div>
+                        <div class="empty-state-text">No events to display</div>
+                        <div class="empty-state-subtext">${filter === 'all' ? 'Waiting for webhook events...' : 'No ' + filter + ' events yet'}</div>
+                    </div>
+                `;
+                return;
+            }
+
+            eventsList.innerHTML = filteredEvents.map(event => `
+                <div class="event-item ${event.id === eventCounter ? 'new' : ''}" data-event-id="${event.id}">
+                    <div class="event-header">
+                        <div>
+                            <span class="event-type ${event.type}">
+                                <span class="event-icon"></span>
+                                ${formatEventType(event.type)}
+                            </span>
+                            <div class="event-id">Event #${event.id}</div>
+                        </div>
+                        <div class="event-time">${formatTime(event.timestamp)}</div>
+                    </div>
+                    
+                    <div class="event-details">
+                        ${renderEventDetails(event)}
+                    </div>
+
+                    <button class="payload-toggle" onclick="togglePayload(${event.id})">
+                        <span>View Raw Payload</span>
+                        <span class="payload-toggle-icon">▼</span>
+                    </button>
+                    <div class="payload-content" id="payload-${event.id}">
+                        <pre>${JSON.stringify(event.payload, null, 2)}</pre>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('eventCount').textContent = `${filteredEvents.length} event${filteredEvents.length !== 1 ? 's' : ''}`;
+        }
+
+        function renderEventDetails(event) {
+            const details = [];
+            
+            switch(event.type) {
+                case 'deposit':
+                    details.push(['Amount', `${event.payload.amount} ${event.payload.asset}`]);
+                    details.push(['User', event.payload.user]);
+                    break;
+                case 'withdrawal':
+                    details.push(['Amount', `${event.payload.amount} ${event.payload.asset}`]);
+                    details.push(['User', event.payload.user]);
+                    details.push(['Destination', event.payload.destination]);
+                    break;
+                case 'kyc':
+                    details.push(['User', event.payload.user]);
+                    details.push(['Status', event.payload.status]);
+                    details.push(['Level', event.payload.level]);
+                    break;
+                case 'quote':
+                    details.push(['Pair', event.payload.pair]);
+                    details.push(['Rate', event.payload.rate]);
+                    details.push(['Quote ID', event.payload.quote_id]);
+                    break;
+                case 'transfer':
+                    details.push(['Transfer ID', event.payload.transfer_id]);
+                    details.push(['From', event.payload.from]);
+                    details.push(['To', event.payload.to]);
+                    details.push(['Amount', event.payload.amount]);
+                    break;
+                case 'session':
+                    details.push(['Session ID', event.payload.session_id]);
+                    details.push(['Initiator', event.payload.initiator]);
+                    break;
+                case 'attestation':
+                    details.push(['Attestation ID', event.payload.attestation_id]);
+                    details.push(['Subject', event.payload.subject]);
+                    details.push(['Issuer', event.payload.issuer]);
+                    break;
+            }
+
+            return details.map(([label, value]) => `
+                <span class="detail-label">${label}:</span>
+                <span class="detail-value">${value}</span>
+            `).join('');
+        }
+
+        function formatEventType(type) {
+            return type.charAt(0).toUpperCase() + type.slice(1);
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString() + '.' + date.getMilliseconds().toString().padStart(3, '0');
+        }
+
+        function togglePayload(eventId) {
+            const payload = document.getElementById(`payload-${eventId}`);
+            const button = payload.previousElementSibling;
+            
+            payload.classList.toggle('show');
+            button.classList.toggle('expanded');
+        }
+
+        function updateStats() {
+            document.getElementById('totalEvents').textContent = events.length;
+            
+            if (events.length > 0) {
+                const lastEventTime = new Date(events[0].timestamp);
+                const now = new Date();
+                const diff = Math.floor((now - lastEventTime) / 1000);
+                
+                if (diff < 1) {
+                    document.getElementById('lastEvent').textContent = 'Just now';
+                } else if (diff < 60) {
+                    document.getElementById('lastEvent').textContent = `${diff}s ago`;
+                } else {
+                    document.getElementById('lastEvent').textContent = `${Math.floor(diff / 60)}m ago`;
+                }
+            }
+
+            document.getElementById('eventsPerMin').textContent = recentEvents.length;
+        }
+
+        function toggleMonitoring() {
+            isMonitoring = !isMonitoring;
+            
+            const status = document.getElementById('status');
+            const statusText = document.getElementById('statusText');
+            const toggleBtn = document.getElementById('toggleBtn');
+            
+            if (isMonitoring) {
+                status.className = 'status listening';
+                statusText.textContent = 'Listening';
+                toggleBtn.textContent = 'Stop';
+                toggleBtn.className = 'btn btn-danger';
+            } else {
+                status.className = 'status stopped';
+                statusText.textContent = 'Stopped';
+                toggleBtn.textContent = 'Start';
+                toggleBtn.className = 'btn btn-primary';
+            }
+        }
+
+        function clearEvents() {
+            if (confirm('Clear all events?')) {
+                events = [];
+                eventCounter = 0;
+                recentEvents = [];
+                updateStats();
+                renderEvents();
+            }
+        }
+
+        function filterEvents() {
+            renderEvents();
+        }
+
+        // Simulate events every 2-5 seconds (for demo)
+        setInterval(() => {
+            if (isMonitoring && Math.random() > 0.3) {
+                simulateWebhookEvent();
+            }
+        }, 3000);
+
+        // Update "last event" time every second
+        setInterval(updateStats, 1000);
+
+        // Initial render
+        renderEvents();
+    </script>
+</body>
+</html>

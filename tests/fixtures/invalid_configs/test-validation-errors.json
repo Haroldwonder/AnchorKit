@@ -1,0 +1,24 @@
+{
+  "contract": {
+    "name": "Invalid_Name_With_Uppercase",
+    "version": "1.0",
+    "network": "invalid-network"
+  },
+  "attestors": {
+    "registry": [
+      {
+        "name": "test-attestor",
+        "address": "INVALID_ADDRESS",
+        "endpoint": "http://localhost:8080/api",
+        "role": "invalid-role",
+        "enabled": false
+      }
+    ]
+  },
+  "sessions": {
+    "enable_session_tracking": true,
+    "session_timeout_seconds": 30,
+    "operations_per_session": 15000,
+    "audit_log_retention_days": 5000
+  }
+}

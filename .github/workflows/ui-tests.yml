@@ -1,0 +1,39 @@
+name: UI Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ui
+      - name: Run lint
+        run: npm run lint --silent
+        working-directory: ui
+
+      - name: Type-check
+        run: npm run type-check --silent
+        working-directory: ui
+
+      - name: Build
+        run: npm run build --silent
+        working-directory: ui
+
+      - name: Run tests
+        run: npm test -- --ci
+        working-directory: ui

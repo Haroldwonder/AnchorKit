@@ -1,0 +1,9 @@
+{
+  "contract": {
+    "name": "test-anchor",
+    "version": "1.0.0"
+  },
+  "attestors": {
+    "registry": []
+  }
+}

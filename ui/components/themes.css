@@ -1,0 +1,394 @@
+/* AnchorKit Design System – CSS Custom Properties
+ * All UI components consume these variables.
+ * Light theme is the default; dark theme activates via prefers-color-scheme
+ * or the [data-theme="dark"] attribute (for manual overrides).
+ */
+
+/* ─── Light Theme (default) ─────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --ak-bg:          #eef2fa;
+  --ak-surface:     #ffffff;
+  --ak-surface-2:   #f3f4f6;
+  --ak-surface-3:   #fafafa;
+
+  /* Borders */
+  --ak-border:      #e5e7eb;
+  --ak-border-2:    #ccd4e8;
+
+  /* Text */
+  --ak-text:        #1e2a45;
+  --ak-text-muted:  #6b7280;
+  --ak-text-subtle: #9ca3af;
+
+  /* Brand / accent */
+  --ak-accent:      #3b82f6;
+  --ak-accent-hover:#2563eb;
+  --ak-accent-focus-shadow: rgba(59, 130, 246, 0.1);
+  --ak-accent-hover-shadow: rgba(59, 130, 246, 0.3);
+  --ak-error-focus-shadow: rgba(239, 68, 68, 0.1);
+
+  /* Status – initiated */
+  --ak-status-initiated-color:  #6366f1;
+  --ak-status-initiated-bg:     #eef2ff;
+  --ak-status-initiated-border: #c7d2fe;
+
+  /* Status – pending */
+  --ak-status-pending-color:    #d97706;
+  --ak-status-pending-bg:       #fffbeb;
+  --ak-status-pending-border:   #fde68a;
+
+  /* Status – processing */
+  --ak-status-processing-color:  #0284c7;
+  --ak-status-processing-bg:     #e0f2fe;
+  --ak-status-processing-border: #bae6fd;
+
+  /* Status – completed */
+  --ak-status-completed-color:  #059669;
+  --ak-status-completed-bg:     #ecfdf5;
+  --ak-status-completed-border: #a7f3d0;
+
+  /* Status – failed */
+  --ak-status-failed-color:  #dc2626;
+  --ak-status-failed-bg:     #fef2f2;
+  --ak-status-failed-border: #fecaca;
+
+  /* Status – awaiting_user */
+  --ak-status-awaiting-user-color:  #d97706;
+  --ak-status-awaiting-user-bg:     #fffbeb;
+  --ak-status-awaiting-user-border: #fcd34d;
+
+  /* Status – refunded */
+  --ak-status-refunded-color:        #7c3aed;
+  --ak-status-refunded-color-strong: #5b21b6;
+  --ak-status-refunded-color-subtle: #a78bfa;
+  --ak-status-refunded-bg:           #f5f3ff;
+  --ak-status-refunded-border:       #c4b5fd;
+
+  /* KYC levels */
+  --ak-kyc-none-color:     #22c55e;
+  --ak-kyc-none-bg:        #f0fdf4;
+  --ak-kyc-none-border:    #bbf7d0;
+  --ak-kyc-basic-color:    #f59e0b;
+  --ak-kyc-basic-bg:       #fffbeb;
+  --ak-kyc-basic-border:   #fde68a;
+  --ak-kyc-full-color:     #3b82f6;
+  --ak-kyc-full-bg:        #eff6ff;
+  --ak-kyc-full-border:    #bfdbfe;
+  --ak-kyc-enhanced-color: #8b5cf6;
+  --ak-kyc-enhanced-bg:    #f5f3ff;
+  --ak-kyc-enhanced-border:#ddd6fe;
+
+  /* HTTP method badges */
+  --ak-method-get-color:    #1e40af;
+  --ak-method-get-bg:       #dbeafe;
+  --ak-method-post-color:   #065f46;
+  --ak-method-post-bg:      #d1fae5;
+  --ak-method-put-color:    #92400e;
+  --ak-method-put-bg:       #fef3c7;
+  --ak-method-delete-color: #991b1b;
+  --ak-method-delete-bg:    #fee2e2;
+  --ak-method-patch-color:  #3730a3;
+  --ak-method-patch-bg:     #e0e7ff;
+
+  /* Code / terminal */
+  --ak-code-bg:       #1f2937;
+  --ak-code-text:     #e5e7eb;
+  --ak-code-curl:     #10b981;
+
+  /* Skeleton loader */
+  --ak-skeleton-base:     #e5e7eb;
+  --ak-skeleton-shimmer:  #f3f4f6;
+
+  /* Error / warning */
+  --ak-error-bg:     #fef2f2;
+  --ak-error-border: #fecaca;
+  --ak-error-text:   #991b1b;
+
+  /* Timeline connector */
+  --ak-connector-bg: #e2e8f0;
+
+  /* Health badge tiers */
+  --ak-health-healthy-color:  #166534;
+  --ak-health-healthy-bg:     #dcfce7;
+  --ak-health-healthy-border: #86efac;
+  --ak-health-fair-color:     #92400e;
+  --ak-health-fair-bg:        #fef9c3;
+  --ak-health-fair-border:    #fde047;
+  --ak-health-poor-color:     #991b1b;
+  --ak-health-poor-bg:        #fee2e2;
+  --ak-health-poor-border:    #fca5a5;
+
+  /* Shadows */
+  --ak-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --ak-shadow-md: 0 4px 24px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* ─── Dark Theme ─────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ak-bg:          #050810;
+    --ak-surface:     #080c18;
+    --ak-surface-2:   #0f1629;
+    --ak-surface-3:   #111827;
+
+    --ak-border:      #1e2d45;
+    --ak-border-2:    #18243d;
+
+    --ak-text:        #dde6f5;
+    --ak-text-muted:  #6b7280;
+    --ak-text-subtle: #4b5563;
+
+    --ak-accent:      #3b82f6;
+    --ak-accent-hover:#60a5fa;
+    --ak-accent-focus-shadow: rgba(59, 130, 246, 0.2);
+    --ak-accent-hover-shadow: rgba(59, 130, 246, 0.4);
+    --ak-error-focus-shadow: rgba(239, 68, 68, 0.2);
+
+    /* Status colors stay vivid but backgrounds darken */
+    --ak-status-initiated-color:  #818cf8;
+    --ak-status-initiated-bg:     rgba(99,102,241,0.15);
+    --ak-status-initiated-border: rgba(99,102,241,0.35);
+
+    --ak-status-pending-color:    #fbbf24;
+    --ak-status-pending-bg:       rgba(217,119,6,0.15);
+    --ak-status-pending-border:   rgba(217,119,6,0.35);
+
+    --ak-status-processing-color:  #38bdf8;
+    --ak-status-processing-bg:     rgba(2,132,199,0.15);
+    --ak-status-processing-border: rgba(2,132,199,0.35);
+
+    --ak-status-completed-color:  #34d399;
+    --ak-status-completed-bg:     rgba(5,150,105,0.15);
+    --ak-status-completed-border: rgba(5,150,105,0.35);
+
+    --ak-status-failed-color:  #f87171;
+    --ak-status-failed-bg:     rgba(220,38,38,0.15);
+    --ak-status-failed-border: rgba(220,38,38,0.35);
+
+    --ak-status-awaiting-user-color:  #fbbf24;
+    --ak-status-awaiting-user-bg:     rgba(217,119,6,0.15);
+    --ak-status-awaiting-user-border: rgba(217,119,6,0.35);
+
+    --ak-status-refunded-color:        #c4b5fd;
+    --ak-status-refunded-color-strong: #a78bfa;
+    --ak-status-refunded-color-subtle: #7c3aed;
+    --ak-status-refunded-bg:           rgba(124,58,237,0.15);
+    --ak-status-refunded-border:       rgba(124,58,237,0.35);
+
+    --ak-kyc-none-color:     #4ade80;
+    --ak-kyc-none-bg:        rgba(34,197,94,0.12);
+    --ak-kyc-none-border:    rgba(34,197,94,0.3);
+    --ak-kyc-basic-color:    #fbbf24;
+    --ak-kyc-basic-bg:       rgba(245,158,11,0.12);
+    --ak-kyc-basic-border:   rgba(245,158,11,0.3);
+    --ak-kyc-full-color:     #60a5fa;
+    --ak-kyc-full-bg:        rgba(59,130,246,0.12);
+    --ak-kyc-full-border:    rgba(59,130,246,0.3);
+    --ak-kyc-enhanced-color: #a78bfa;
+    --ak-kyc-enhanced-bg:    rgba(139,92,246,0.12);
+    --ak-kyc-enhanced-border:rgba(139,92,246,0.3);
+
+    --ak-method-get-color:    #93c5fd;
+    --ak-method-get-bg:       rgba(30,64,175,0.25);
+    --ak-method-post-color:   #6ee7b7;
+    --ak-method-post-bg:      rgba(6,95,70,0.25);
+    --ak-method-put-color:    #fcd34d;
+    --ak-method-put-bg:       rgba(146,64,14,0.25);
+    --ak-method-delete-color: #fca5a5;
+    --ak-method-delete-bg:    rgba(153,27,27,0.25);
+    --ak-method-patch-color:  #c4b5fd;
+    --ak-method-patch-bg:     rgba(55,48,163,0.25);
+
+    --ak-code-bg:      #0f172a;
+    --ak-code-text:    #e5e7eb;
+    --ak-code-curl:    #10b981;
+
+    --ak-skeleton-base:    #1f2937;
+    --ak-skeleton-shimmer: #374151;
+
+    --ak-error-bg:     rgba(69,10,10,0.6);
+    --ak-error-border: #7f1d1d;
+    --ak-error-text:   #fca5a5;
+
+    --ak-connector-bg: #1e2d45;
+
+    /* Health badge tiers */
+    --ak-health-healthy-color:  #4ade80;
+    --ak-health-healthy-bg:     rgba(34,197,94,0.15);
+    --ak-health-healthy-border: rgba(34,197,94,0.35);
+    --ak-health-fair-color:     #fbbf24;
+    --ak-health-fair-bg:        rgba(217,119,6,0.15);
+    --ak-health-fair-border:    rgba(217,119,6,0.35);
+    --ak-health-poor-color:     #f87171;
+    --ak-health-poor-bg:        rgba(220,38,38,0.15);
+    --ak-health-poor-border:    rgba(220,38,38,0.35);
+
+    --ak-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --ak-shadow-md: 0 4px 24px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* Manual override: [data-theme="dark"] on any ancestor */
+[data-theme="dark"] {
+  --ak-bg:          #050810;
+  --ak-surface:     #080c18;
+  --ak-surface-2:   #0f1629;
+  --ak-surface-3:   #111827;
+  --ak-border:      #1e2d45;
+  --ak-border-2:    #18243d;
+  --ak-text:        #dde6f5;
+  --ak-text-muted:  #6b7280;
+  --ak-text-subtle: #4b5563;
+  --ak-accent:      #3b82f6;
+  --ak-accent-hover:#60a5fa;
+  --ak-accent-focus-shadow: rgba(59, 130, 246, 0.2);
+  --ak-accent-hover-shadow: rgba(59, 130, 246, 0.4);
+  --ak-error-focus-shadow: rgba(239, 68, 68, 0.2);
+  --ak-status-initiated-color:  #818cf8;
+  --ak-status-initiated-bg:     rgba(99,102,241,0.15);
+  --ak-status-initiated-border: rgba(99,102,241,0.35);
+  --ak-status-pending-color:    #fbbf24;
+  --ak-status-pending-bg:       rgba(217,119,6,0.15);
+  --ak-status-pending-border:   rgba(217,119,6,0.35);
+  --ak-status-processing-color:  #38bdf8;
+  --ak-status-processing-bg:     rgba(2,132,199,0.15);
+  --ak-status-processing-border: rgba(2,132,199,0.35);
+  --ak-status-completed-color:  #34d399;
+  --ak-status-completed-bg:     rgba(5,150,105,0.15);
+  --ak-status-completed-border: rgba(5,150,105,0.35);
+  --ak-status-failed-color:  #f87171;
+  --ak-status-failed-bg:     rgba(220,38,38,0.15);
+  --ak-status-failed-border: rgba(220,38,38,0.35);
+  --ak-status-awaiting-user-color:  #fbbf24;
+  --ak-status-awaiting-user-bg:     rgba(217,119,6,0.15);
+  --ak-status-awaiting-user-border: rgba(217,119,6,0.35);
+  --ak-status-refunded-color:        #c4b5fd;
+  --ak-status-refunded-color-strong: #a78bfa;
+  --ak-status-refunded-color-subtle: #7c3aed;
+  --ak-status-refunded-bg:           rgba(124,58,237,0.15);
+  --ak-status-refunded-border:       rgba(124,58,237,0.35);
+  --ak-kyc-none-color:     #4ade80;
+  --ak-kyc-none-bg:        rgba(34,197,94,0.12);
+  --ak-kyc-none-border:    rgba(34,197,94,0.3);
+  --ak-kyc-basic-color:    #fbbf24;
+  --ak-kyc-basic-bg:       rgba(245,158,11,0.12);
+  --ak-kyc-basic-border:   rgba(245,158,11,0.3);
+  --ak-kyc-full-color:     #60a5fa;
+  --ak-kyc-full-bg:        rgba(59,130,246,0.12);
+  --ak-kyc-full-border:    rgba(59,130,246,0.3);
+  --ak-kyc-enhanced-color: #a78bfa;
+  --ak-kyc-enhanced-bg:    rgba(139,92,246,0.12);
+  --ak-kyc-enhanced-border:rgba(139,92,246,0.3);
+  --ak-method-get-color:    #93c5fd;
+  --ak-method-get-bg:       rgba(30,64,175,0.25);
+  --ak-method-post-color:   #6ee7b7;
+  --ak-method-post-bg:      rgba(6,95,70,0.25);
+  --ak-method-put-color:    #fcd34d;
+  --ak-method-put-bg:       rgba(146,64,14,0.25);
+  --ak-method-delete-color: #fca5a5;
+  --ak-method-delete-bg:    rgba(153,27,27,0.25);
+  --ak-method-patch-color:  #c4b5fd;
+  --ak-method-patch-bg:     rgba(55,48,163,0.25);
+  --ak-code-bg:      #0f172a;
+  --ak-code-text:    #e5e7eb;
+  --ak-code-curl:    #10b981;
+  --ak-skeleton-base:    #1f2937;
+  --ak-skeleton-shimmer: #374151;
+  --ak-error-bg:     rgba(69,10,10,0.6);
+  --ak-error-border: #7f1d1d;
+  --ak-error-text:   #fca5a5;
+  --ak-connector-bg: #1e2d45;
+  /* Health badge tiers */
+  --ak-health-healthy-color:  #4ade80;
+  --ak-health-healthy-bg:     rgba(34,197,94,0.15);
+  --ak-health-healthy-border: rgba(34,197,94,0.35);
+  --ak-health-fair-color:     #fbbf24;
+  --ak-health-fair-bg:        rgba(217,119,6,0.15);
+  --ak-health-fair-border:    rgba(217,119,6,0.35);
+  --ak-health-poor-color:     #f87171;
+  --ak-health-poor-bg:        rgba(220,38,38,0.15);
+  --ak-health-poor-border:    rgba(220,38,38,0.35);
+  --ak-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --ak-shadow-md: 0 4px 24px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] {
+  --ak-bg:          #eef2fa;
+  --ak-surface:     #ffffff;
+  --ak-surface-2:   #f3f4f6;
+  --ak-surface-3:   #fafafa;
+  --ak-border:      #e5e7eb;
+  --ak-border-2:    #ccd4e8;
+  --ak-text:        #1e2a45;
+  --ak-text-muted:  #6b7280;
+  --ak-text-subtle: #9ca3af;
+  --ak-accent:      #3b82f6;
+  --ak-accent-hover:#2563eb;
+  --ak-status-initiated-color:  #6366f1;
+  --ak-status-initiated-bg:     #eef2ff;
+  --ak-status-initiated-border: #c7d2fe;
+  --ak-status-pending-color:    #d97706;
+  --ak-status-pending-bg:       #fffbeb;
+  --ak-status-pending-border:   #fde68a;
+  --ak-status-processing-color:  #0284c7;
+  --ak-status-processing-bg:     #e0f2fe;
+  --ak-status-processing-border: #bae6fd;
+  --ak-status-completed-color:  #059669;
+  --ak-status-completed-bg:     #ecfdf5;
+  --ak-status-completed-border: #a7f3d0;
+  --ak-status-failed-color:  #dc2626;
+  --ak-status-failed-bg:     #fef2f2;
+  --ak-status-failed-border: #fecaca;
+  --ak-status-awaiting-user-color:  #d97706;
+  --ak-status-awaiting-user-bg:     #fffbeb;
+  --ak-status-awaiting-user-border: #fcd34d;
+  --ak-status-refunded-color:        #7c3aed;
+  --ak-status-refunded-color-strong: #5b21b6;
+  --ak-status-refunded-color-subtle: #a78bfa;
+  --ak-status-refunded-bg:           #f5f3ff;
+  --ak-status-refunded-border:       #c4b5fd;
+  --ak-kyc-none-color:     #22c55e;
+  --ak-kyc-none-bg:        #f0fdf4;
+  --ak-kyc-none-border:    #bbf7d0;
+  --ak-kyc-basic-color:    #f59e0b;
+  --ak-kyc-basic-bg:       #fffbeb;
+  --ak-kyc-basic-border:   #fde68a;
+  --ak-kyc-full-color:     #3b82f6;
+  --ak-kyc-full-bg:        #eff6ff;
+  --ak-kyc-full-border:    #bfdbfe;
+  --ak-kyc-enhanced-color: #8b5cf6;
+  --ak-kyc-enhanced-bg:    #f5f3ff;
+  --ak-kyc-enhanced-border:#ddd6fe;
+  --ak-method-get-color:    #1e40af;
+  --ak-method-get-bg:       #dbeafe;
+  --ak-method-post-color:   #065f46;
+  --ak-method-post-bg:      #d1fae5;
+  --ak-method-put-color:    #92400e;
+  --ak-method-put-bg:       #fef3c7;
+  --ak-method-delete-color: #991b1b;
+  --ak-method-delete-bg:    #fee2e2;
+  --ak-method-patch-color:  #3730a3;
+  --ak-method-patch-bg:     #e0e7ff;
+  --ak-code-bg:      #1f2937;
+  --ak-code-text:    #e5e7eb;
+  --ak-code-curl:    #10b981;
+  --ak-skeleton-base:    #e5e7eb;
+  --ak-skeleton-shimmer: #f3f4f6;
+  --ak-error-bg:     #fef2f2;
+  --ak-error-border: #fecaca;
+  --ak-error-text:   #991b1b;
+  --ak-connector-bg: #e2e8f0;
+  /* Health badge tiers */
+  --ak-health-healthy-color:  #166534;
+  --ak-health-healthy-bg:     #dcfce7;
+  --ak-health-healthy-border: #86efac;
+  --ak-health-fair-color:     #92400e;
+  --ak-health-fair-bg:        #fef9c3;
+  --ak-health-fair-border:    #fde047;
+  --ak-health-poor-color:     #991b1b;
+  --ak-health-poor-bg:        #fee2e2;
+  --ak-health-poor-border:    #fca5a5;
+  --ak-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --ak-shadow-md: 0 4px 24px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.04);
+}

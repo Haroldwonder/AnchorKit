@@ -1,0 +1,25 @@
+{
+  "name": "AnchorKit (Rust + Soroban + Node)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "nodeVersion": "lts"
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "latest",
+      "targets": ["wasm32-unknown-unknown", "wasm32-wasi"]
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {}
+  },
+  "postCreateCommand": "set -euo pipefail && (command -v soroban >/dev/null 2>&1 || cargo install --locked soroban-cli) && npm --version && node --version && cargo --version && rustc --version",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
+    }
+  },
+  "overrideCommand": false
+}

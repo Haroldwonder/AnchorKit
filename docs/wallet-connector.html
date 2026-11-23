@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet Connector - AnchorKit</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .wallet-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 0.95rem;
+        }
+
+        .wallet-status {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 2px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+
+        .wallet-status.connected {
+            background: #f0fff4;
+            border-color: #48bb78;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #cbd5e0;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #48bb78;
+        }
+
+        .status-text {
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .public-key-section {
+            display: none;
+            margin-top: 16px;
+        }
+
+        .public-key-section.visible {
+            display: block;
+        }
+
+        .public-key-label {
+            font-size: 0.75rem;
+            color: #718096;
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .public-key-display {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .public-key-text {
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            color: #2d3748;
+            word-break: break-all;
+            flex: 1;
+        }
+
+        .copy-key-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .copy-key-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .copy-key-btn.copied {
+            background: #48bb78;
+        }
+
+        .connect-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .connect-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .connect-btn:active {
+            transform: translateY(0);
+        }
+
+        .connect-btn.disconnect {
+            background: #e53e3e;
+        }
+
+        .connect-btn.disconnect:hover {
+            background: #c53030;
+            box-shadow: 0 8px 20px rgba(229, 62, 62, 0.4);
+        }
+
+        .connect-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .wallet-icon {
+            font-size: 1.5rem;
+        }
+
+        .info-box {
+            background: #edf2f7;
+            border-left: 4px solid #667eea;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .info-box p {
+            color: #4a5568;
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        .error-message {
+            background: #fff5f5;
+            border: 1px solid #fc8181;
+            color: #c53030;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .wallet-card {
+                padding: 24px;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .public-key-text {
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="wallet-card">
+            <div class="header">
+                <h1>🔐 Wallet Connector</h1>
+                <p>Connect your Stellar wallet to AnchorKit</p>
+            </div>
+
+            <div class="wallet-status" id="walletStatus">
+                <div class="status-indicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span class="status-text" id="statusText">Disconnected</span>
+                </div>
+
+                <div class="public-key-section" id="publicKeySection">
+                    <div class="public-key-label">Public Key</div>
+                    <div class="public-key-display">
+                        <span class="public-key-text" id="publicKeyText"></span>
+                        <button class="copy-key-btn" id="copyKeyBtn" onclick="copyPublicKey()">
+                            Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <button class="connect-btn" id="connectBtn" onclick="toggleWalletConnection()">
+                <span class="wallet-icon">👛</span>
+                <span id="btnText">Connect Wallet</span>
+            </button>
+
+            <div class="error-message" id="errorMessage"></div>
+
+            <div class="info-box">
+                <p><strong>Supported Wallets:</strong> Freighter, Albedo, Rabet, and other Stellar-compatible wallets</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Wallet connector state
+        let walletState = {
+            connected: false,
+            publicKey: null,
+            walletType: null
+        };
+
+        // Check if wallet is already connected on page load
+        window.addEventListener('load', () => {
+            checkExistingConnection();
+        });
+
+        async function checkExistingConnection() {
+            const savedPublicKey = localStorage.getItem('walletPublicKey');
+            if (savedPublicKey) {
+                updateWalletUI(true, savedPublicKey);
+            }
+        }
+
+        async function toggleWalletConnection() {
+            if (walletState.connected) {
+                disconnectWallet();
+            } else {
+                await connectWallet();
+            }
+        }
+
+        async function connectWallet() {
+            const connectBtn = document.getElementById('connectBtn');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            connectBtn.disabled = true;
+            errorMessage.classList.remove('visible');
+
+            try {
+                // Try Freighter first (most popular Stellar wallet)
+                if (window.freighterApi) {
+                    const { publicKey } = await window.freighterApi.getPublicKey();
+                    walletState.walletType = 'Freighter';
+                    updateWalletUI(true, publicKey);
+                    localStorage.setItem('walletPublicKey', publicKey);
+                    return;
+                }
+
+                // Try Albedo
+                if (window.albedo) {
+                    const result = await window.albedo.publicKey();
+                    walletState.walletType = 'Albedo';
+                    updateWalletUI(true, result.pubkey);
+                    localStorage.setItem('walletPublicKey', result.pubkey);
+                    return;
+                }
+
+                // Try Rabet
+                if (window.rabet) {
+                    await window.rabet.connect();
+                    const result = await window.rabet.getPublicKey();
+                    walletState.walletType = 'Rabet';
+                    updateWalletUI(true, result);
+                    localStorage.setItem('walletPublicKey', result);
+                    return;
+                }
+
+                // No wallet found
+                showError('No Stellar wallet detected. Please install Freighter, Albedo, or Rabet.');
+                
+            } catch (error) {
+                console.error('Wallet connection error:', error);
+                showError(error.message || 'Failed to connect wallet. Please try again.');
+            } finally {
+                connectBtn.disabled = false;
+            }
+        }
+
+        function disconnectWallet() {
+            walletState.connected = false;
+            walletState.publicKey = null;
+            walletState.walletType = null;
+            localStorage.removeItem('walletPublicKey');
+            updateWalletUI(false, null);
+        }
+
+        function updateWalletUI(connected, publicKey) {
+            walletState.connected = connected;
+            walletState.publicKey = publicKey;
+
+            const walletStatus = document.getElementById('walletStatus');
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const publicKeySection = document.getElementById('publicKeySection');
+            const publicKeyText = document.getElementById('publicKeyText');
+            const connectBtn = document.getElementById('connectBtn');
+            const btnText = document.getElementById('btnText');
+
+            if (connected) {
+                walletStatus.classList.add('connected');
+                statusDot.classList.add('connected');
+                statusText.textContent = 'Connected';
+                publicKeySection.classList.add('visible');
+                publicKeyText.textContent = publicKey;
+                connectBtn.classList.add('disconnect');
+                btnText.textContent = 'Disconnect Wallet';
+            } else {
+                walletStatus.classList.remove('connected');
+                statusDot.classList.remove('connected');
+                statusText.textContent = 'Disconnected';
+                publicKeySection.classList.remove('visible');
+                publicKeyText.textContent = '';
+                connectBtn.classList.remove('disconnect');
+                btnText.textContent = 'Connect Wallet';
+            }
+        }
+
+        function copyPublicKey() {
+            const publicKey = walletState.publicKey;
+            const copyBtn = document.getElementById('copyKeyBtn');
+            
+            if (!publicKey) return;
+
+            navigator.clipboard.writeText(publicKey).then(() => {
+                const originalText = copyBtn.textContent;
+                copyBtn.classList.add('copied');
+                copyBtn.textContent = 'Copied!';
+                
+                setTimeout(() => {
+                    copyBtn.classList.remove('copied');
+                    copyBtn.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showError('Failed to copy public key');
+            });
+        }
+
+        function showError(message) {
+            const errorMessage = document.getElementById('errorMessage');
+            errorMessage.textContent = message;
+            errorMessage.classList.add('visible');
+            
+            setTimeout(() => {
+                errorMessage.classList.remove('visible');
+            }, 5000);
+        }
+
+        // Export wallet connector for use in other modules
+        window.WalletConnector = {
+            getPublicKey: () => walletState.publicKey,
+            isConnected: () => walletState.connected,
+            getWalletType: () => walletState.walletType,
+            connect: connectWallet,
+            disconnect: disconnectWallet
+        };
+    </script>
+</body>
+</html>

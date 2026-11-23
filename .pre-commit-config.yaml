@@ -1,0 +1,27 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt --check
+        entry: cargo fmt --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: eslint-staged
+        name: eslint (staged)
+        entry: bash -c 'files="$@"; if [ -z "$files" ]; then exit 0; fi; command -v eslint >/dev/null 2>&1 || exit 0; npx eslint --max-warnings=0 $files' --
+        language: system
+        pass_filenames: true
+        types_or: [javascript, jsx, ts, tsx]
+        # Best-effort: if eslint isn''t installed, we''ll exit 0.
+        # npx will also attempt to resolve eslint if configured in the repo.
+        exclude: ^(target/|node_modules/)/
+

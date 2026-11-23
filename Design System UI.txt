@@ -1,0 +1,8 @@
+I worked on the architectural foundations of AnchorKit, defining the core color palette and typography that balances technical reliability with a modern Web3 aesthetic.
+
+I worked on the implementation of the 8pt modular grid system, ensuring that all components maintain visual rhythm and predictability for developers.
+
+I worked on designing the iconography set and technical documentation layout, creating a seamless bridge between visual design and live code.
+
+figma link https://www.figma.com/design/dXlpwxRaTaoUcVHVbV79cM/Anchor-Kit-Branding-Kit?node-id=0-1&p=f&t=y51pF4mWg358LdE5-0
+

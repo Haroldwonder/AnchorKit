@@ -13,35 +13,32 @@
         "address": "GBAA5XKQC3KVDPD5OS3CHJJ24SB3BX7GI7XBXKNNCKQVPQVX6S3VT5O",
         "description": "Biometric and document verification for remittance recipients",
         "endpoint": "https://identity-service.example.com/verify",
-        "role": "identity-verifier",
-        "enabled": true,
-        "contact_email": "support@identity-service.example.com"
+        "role": "kyc-issuer",
+        "enabled": true
       },
       {
         "name": "correspondent-bank",
         "address": "GBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
         "description": "Correspondent bank for settlement in recipient country",
         "endpoint": "https://bank-api.example.com/settlement",
-        "role": "settlement-bank",
-        "enabled": true,
-        "contact_email": "api@bank.example.com"
+        "role": "transfer-verifier",
+        "enabled": true
       },
       {
         "name": "corridor-operator",
         "address": "GBYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
         "description": "Remittance corridor operator managing local partnerships",
-        "role": "corridor-manager",
-        "enabled": true,
-        "contact_email": "ops@corridor-operator.example.com"
+        "endpoint": "https://corridor-ops.example.com/route",
+        "role": "attestor",
+        "enabled": true
       },
       {
         "name": "aml-screening",
         "address": "GBZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
         "description": "Sanctions screening and AML/CFT compliance checks",
         "endpoint": "https://aml-service.example.com/screen",
-        "role": "compliance-checker",
-        "enabled": true,
-        "contact_email": "api@aml-service.example.com"
+        "role": "compliance-approver",
+        "enabled": true
       }
     ]
   },

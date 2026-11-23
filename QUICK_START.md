@@ -1,188 +1,119 @@
-# AnchorKit Session Traceability - Quick Start
+# AnchorKit Quick Start
 
-## What Was Added
+Get up and running with AnchorKit on Stellar testnet in minutes.
 
-AnchorKit now supports **reproducible and traceable anchor interaction sessions**. Every operation can be logged, audited, and replayed deterministically.
+## Prerequisites
 
-## Key Features
+- Rust toolchain (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- Soroban CLI (`cargo install --locked soroban-cli`)
 
-✅ **Session Management** - Group related operations  
-✅ **Operation Logging** - Track every action with full context  
-✅ **Audit Trail** - Immutable record of all operations  
-✅ **Replay Protection** - Prevent unauthorized replays  
-✅ **Reproducibility** - Deterministic operation replay  
+## 1. Build
 
-## Quick Example
-
-```javascript
-// 1. Create a session
-const sessionId = await contract.create_session(userAddress);
-
-// 2. Perform operations within the session
-const attestationId = await contract.submit_attestation_with_session(
-    sessionId,
-    issuer,
-    subject,
-    timestamp,
-    payloadHash,
-    signature
-);
-
-// 3. Verify session completeness
-const operationCount = await contract.get_session_operation_count(sessionId);
-console.log(`Session has ${operationCount} operations`);
-
-// 4. Retrieve audit logs
-const auditLog = await contract.get_audit_log(0);
-console.log(`Operation: ${auditLog.operation.operation_type}`);
-console.log(`Status: ${auditLog.operation.status}`);
+```bash
+cargo build --release
 ```
 
-## New Methods
+## 2. Start from the testnet example config
 
-### Session Management
+The fastest way to get started is with the minimal reference config:
 
-| Method | Purpose |
-|--------|---------|
-| `create_session(initiator)` | Create new session |
-| `get_session(session_id)` | Get session details |
-| `get_session_operation_count(session_id)` | Get operation count |
-| `get_audit_log(log_id)` | Get audit log entry |
+```bash
+cp configs/testnet-example.json configs/my-anchor.json
+```
 
-### Session-Aware Operations
+Open `configs/my-anchor.json` and replace the placeholder values:
 
-| Method | Purpose |
-|--------|---------|
-| `submit_attestation_with_session(...)` | Submit attestation with logging |
-| `register_attestor_with_session(...)` | Register attestor with logging |
-| `revoke_attestor_with_session(...)` | Revoke attestor with logging |
+| Field | What to change |
+|---|---|
+| `contract.name` | Your anchor name (lowercase, hyphens only) |
+| `attestors[0].address` | Your attestor's Stellar public key (starts with `G`) |
+| `attestors[0].endpoint` | Your attestor's HTTPS endpoint URL |
 
-## New Data Structures
+Contract interactions are performed through Soroban transactions, not direct JavaScript session helpers. Use the Soroban CLI or the Stellar JavaScript SDK's contract invocation APIs when you need to call the contract.
 
-### InteractionSession
-```rust
-pub struct InteractionSession {
-    pub session_id: u64,        // Unique ID
-    pub initiator: Address,     // Who created it
-    pub created_at: u64,        // Timestamp
-    pub operation_count: u64,   // Total operations
-    pub nonce: u64,             // Replay protection
+## 3. Validate your config
+
+```bash
+cargo run --bin anchorkit -- validate configs/my-anchor.json
+```
+
+Expected output:
+```
+✔ configs/my-anchor.json: valid JSON
+```
+
+For strict schema validation (field lengths, patterns, enums):
+
+```bash
+python validate_config.py
+```
+
+## 4. Run environment diagnostics
+
+```bash
+cargo run --bin anchorkit -- doctor
+```
+
+## 5. Register an attestor
+
+```bash
+cargo run --bin anchorkit -- register \
+  --address GYOUR_ATTESTOR_ADDRESS_HERE \
+  --services deposits,withdrawals,kyc \
+  --endpoint https://your-anchor.example.com
+```
+
+## Config reference
+
+The config requires three top-level sections — `contract`, `attestors`, and
+`sessions` (per `config_schema.json`'s root `required` array). A fourth
+section, `deployment`, is defined by the schema and shown below, but it is
+**optional**: a config with only the three required sections validates
+successfully.
+
+```json
+{
+  "contract": {
+    "name": "my-anchor",        // lowercase alphanumeric + hyphens
+    "version": "1.0.0",         // semver
+    "network": "stellar-testnet" // stellar-testnet | stellar-mainnet | stellar-futurenet
+  },
+  "attestors": {
+    "registry": [
+      {
+        "name": "kyc-provider",
+        "address": "G...",       // 56-char Stellar public key
+        "endpoint": "https://...",
+        "role": "kyc-issuer",   // see valid roles below
+        "enabled": true
+      }
+    ]
+  },
+  "sessions": {
+    "enable_session_tracking": true,
+    "session_timeout_seconds": 3600,
+    "operations_per_session": 100,
+    "audit_log_retention_days": 30
+  },
+  "deployment": {                   // optional — not in the schema's required list
+    "admin_key": "G...",        // 56-char Stellar public key
+    "rpc_endpoint": "https://soroban-testnet.stellar.org",
+    "network": "stellar-testnet"
+  }
 }
 ```
 
-### OperationContext
-```rust
-pub struct OperationContext {
-    pub session_id: u64,        // Which session
-    pub operation_index: u64,   // Position in session
-    pub operation_type: String, // Type of operation
-    pub timestamp: u64,         // When it happened
-    pub status: String,         // Success/failure
-    pub result_data: u64,       // Result (e.g., ID)
-}
-```
+Valid attestor roles: `kyc-issuer`, `transfer-verifier`, `compliance-approver`, `rate-provider`, `attestor`
 
-### AuditLog
-```rust
-pub struct AuditLog {
-    pub log_id: u64,            // Unique log ID
-    pub session_id: u64,        // Associated session
-    pub operation: OperationContext,
-    pub actor: Address,         // Who did it
-}
-```
+See `configs/testnet-example.json` for the annotated minimal config, or the more complete examples:
 
-## New Events
+- `configs/fiat-on-off-ramp.json` — fiat deposit/withdrawal with KYC
+- `configs/remittance-anchor.json` — cross-border remittance with AML
+- `configs/stablecoin-issuer.json` — stablecoin issuance with reserve audits
 
-### SessionCreated
-Emitted when session is created.
-```
-Topic: ("session", "created", session_id)
-Data: { session_id, initiator, timestamp }
-```
+## Further reading
 
-### OperationLogged
-Emitted when operation is logged.
-```
-Topic: ("audit", "logged", log_id)
-Data: { log_id, session_id, operation_index, operation_type, status }
-```
-
-## New Error Codes
-
-| Code | Name | Meaning |
-|------|------|---------|
-| 13 | `SessionNotFound` | Session doesn't exist |
-| 14 | `InvalidSessionId` | Invalid session ID |
-| 15 | `SessionReplayAttack` | Nonce mismatch |
-
-## Usage Patterns
-
-### Pattern 1: Single Operation Session
-```javascript
-const sessionId = await contract.create_session(admin);
-await contract.register_attestor_with_session(sessionId, attestor);
-```
-
-### Pattern 2: Batch Operations
-```javascript
-const sessionId = await contract.create_session(admin);
-
-// Register multiple attestors
-await contract.register_attestor_with_session(sessionId, attestor1);
-await contract.register_attestor_with_session(sessionId, attestor2);
-
-// Submit multiple attestations
-await contract.submit_attestation_with_session(sessionId, issuer1, ...);
-await contract.submit_attestation_with_session(sessionId, issuer2, ...);
-
-// Verify all logged
-const count = await contract.get_session_operation_count(sessionId);
-assert(count === 4);
-```
-
-### Pattern 3: Audit Verification
-```javascript
-const session = await contract.get_session(sessionId);
-
-for (let i = 0; i < session.operation_count; i++) {
-    const auditLog = await contract.get_audit_log(i);
-    console.log(`Op ${i}: ${auditLog.operation.operation_type}`);
-}
-```
-
-## Files Modified
-
-- `src/lib.rs` - Added session management methods
-- `src/storage.rs` - Added session storage operations
-- `src/events.rs` - Added session events
-- `src/types.rs` - Added session data structures
-- `src/errors.rs` - Added session error codes
-
-## Documentation
-
-- **SESSION_TRACEABILITY.md** - Complete feature guide
-- **IMPLEMENTATION_GUIDE.md** - Technical implementation details
-- **QUICK_START.md** - This file
-
-## Backward Compatibility
-
-✅ All existing methods still work unchanged  
-✅ No breaking changes to API  
-✅ Session features are opt-in  
-✅ Gradual adoption possible  
-
-## Next Steps
-
-1. Read `SESSION_TRACEABILITY.md` for complete feature guide
-2. Review `IMPLEMENTATION_GUIDE.md` for technical details
-3. Use session-aware methods for new operations
-4. Monitor `SessionCreated` and `OperationLogged` events
-5. Implement audit log verification in your application
-
-## Support
-
-For questions or issues:
-1. Check SESSION_TRACEABILITY.md FAQ section
-2. Review IMPLEMENTATION_GUIDE.md error handling
-3. Examine test cases in src/lib.rs
+- [Architecture overview](docs/ARCHITECTURE.md)
+- [CLI doctor command](docs/guides/DOCTOR_COMMAND.md)
+- [SEP-10 authentication](docs/features/SEP10_AUTH.md)
+- [Error codes reference](docs/features/ERROR_CODES_REFERENCE.md)

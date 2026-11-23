@@ -1,0 +1,31 @@
+{
+  "contract": {
+    "name": "my-anchor",
+    "version": "1.0.0",
+    "description": "Minimal AnchorKit configuration for testnet exploration",
+    "network": "stellar-testnet"
+  },
+  "attestors": {
+    "registry": [
+      {
+        "name": "kyc-provider",
+        "address": "GBAA5XKQC3KVDPD5OS3CHJJ24SB3BX7GI7XBXKNNCKQVPQVX6S3VT5O",
+        "description": "KYC verification service — replace with your real attestor address",
+        "endpoint": "https://kyc-provider.example.com/verify",
+        "role": "kyc-issuer",
+        "enabled": true
+      }
+    ]
+  },
+  "sessions": {
+    "enable_session_tracking": true,
+    "session_timeout_seconds": 3600,
+    "operations_per_session": 100,
+    "audit_log_retention_days": 30
+  },
+  "deployment": {
+    "admin_key": "GBAA5XKQC3KVDPD5OS3CHJJ24SB3BX7GI7XBXKNNCKQVPQVX6S3VT5O",
+    "rpc_endpoint": "https://soroban-testnet.stellar.org",
+    "network": "stellar-testnet"
+  }
+}

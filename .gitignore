@@ -1,5 +1,16 @@
+# Rust
 /target
-Cargo.lock
-.DS_Store
-.env
 **/*.rs.bk
+*.pdb
+*.rlib
+*.rmeta
+
+# Node / UI
+ui/node_modules/
+coverage/
+dist/
+*.log
+AGENTS.md
+pr_description.md
+scratch/
+tmp/

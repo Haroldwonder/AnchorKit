@@ -14,25 +14,23 @@
         "description": "Third-party KYC verification service",
         "endpoint": "https://kyc-provider.example.com/verify",
         "role": "kyc-issuer",
-        "enabled": true,
-        "contact_email": "support@kyc-provider.example.com"
+        "enabled": true
       },
       {
         "name": "bank-integration",
-        "address": "GB7ZTQBJ7XXJQ6JDLHYQXQX3JQXJ3JQXJ3JQXJ3JQXJ3JQXJ3JQX",
+        "address": "GB7ZTQBJ7XXJQ6JDLHYQXQX3JQXJ3JQXJ3JQXJ3JQXJ3JQXJ3JQXJZ",
         "description": "Bank wire transfer confirmation",
         "endpoint": "https://banking-api.example.com/transfers",
         "role": "transfer-verifier",
-        "enabled": true,
-        "contact_email": "api@banking.example.com"
+        "enabled": true
       },
       {
         "name": "compliance-officer",
         "address": "GBCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZAB",
         "description": "Manual compliance review and approval",
+        "endpoint": "https://compliance-portal.example.com/approve",
         "role": "compliance-approver",
-        "enabled": true,
-        "contact_email": "compliance@example.com"
+        "enabled": true
       }
     ]
   },

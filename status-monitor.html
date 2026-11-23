@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnchorKit Status Monitor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #e5e5e5;
+        }
+        .network-switcher {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .network-btn {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .network-btn:hover {
+            background: #f5f5f5;
+        }
+        .network-btn.active {
+            background: #0066cc;
+            color: white;
+            border-color: #0066cc;
+        }
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 8px 0;
+            background: #f5f5f5;
+        }
+        .status-icon {
+            font-size: 20px;
+        }
+        .status-label {
+            flex: 1;
+            font-weight: 500;
+        }
+        .status-time {
+            font-size: 12px;
+            color: #666;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            margin: 4px 0 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        label {
+            font-weight: 500;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <h1 style="margin: 0;">AnchorKit Status Monitor</h1>
+        <div class="network-switcher">
+            <span style="font-size: 13px; color: #666;">Network:</span>
+            <button class="network-btn" data-network="testnet">Testnet</button>
+            <button class="network-btn" data-network="mainnet">Mainnet</button>
+            <button class="network-btn" data-network="local">Local</button>
+        </div>
+    </div>
+    
+    <div>
+        <label>Anchor Base URL:</label>
+        <input type="text" id="baseUrl" placeholder="https://anchor.example.com" value="http://localhost:8080">
+    </div>
+
+    <div id="status-container">
+        <div class="status-badge">
+            <span class="status-icon">⚪</span>
+            <span class="status-label">Anchor /info</span>
+            <span class="status-time">Checking...</span>
+        </div>
+        <div class="status-badge">
+            <span class="status-icon">⚪</span>
+            <span class="status-label">Auth Endpoint</span>
+            <span class="status-time">Checking...</span>
+        </div>
+        <div class="status-badge">
+            <span class="status-icon">⚪</span>
+            <span class="status-label">Transaction Endpoint</span>
+            <span class="status-time">Checking...</span>
+        </div>
+    </div>
+
+    <script>
+        const networkConfig = {
+            testnet: 'https://testanchor.stellar.org',
+            mainnet: 'https://anchor.stellar.org',
+            local: 'http://localhost:8080'
+        };
+
+        const endpoints = [
+            { name: 'Anchor /info', path: '/info' },
+            { name: 'Auth Endpoint', path: '/auth' },
+            { name: 'Transaction Endpoint', path: '/transactions' }
+        ];
+
+        const badges = document.querySelectorAll('.status-badge');
+        const baseUrlInput = document.getElementById('baseUrl');
+        const networkBtns = document.querySelectorAll('.network-btn');
+
+        // Load saved network from localStorage
+        function loadNetwork() {
+            const saved = localStorage.getItem('anchorkit_network') || 'local';
+            setNetwork(saved);
+        }
+
+        // Set active network
+        function setNetwork(network) {
+            localStorage.setItem('anchorkit_network', network);
+            
+            // Update button states
+            networkBtns.forEach(btn => {
+                if (btn.dataset.network === network) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Update base URL
+            baseUrlInput.value = networkConfig[network];
+            
+            // Re-check endpoints
+            checkAll();
+        }
+
+        // Network button click handlers
+        networkBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                setNetwork(btn.dataset.network);
+            });
+        });
+
+        async function checkEndpoint(url) {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 5000);
+                
+                const response = await fetch(url, { 
+                    signal: controller.signal,
+                    mode: 'cors'
+                });
+                clearTimeout(timeout);
+                
+                if (response.ok) return 'online';
+                if (response.status >= 500) return 'offline';
+                return 'degraded';
+            } catch (error) {
+                if (error.name === 'AbortError') return 'degraded';
+                return 'offline';
+            }
+        }
+
+        function updateBadge(badge, status) {
+            const icon = badge.querySelector('.status-icon');
+            const time = badge.querySelector('.status-time');
+            
+            const statusMap = {
+                online: { icon: '🟢', text: 'Online' },
+                degraded: { icon: '🟡', text: 'Degraded' },
+                offline: { icon: '🔴', text: 'Offline' }
+            };
+            
+            const config = statusMap[status];
+            icon.textContent = config.icon;
+            time.textContent = config.text + ' • ' + new Date().toLocaleTimeString();
+        }
+
+        async function checkAll() {
+            const baseUrl = baseUrlInput.value.trim();
+            if (!baseUrl) return;
+
+            for (let i = 0; i < endpoints.length; i++) {
+                const url = baseUrl + endpoints[i].path;
+                const status = await checkEndpoint(url);
+                updateBadge(badges[i], status);
+            }
+        }
+
+        // Initialize
+        loadNetwork();
+        setInterval(checkAll, 30000);
+
+        // Re-check when URL changes manually
+        baseUrlInput.addEventListener('change', checkAll);
+    </script>
+</body>
+</html>
