@@ -168,6 +168,9 @@ If you prefer the Stellar JavaScript SDK, use its contract invocation API instea
 - **[docs/features/ERROR_CODES_REFERENCE.md](./docs/features/ERROR_CODES_REFERENCE.md)** - API error codes reference
 - **[docs/features/RETRY_BACKOFF.md](./docs/features/RETRY_BACKOFF.md)** - Retry and backoff strategies
 - **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - Architecture and component interaction diagram
+- **[docs/GLOSSARY.md](./docs/GLOSSARY.md)** - Glossary of SEP and AnchorKit terms
+- **[docs/guides/TROUBLESHOOTING.md](./docs/guides/TROUBLESHOOTING.md)** - Troubleshooting guide keyed by ErrorCode
+- **[docs/adr/](./docs/adr/README.md)** - Architecture decision records
 - **[docs/features/WEBHOOK_MIDDLEWARE.md](./docs/features/WEBHOOK_MIDDLEWARE.md)** - Webhook middleware
 - **[docs/features/WEBHOOK_MONITOR.md](./docs/features/WEBHOOK_MONITOR.md)** - Webhook monitoring
 - **[docs/features/TRANSACTION_STATE_TRACKER.md](./docs/features/TRANSACTION_STATE_TRACKER.md)** - Transaction state tracking

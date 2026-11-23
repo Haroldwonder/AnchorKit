@@ -1,0 +1,19 @@
+# Code owners: reviews are requested automatically for matching paths.
+# Later rules take precedence over earlier ones.
+
+*                     @Haroldwonder
+
+# Soroban contract
+/src/                 @Haroldwonder
+
+# CLI binaries
+/src/bin/             @Haroldwonder
+
+# UI
+/ui/                  @Haroldwonder
+
+# CI workflows
+/.github/workflows/   @Haroldwonder
+
+# Documentation
+/docs/                @Haroldwonder
