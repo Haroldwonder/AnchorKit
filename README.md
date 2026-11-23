@@ -108,6 +108,13 @@ See [MOCK_ANCHOR.md](./MOCK_ANCHOR.md) for complete testing guide.
 cargo build --release
 ```
 
+## Release provenance
+
+Published releases include attestations for the Soroban contract WASM and any
+CLI binaries. The UI npm package is published with npm provenance when
+`ui/package.json` is present. See [PROVENANCE.md](PROVENANCE.md) for verification
+commands.
+
 ## Testing
 
 The contract includes comprehensive tests for all functionality:
