@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        react-version: [18, 19]
 
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +26,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
         working-directory: ui
+
+      - name: Install React ${{ matrix.react-version }} for peer dependency testing
+        run: npm install --no-save react@^${{ matrix.react-version }}.0.0 react-dom@^${{ matrix.react-version }}.0.0 @types/react@^${{ matrix.react-version }}.x
+        working-directory: ui
+
       - name: Run lint
         run: npm run lint --silent
         working-directory: ui
@@ -32,6 +41,10 @@ jobs:
 
       - name: Build
         run: npm run build --silent
+        working-directory: ui
+
+      - name: Check bundle size budget
+        run: npm run size-limit
         working-directory: ui
 
       - name: Run tests
