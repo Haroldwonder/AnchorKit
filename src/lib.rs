@@ -16,6 +16,8 @@ pub mod transaction_state_tracker;
 pub mod transport;
 mod types;
 pub mod sep6;
+#[cfg(feature = "std")]
+pub mod webhook;
 
 pub use errors::{AnchorKitError, ErrorCode};
 
