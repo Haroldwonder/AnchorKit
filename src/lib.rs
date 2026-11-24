@@ -39,7 +39,10 @@ pub use sep6::{
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::Session;
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
-pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
+pub use contract::{
+    get_admin, get_attestation_count, get_endpoint, set_endpoint, AnchorKitContract,
+    MAX_REVOKE_BATCH_SIZE,
+};
 pub use events::EndpointUpdated;
 pub use transaction_state_tracker::{
     StateTransition, TransactionState, TransactionStateRecord, TransactionStateTracker,
@@ -118,6 +121,10 @@ mod replay_window_tests;
 
 #[cfg(test)]
 mod attestor_cap_batch_tests;
+
+// Issue #1512 — batch revocation parity with the single-attestation path.
+#[cfg(test)]
+mod batch_revoke_tests;
 
 #[cfg(test)]
 mod anchor_health_score_tests;
