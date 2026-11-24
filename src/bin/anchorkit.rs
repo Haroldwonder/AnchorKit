@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use std::process::Command;
 use std::time::Instant;
 use regex::Regex;
+use tracing_subscriber::{fmt, EnvFilter};
 
 mod soroban_rpc;
 use soroban_rpc::*;
@@ -36,9 +37,38 @@ fn resolve_network(flag: Option<&str>) -> String {
         .unwrap_or_else(|_| "testnet".to_string())
 }
 
+/// Resolve the effective log level from the `--log-level` flag, the
+/// `ANCHORKIT_LOG_LEVEL` env var, `RUST_LOG`, or the "info" default.
+fn resolve_log_level(flag: Option<&str>) -> String {
+    if let Some(l) = flag {
+        return l.to_string();
+    }
+    std::env::var("ANCHORKIT_LOG_LEVEL")
+        .or_else(|_| std::env::var("RUST_LOG"))
+        .unwrap_or_else(|_| "info".to_string())
+}
+
+/// Resolve the effective log format from the `--log-format` flag or the
+/// `ANCHORKIT_LOG_FORMAT` env var, defaulting to "text".
+fn resolve_log_format(flag: Option<&str>) -> String {
+    match flag {
+        Some(f) if matches!(f, "text" | "json") => f.to_string(),
+        _ => match std::env::var("ANCHORKIT_LOG_FORMAT").as_deref() {
+            Some("json") => "json".to_string(),
+            _ => "text".to_string(),
+        },
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "anchorkit", about = "AnchorKit CLI for Soroban anchor management")]
 struct Cli {
+    /// Log output format: text or json
+    #[arg(long, value_name = "FORMAT", value_parser = clap::value_parser!(String))]
+    log_format: Option<String>,
+    /// Log level: trace, debug, info, warn, error (also RUST_LOG)
+    #[arg(long, value_name = "LEVEL", value_parser = clap::value_parser!(String))]
+    log_level: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -242,6 +272,23 @@ enum SessionAction {
 
 fn main() {
     let cli = Cli::parse();
+
+    // ── structured logging (issue #1532) ────────────────────────────────────
+    let log_format = resolve_log_format(cli.log_format.as_deref());
+    let log_level = resolve_log_level(cli.log_level.as_deref());
+    let env_filter = EnvFilter::try_new(&log_level).unwrap_or_else(|_| EnvFilter::new("info"));
+    if log_format == "json" {
+        fmt::json()
+            .with_env_filter(env_filter)
+            .with_target(false)
+            .init();
+    } else {
+        fmt()
+            .with_env_filter(env_filter)
+            .init();
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     match cli.command {
         Commands::Build { release } => run_build(release),
         Commands::Deploy { network } => run_deploy(&network),
