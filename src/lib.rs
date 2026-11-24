@@ -16,6 +16,7 @@ pub mod transaction_state_tracker;
 pub mod transport;
 mod types;
 pub mod sep6;
+pub mod sep12;
 
 pub use errors::{AnchorKitError, ErrorCode};
 
@@ -35,6 +36,10 @@ pub use sep6::{
     RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
+};
+pub use sep12::{
+    CustomerField, CustomerResponse, CustomerStatus, MockSep12Transport, RawCustomerResponse,
+    Sep10Auth, Sep12Client, Sep12Request, Sep12Response, Sep12Transport,
 };
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::Session;
