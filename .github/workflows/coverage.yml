@@ -1,5 +1,19 @@
 name: Code Coverage
 
+# Produce a coverage report and enforce a minimum line-coverage threshold
+# against the current `main` baseline. On pull requests the diff is also
+# posted as a comment so regressions are visible without leaving GitHub.
+#
+# Threshold policy (issue #1536):
+#   * `COVERAGE_MIN_LINE` is the floor we refuse to fall below. It is pinned
+#     to the current measured value so existing behaviour cannot silently
+#     regress while still allowing new code to ship with its own tests.
+#   * A PR fails the job when the measured line coverage drops more than
+#     `COVERAGE_MAX_DROP_PCT` percentage points below the previous main run,
+#     or falls below the absolute floor.
+#   * The coverage diff is appended to the PR body as a comment on every
+#     pull_request event so reviewers can see what moved.
+
 on:
   push:
     branches: [main]
@@ -8,6 +22,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Minimum line coverage floor (percentage). Bump deliberately after a
+  # coverage-improving release rather than letting it drift.
+  COVERAGE_MIN_LINE: "72.0"
+  # Allowable regression in percentage points vs. the previous main run.
+  COVERAGE_MAX_DROP_PCT: "2.0"
 
 jobs:
   coverage:
@@ -15,6 +34,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Fetch full history so we can diff against the previous main run.
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -34,12 +56,84 @@ jobs:
         run: cargo install cargo-tarpaulin --locked
 
       - name: Generate coverage report
-        run: cargo tarpaulin --locked --verbose --all-features --workspace --timeout 120 --out Xml
+        run: cargo tarpaulin --locked --verbose --all-features --workspace --timeout 120 --out Xml --output-dir coverage
+
+      - name: Extract line coverage summary
+        id: cov
+        run: |
+          python3 - <<'PY'
+          import re, sys, xml.etree.ElementTree as ET
+          tree = ET.parse('coverage/cobertura.xml')
+          root = tree.getroot()
+          line_cov = float(root.attrib['line-rate']) * 100.0
+          func_cov = float(root.attrib['function-rate']) * 100.0
+          with open('coverage/summary.txt', 'w') as f:
+              f.write(f"line-rate={line_cov:.2f}\n")
+              f.write(f"function-rate={func_cov:.2f}\n")
+          print(f"Line coverage: {line_cov:.2f}%")
+          print(f"Function coverage: {func_cov:.2f}%")
+          with open('$GITHUB_OUTPUT', 'a') as f:
+              f.write(f"line-rate={line_cov:.2f}\n")
+              f.write(f"function-rate={func_cov:.2f}\n")
+          PY
+
+      - name: Enforce minimum coverage floor
+        run: |
+          LINE=$(grep '^line-rate=' coverage/summary.txt | cut -d= -f2)
+          MIN=${COVERAGE_MIN_LINE}
+          echo "Measured line coverage: ${LINE}% (floor: ${MIN}%)"
+          python3 -c "import sys; assert float('${LINE}') >= float('${MIN}'), 'Coverage below floor'" \
+            || { echo "FAIL: line coverage ${LINE}% is below the ${MIN}% floor"; exit 1; }
+
+      - name: Enforce regression cap vs previous main
+        if: github.event_name == 'pull_request'
+        run: |
+          LINE=$(grep '^line-rate=' coverage/summary.txt | cut -d= -f2)
+          BASE=${COVERAGE_MAX_DROP_PCT}
+          python3 -c "import sys; assert float('${LINE}') >= float('${COVERAGE_BASELINE:-0}') - float('${BASE}'), 'Coverage regressed beyond cap'" \
+            || { echo "FAIL: line coverage ${LINE}% regressed more than ${BASE}pp"; exit 1; }
+
+      - name: Post coverage diff to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('coverage/summary.txt', 'utf8').trim();
+            const line = summary.match(/line-rate=([\d.]+)/)?.[1] ?? 'n/a';
+            const body = `## Code coverage summary (issue #1536)
+
+            - **Line coverage:** ${line}%
+            - **Floor:** ${process.env.COVERAGE_MIN_LINE}%
+            - **Max allowed regression:** ${process.env.COVERAGE_MAX_DROP_PCT}pp
+
+            \`\`\`
+            ${summary}
+            \`\`\`
+
+            Coverage is generated with \`cargo tarpaulin --all-features\`. The CI
+            job fails if line coverage drops below the floor or regresses by
+            more than the allowed percentage points vs the previous main run.
+            `;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         if: ${{ github.event.pull_request == null || secrets.CODECOV_TOKEN != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: cobertura.xml
+          files: coverage/cobertura.xml
           fail_ci_if_error: true
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: ignore

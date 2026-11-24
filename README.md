@@ -2,6 +2,7 @@
 
 [![Rust CI](https://github.com/Haroldwonder/AnchorKit/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/rust-ci.yml)
 [![Coverage](https://github.com/Haroldwonder/AnchorKit/actions/workflows/coverage.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/coverage.yml)
+[![API Docs](https://github.com/Haroldwonder/AnchorKit/actions/workflows/docs.yml/badge.svg)](https://haroldwonder.github.io/AnchorKit/)
 [![Feature Flag Matrix](https://github.com/Haroldwonder/AnchorKit/actions/workflows/feature-flag-matrix.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/feature-flag-matrix.yml)
 [![WASM Size](https://github.com/Haroldwonder/AnchorKit/actions/workflows/wasm-size-check.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/wasm-size-check.yml)
 [![UI Tests](https://github.com/Haroldwonder/AnchorKit/actions/workflows/ui-tests.yml/badge.svg)](https://github.com/Haroldwonder/AnchorKit/actions/workflows/ui-tests.yml)
@@ -184,6 +185,13 @@ If you prefer the Stellar JavaScript SDK, use its contract invocation API instea
 
 ### Full Index
 See **[docs/README.md](./docs/README.md)** for the complete documentation index.
+
+### API Reference
+- **[Generated rustdoc](https://haroldwonder.github.io/AnchorKit/)** - Auto-generated API docs published on push to `main` (see `.github/workflows/docs.yml`). The generated reference mirrors the code, so it stays in sync with the contract surface.
+- **[docs/API_REFERENCE.md](./docs/API_REFERENCE.md)** - Hand-written API reference (kept for historical context).
+
+### End-to-End Tutorials
+- **[docs/guides/END_TO_END_TUTORIAL.md](./docs/guides/END_TO_END_TUTORIAL.md)** - Walkthrough: deploy to testnet → initialize → register attestor → SEP-10 auth → SEP-6 deposit → submit attestation → query and revoke.
 
 ## New API Methods
 
