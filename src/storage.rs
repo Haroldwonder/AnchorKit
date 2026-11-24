@@ -33,8 +33,10 @@ pub enum StorageKey {
     Used(Bytes),
     /// Attestation record by ID (persistent).
     Attest(u64),
-    /// Per-subject attestation count (persistent).
+    /// Per-subject attestation index high-water mark (persistent).
     SubjectCount(Address),
+    /// Active (non-revoked) attestation count for a subject (persistent).
+    SubjectActiveCount(Address),
     /// Per-subject attestation index entry (persistent).
     SubjectAttestation(Address, u64),
     /// Tracing span keyed by request-ID bytes (temporary).

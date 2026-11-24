@@ -41,7 +41,7 @@ pub use types::Session;
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
 pub use contract::{
     AnchorKitContract, attestation_signing_digest, get_admin, get_endpoint, set_endpoint,
-    get_attestation_count,
+    get_attestation_count, get_subject_attestation_count,
 };
 pub use events::EndpointUpdated;
 pub use transaction_state_tracker::{
