@@ -298,6 +298,7 @@ pub struct RouteCandidate {
 /// | Symbol                | Behaviour                                                  |
 /// |-----------------------|------------------------------------------------------------|
 /// | `"LowestFee"`         | Selects the anchor with the lowest `fee_percentage`.       |
+/// | `"LowestTotalCost"`   | Lowest percentage fee plus the anchor's fixed SEP-6 fee for the requested amount. |
 /// | `"FastestSettlement"` | Selects the anchor with the lowest `average_settlement_time`. |
 /// | `"HighestReputation"` | Selects the anchor with the highest `reputation_score`.    |
 /// | `"Balanced"`          | Composite scoring: (40_000/fee) + (30_000/time) + (reputation*3000/10000). |

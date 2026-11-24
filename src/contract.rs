@@ -2631,6 +2631,7 @@ impl AnchorKitContract {
     /// selected anchor emits `RoutingDecisionEvent`.
     fn select_routing_quote(env: &Env, options: &RoutingOptions, emit_events: bool) -> Quote {
         let lowest_fee_sym = Symbol::new(&env, "LowestFee");
+        let lowest_total_cost_sym = Symbol::new(&env, "LowestTotalCost");
         let fastest_sym = Symbol::new(&env, "FastestSettlement");
         let reputation_sym = Symbol::new(&env, "HighestReputation");
         let balanced_sym = Symbol::new(&env, "Balanced");
@@ -2642,6 +2643,7 @@ impl AnchorKitContract {
 
         // Validate that the strategy symbol is recognized
         if strategy_sym != lowest_fee_sym
+            && strategy_sym != lowest_total_cost_sym
             && strategy_sym != fastest_sym
             && strategy_sym != reputation_sym
             && strategy_sym != balanced_sym
@@ -2781,6 +2783,19 @@ impl AnchorKitContract {
                     best = q;
                 }
             }
+        } else if strategy_sym == lowest_total_cost_sym {
+            // LowestFee ignores fixed charges from the anchor's SEP-6/SEP-38
+            // asset info, which dominate for small amounts. Compare the full
+            // cost for this request instead.
+            let total_cost = |q: &Quote| -> u64 { Self::routing_total_cost(env, &options.request, q) };
+            let mut best_cost = total_cost(&best);
+            for q in candidates.iter() {
+                let cost = total_cost(&q);
+                if cost < best_cost {
+                    best_cost = cost;
+                    best = q;
+                }
+            }
         } else if strategy_sym == fastest_sym {
             // Need settlement time from metadata
             let meta_key = StorageKey::AnchorMeta(best.anchor.clone());
@@ -2885,6 +2900,8 @@ impl AnchorKitContract {
 
         let strategy_str = if strategy_sym == lowest_fee_sym {
             String::from_str(&env, "LowestFee")
+        } else if strategy_sym == lowest_total_cost_sym {
+            String::from_str(&env, "LowestTotalCost")
         } else if strategy_sym == fastest_sym {
             String::from_str(&env, "FastestSettlement")
         } else if strategy_sym == reputation_sym {
@@ -2908,6 +2925,28 @@ impl AnchorKitContract {
         }
 
         best
+    }
+
+    /// Total fee for a request: percentage fee (basis points) on `amount` plus
+    /// the anchor's fixed SEP-6/SEP-38 fee for the base asset, when its
+    /// stellar.toml has been cached. Withdrawals use the withdrawal schedule;
+    /// all other operations use deposits. Missing metadata means no fixed fee.
+    fn routing_total_cost(env: &Env, request: &RoutingRequest, quote: &Quote) -> u64 {
+        let percentage_fee = (request.amount as u128 * quote.fee_percentage as u128 / 10_000) as u64;
+        let fixed_fee = env.storage()
+            .temporary()
+            .get::<_, StellarToml>(&StorageKey::TomlCache(quote.anchor.clone()))
+            .and_then(|toml| {
+                toml.currencies.iter().find(|asset| asset.code == request.base_asset).map(|asset| {
+                    if request.operation_type == 2 {
+                        asset.withdrawal_fee_fixed
+                    } else {
+                        asset.deposit_fee_fixed
+                    }
+                })
+            })
+            .unwrap_or(0);
+        percentage_fee.saturating_add(fixed_fee)
     }
 
     /// Health score used by the `Weighted` strategy:
