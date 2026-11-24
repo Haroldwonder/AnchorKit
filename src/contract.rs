@@ -2309,6 +2309,21 @@ impl AnchorKitContract {
     // Routing
     // -----------------------------------------------------------------------
 
+    /// Return the most recently submitted quote for an anchor.
+    ///
+    /// This is a read-only view used by tooling (for example `anchorkit quote`)
+    /// to display the quote selected by `route_transaction_dry_run` without
+    /// submitting a routing transaction.
+    pub fn get_latest_quote(env: Env, anchor: Address) -> Option<Quote> {
+        let quote_id = env
+            .storage()
+            .persistent()
+            .get::<_, u64>(&StorageKey::LatestQuote(anchor.clone()))?;
+        env.storage()
+            .persistent()
+            .get::<_, Quote>(&StorageKey::Quote(anchor, quote_id))
+    }
+
     pub fn get_quote(env: Env, anchor: Address, quote_id: u64) -> Option<Quote> {
         let key = StorageKey::Quote(anchor, quote_id);
         let quote = env.storage().persistent().get::<_, Quote>(&key);
