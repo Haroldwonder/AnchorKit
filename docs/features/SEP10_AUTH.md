@@ -8,6 +8,33 @@ Minimal SEP-10 (Stellar Web Authentication) support in AnchorKit, aligned with t
 
 Off-chain flows (challenge, wallet signing, obtaining a JWT from the anchor) are documented for integrators and reflected in the UI (`Sep10AuthFlow.tsx`). **On-chain**, the Soroban contract enforces SEP-10 **JWT** verification before sensitive operations such as attestor registration.
 
+## End-to-end sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Client (wallet / SDK)
+    participant Anchor as Anchor auth endpoint
+    participant Signer as Anchor signing key
+    participant Contract as Soroban contract
+
+    Client->>Anchor: GET /auth?account={address}
+    Anchor-->>Client: SEP-10 challenge (transaction XDR)
+    Note over Client: Verify challenge: home_domain, nonce,<br/>web auth domain, network passphrase, timebounds
+    Note over Client: Sign challenge with the account's Ed25519 key
+    Client->>Anchor: POST /auth (signed challenge XDR)
+    Anchor->>Anchor: Verify client signature and challenge
+    Anchor->>Signer: Sign JWT (EdDSA) with the active auth key
+    Signer-->>Anchor: Signed JWT
+    Anchor-->>Client: JWT
+    Client->>Contract: verify_sep10_token(token, issuer)
+    Note over Contract: Load verification key for issuer via<br/>set_sep10_jwt_verifying_key and verify EdDSA,<br/>exp (with clock skew) and sub
+    Contract-->>Client: Success / InvalidSep10Token
+
+    Note over Signer,Contract: Key rotation: an admin calls set_sep10_jwt_verifying_key<br/>when the anchor's auth key changes. Tokens signed with<br/>the previous key are rejected until the on-chain key is updated;<br/>tokens signed with the new key are rejected before it is updated.
+    Note over Anchor,Contract: Clock skew: exp + clock_skew_seconds > ledger timestamp.<br/>Contract entry points currently use 0 (strict); increase<br/>to accommodate ledger lag / short JWT TTLs.
+```
+
 ## On-chain implementation (`src/sep10_jwt.rs` + `AnchorKitContract`)
 
 The contract verifies **JWS compact** tokens whose header uses **EdDSA** (Ed25519), matching common SEP-10 JWT issuance:
