@@ -244,6 +244,17 @@ pub struct Attestation {
     pub expires_at: Option<u64>,
 }
 
+/// One page of subject attestations (#1563). `next_cursor` indexes the
+/// subject's attestation-ID index and may be passed back as `offset` to fetch
+/// the next page, even when revoked/expired entries were skipped.
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestationPage {
+    pub attestations: Vec<Attestation>,
+    pub next_cursor: u64,
+    pub has_more: bool,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct TracingSpan {

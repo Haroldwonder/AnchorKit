@@ -552,6 +552,46 @@ mod attestation_pagination_tests {
     }
 
     #[test]
+    fn test_get_attestations_by_subject_cursor_skips_revoked_and_expired() {
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let attestor = Address::generate(&env);
+        let subject = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+        client.set_max_page_size(&2);
+
+        let sk = SigningKey::generate(&mut OsRng);
+        register_attestor_with_sep10(&env, &client, &attestor, &attestor, &sk);
+        let mut ids = Vec::new(&env);
+        for i in 0..5u8 {
+            let p = payload(&env, i);
+            let id = client.submit_attestation(&attestor, &subject, &env.ledger().timestamp(), &p, &sign_attestation(&env, &sk, &client.address, &attestor, &subject, env.ledger().timestamp(), &p));
+            ids.push_back(id);
+        }
+        client.revoke_attestation(&attestor, &ids.get(0).unwrap());
+        let expired_key = crate::storage::StorageKey::Attest(ids.get(1).unwrap());
+        let mut expired = env.storage().persistent().get::<_, crate::types::Attestation>(&expired_key).unwrap();
+        expired.expires_at = Some(env.ledger().timestamp() - 1);
+        env.storage().persistent().set(&expired_key, &expired);
+
+        let page1 = client.get_attestations_by_subject(&subject, &0, &10);
+        assert_eq!(page1.attestations.len(), 2);
+        assert_eq!(page1.attestations.get(0).unwrap().id, ids.get(2).unwrap());
+        assert_eq!(page1.attestations.get(1).unwrap().id, ids.get(3).unwrap());
+        assert_eq!(page1.next_cursor, 4);
+        assert!(page1.has_more);
+
+        let page2 = client.get_attestations_by_subject(&subject, &page1.next_cursor, &10);
+        assert_eq!(page2.attestations.len(), 1);
+        assert_eq!(page2.attestations.get(0).unwrap().id, ids.get(4).unwrap());
+        assert_eq!(page2.next_cursor, 5);
+        assert!(!page2.has_more);
+    }
+
+    #[test]
     fn test_config_setters_emit_old_new_admin() {
         use crate::events::{ClockSkewUpdated, MaxPageSizeUpdated, ReplayWindowUpdated};
 

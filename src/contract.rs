@@ -19,7 +19,7 @@ use crate::storage::{
 // ---------------------------------------------------------------------------
 
 pub use crate::types::{
-    AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CapabilitiesCache,
+    AnchorMetadata, AnchorServices, AssetInfo, Attestation, AttestationPage, AuditLog, CapabilitiesCache,
     CachedToml, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
     RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
     SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES, ServiceType,
@@ -1350,6 +1350,57 @@ impl AnchorKitContract {
         }
 
         results
+    }
+
+    /// List a subject's attestations with a cursor suitable for continued
+    /// paging (#1563). Revoked and expired attestations are skipped without
+    /// consuming a result slot; `next_cursor` always advances past the last
+    /// index examined so callers can resume where this page stopped.
+    pub fn get_attestations_by_subject(
+        env: Env,
+        subject: Address,
+        offset: u64,
+        limit: u32,
+    ) -> AttestationPage {
+        let max_page_size = Self::get_max_page_size(env.clone());
+        let actual_limit = core::cmp::min(limit, max_page_size);
+        let total_count: u64 = env.storage().persistent()
+            .get::<_, u64>(&StorageKey::SubjectCount(subject.clone()))
+            .unwrap_or(0);
+        let mut results = Vec::new(&env);
+        let mut cursor = offset;
+
+        if actual_limit > 0 {
+            while cursor < total_count && (results.len() as u32) < actual_limit {
+                let index_key = StorageKey::SubjectAttestation(subject.clone(), cursor);
+                cursor += 1;
+                let Some(id) = env.storage().persistent().get::<_, u64>(&index_key) else {
+                    continue;
+                };
+                let Some(mut attestation) = env.storage().persistent()
+                    .get::<_, Attestation>(&StorageKey::Attest(id)) else {
+                    continue;
+                };
+                if env.storage().persistent().has(&StorageKey::AttestationRevoked(id)) {
+                    continue;
+                }
+                if let Some(expires_at) = attestation.expires_at {
+                    if env.ledger().timestamp() > expires_at {
+                        continue;
+                    }
+                }
+                if Self::is_attestation_issuer_revoked(&env, &attestation) {
+                    attestation.issuer_revoked = true;
+                }
+                results.push_back(attestation);
+            }
+        }
+
+        AttestationPage {
+            attestations: results,
+            next_cursor: cursor,
+            has_more: cursor < total_count,
+        }
     }
 
     // -----------------------------------------------------------------------
