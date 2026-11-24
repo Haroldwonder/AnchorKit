@@ -32,13 +32,13 @@ pub use domain_validator::validate_anchor_domain;
 pub use sep6::{
     fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
     deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
-    RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
+    signing_key_bytes, RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
 };
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::Session;
-pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
+pub use types::{AnchorMetadata, RouteCandidate, RoutingOptions, RoutingRequest};
 pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
 pub use events::EndpointUpdated;
 pub use transaction_state_tracker::{

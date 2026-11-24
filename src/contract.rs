@@ -21,7 +21,7 @@ use crate::storage::{
 pub use crate::types::{
     AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CapabilitiesCache,
     CachedToml, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
-    RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
+    RouteCandidate, RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
     SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES, ServiceType,
 };
 
@@ -2450,12 +2450,148 @@ impl AnchorKitContract {
         env.storage().persistent().get(&key)
     }
 
-    /// Preview which anchor would be selected for routing without side effects.
+    /// Preview the full ranked candidate list without side effects.
     ///
-    /// Applies the same filtering and strategy selection as [`Self::route_transaction`]
-    /// but does not emit `QuoteExpiredEvent` or `RoutingDecisionEvent`.
-    pub fn route_transaction_dry_run(env: Env, options: RoutingOptions) -> Address {
-        Self::select_routing_quote(&env, &options, false).anchor
+    /// Every registered anchor is returned, including anchors excluded by a
+    /// filter. Each entry carries its score under the requested strategy and a
+    /// reason explaining either eligibility or the excluding filter. No
+    /// `QuoteExpiredEvent` or `RoutingDecisionEvent` is emitted.
+    pub fn route_transaction_dry_run(env: Env, options: RoutingOptions) -> Vec<RouteCandidate> {
+        Self::route_candidates(env, options)
+    }
+
+    /// Rank every registered anchor for the given routing options.
+    ///
+    /// This is the debugging/UI counterpart of `route_transaction`: rather
+    /// than only revealing the winner, it returns all anchors sorted by score,
+    /// with the filter that rejected each non-eligible anchor in `reason`.
+    pub fn route_candidates(env: Env, options: RoutingOptions) -> Vec<RouteCandidate> {
+        let lowest_fee_sym = Symbol::new(&env, "LowestFee");
+        let lowest_total_cost_sym = Symbol::new(&env, "LowestTotalCost");
+        let fastest_sym = Symbol::new(&env, "FastestSettlement");
+        let reputation_sym = Symbol::new(&env, "HighestReputation");
+        let balanced_sym = Symbol::new(&env, "Balanced");
+        let weighted_sym = Symbol::new(&env, "Weighted");
+        let strategy_sym = options.strategy.get(0)
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::InvalidStrategy));
+        if strategy_sym != lowest_fee_sym
+            && strategy_sym != lowest_total_cost_sym
+            && strategy_sym != fastest_sym
+            && strategy_sym != reputation_sym
+            && strategy_sym != balanced_sym
+            && strategy_sym != weighted_sym {
+            panic_with_error!(&env, ErrorCode::InvalidStrategy);
+        }
+
+        let now = env.ledger().timestamp();
+        let anchors: Vec<Address> = env.storage().persistent()
+            .get::<_, Vec<Address>>(&key_anchor_list(&env))
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut candidates: Vec<RouteCandidate> = Vec::new(&env);
+
+        for anchor in anchors.iter() {
+            let eligible = Self::eligible_routing_quote(
+                &env, &options, &anchor, now, options.min_reputation, false,
+            );
+            let reason = if eligible.is_some() {
+                String::from_str(&env, "Eligible")
+            } else {
+                Self::routing_exclusion_reason(&env, &options, &anchor, now)
+            };
+            let score = if let Some(ref quote) = eligible {
+                if strategy_sym == lowest_fee_sym {
+                    -(quote.fee_percentage as i64)
+                } else if strategy_sym == lowest_total_cost_sym {
+                    -(Self::routing_total_cost(&env, &options.request, quote) as i64)
+                } else if strategy_sym == fastest_sym {
+                    let meta: Option<AnchorMetadata> = env.storage().persistent()
+                        .get(&StorageKey::AnchorMeta(anchor.clone()));
+                    -(meta.map(|m| m.average_settlement_time).unwrap_or(u64::MAX) as i64)
+                } else if strategy_sym == reputation_sym {
+                    let meta: Option<AnchorMetadata> = env.storage().persistent()
+                        .get(&StorageKey::AnchorMeta(anchor.clone()));
+                    meta.map(|m| m.reputation_score as i64).unwrap_or(0)
+                } else if strategy_sym == balanced_sym {
+                    let meta: Option<AnchorMetadata> = env.storage().persistent()
+                        .get(&StorageKey::AnchorMeta(anchor.clone()));
+                    let fee_term = if quote.fee_percentage > 0 {
+                        40_000 / quote.fee_percentage as u64
+                    } else { 40_001 };
+                    let time_term = meta.as_ref()
+                        .map(|m| 30_000u64.checked_div(m.average_settlement_time).unwrap_or(30_001))
+                        .unwrap_or(30_001);
+                    let rep_term = meta.as_ref().map(|m| m.reputation_score as u64 * 3_000 / 10_000).unwrap_or(0);
+                    (fee_term + time_term + rep_term) as i64
+                } else {
+                    Self::routing_health_score(&env, &anchor)
+                }
+            } else {
+                i64::MIN
+            };
+            candidates.push_back(RouteCandidate { anchor, score, reason });
+        }
+
+        // Stable insertion sort: higher score first, registration order breaks ties.
+        for i in 1..candidates.len() {
+            let current = candidates.get(i).unwrap();
+            let mut j = i;
+            while j > 0 && candidates.get(j - 1).unwrap().score < current.score {
+                let previous = candidates.get(j - 1).unwrap();
+                candidates.set(j, previous);
+                j -= 1;
+            }
+            candidates.set(j, current);
+        }
+        candidates
+    }
+
+    /// Name the first filter that excluded `anchor` from routing.
+    fn routing_exclusion_reason(
+        env: &Env,
+        options: &RoutingOptions,
+        anchor: &Address,
+        now: u64,
+    ) -> String {
+        let metadata: Option<AnchorMetadata> = env.storage().persistent()
+            .get(&StorageKey::AnchorMeta(anchor.clone()));
+        let reason = match metadata {
+            None => "NoMetadata",
+            Some(m) if !m.is_active => "Inactive",
+            Some(m) if m.reputation_score < options.min_reputation => "LowReputation",
+            Some(_) if options.jurisdiction.is_some() => {
+                let j: Option<String> = env.storage().persistent()
+                    .get(&StorageKey::AnchorJurisdiction(anchor.clone()));
+                if crate::types::anchor_matches_jurisdiction(&options.jurisdiction, &j) {
+                    ""
+                } else { "Jurisdiction" }
+            }
+            Some(_) if options.require_kyc => {
+                let services: Option<AnchorServices> = env.storage().persistent()
+                    .get(&StorageKey::Services(anchor.clone()));
+                if services.is_some_and(|s| s.services.contains(SERVICE_KYC)) {
+                    ""
+                } else { "MissingKyc" }
+            }
+            Some(_) => "",
+        };
+        if !reason.is_empty() {
+            return String::from_str(env, reason);
+        }
+        let quote_id: Option<u64> = env.storage().persistent()
+            .get(&StorageKey::LatestQuote(anchor.clone()));
+        let quote_id = match quote_id {
+            Some(id) => id,
+            None => return String::from_str(env, "NoQuote"),
+        };
+        let quote: Option<Quote> = env.storage().persistent()
+            .get(&StorageKey::Quote(anchor.clone(), quote_id));
+        match quote {
+            None => String::from_str(env, "NoQuote"),
+            Some(q) if q.valid_until <= now => String::from_str(env, "ExpiredQuote"),
+            Some(q) if options.request.amount < q.minimum_amount
+                || options.request.amount > q.maximum_amount => String::from_str(env, "AmountOutOfRange"),
+            Some(_) => String::from_str(env, "FallbackOnly"),
+        }
     }
 
     /// Select the best anchor for a transaction and return its `Quote`.

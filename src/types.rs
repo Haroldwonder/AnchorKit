@@ -275,6 +275,19 @@ pub struct RoutingRequest {
     pub operation_type: u32,
 }
 
+/// One entry in the ranked list returned by `route_candidates`.
+///
+/// `score` is higher-is-better for the selected strategy; excluded anchors
+/// receive `i64::MIN`. `reason` is `"Eligible"` or names the filter that
+/// excluded the anchor (e.g. `"Inactive"`, `"LowReputation"`).
+#[contracttype]
+#[derive(Clone)]
+pub struct RouteCandidate {
+    pub anchor: Address,
+    pub score: i64,
+    pub reason: String,
+}
+
 /// Options passed to `route_transaction` to control anchor selection.
 ///
 /// # Strategy

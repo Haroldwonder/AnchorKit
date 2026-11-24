@@ -953,7 +953,7 @@ mod routing_tests {
         submit_standard_quote(&env, &client, &anchor2, 20);
 
         let options = make_lowest_fee_options(&env);
-        let dry_run_anchor = client.route_transaction_dry_run(&options);
+        let dry_run_anchor = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
         let routed = client.route_transaction(&options);
 
         assert_eq!(dry_run_anchor, anchor2);
@@ -973,7 +973,7 @@ mod routing_tests {
 
         let options = make_lowest_fee_options(&env);
         let events_before = env.events().all().len();
-        let dry_run_anchor = client.route_transaction_dry_run(&options);
+        let dry_run_anchor = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
         let events_after = env.events().all().len();
 
         assert_eq!(dry_run_anchor, anchor);
@@ -1004,7 +1004,7 @@ mod routing_tests {
 
         let options = make_lowest_fee_options(&env);
         let events_before = env.events().all().len();
-        let dry_run_anchor = client.route_transaction_dry_run(&options);
+        let dry_run_anchor = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
         let events_after = env.events().all().len();
 
         assert_eq!(dry_run_anchor, valid_anchor);
@@ -1049,7 +1049,7 @@ mod routing_tests {
             fallback_chain: Vec::new(&env),
         };
 
-        let dry_run_anchor = client.route_transaction_dry_run(&options);
+        let dry_run_anchor = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
         assert_eq!(dry_run_anchor, eu_anchor);
     }
 
@@ -1064,7 +1064,7 @@ mod routing_tests {
         submit_standard_quote(&env, &client, &anchor, 25);
 
         let options = make_lowest_fee_options(&env);
-        let _ = client.route_transaction_dry_run(&options);
+        let _ = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
 
         let events_before = env.events().all().len();
         let routed = client.route_transaction(&options);
@@ -1141,7 +1141,6 @@ mod routing_tests {
         assert_eq!(best.anchor, healthy);
         assert_ne!(best.anchor, no_quotes);
     }
-}
 
     #[test]
     fn test_single_anchor_routing_returns_that_anchor() {
