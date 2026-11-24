@@ -141,6 +141,24 @@ pub struct ContractUnpaused {
 // #1361 – Admin governance events (previously silent)
 // ---------------------------------------------------------------------------
 
+/// Emitted by `suspend_attestor` (#1570).
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestorSuspended {
+    pub attestor: Address,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted by `unsuspend_attestor` (#1570).
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestorUnsuspended {
+    pub attestor: Address,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
 /// Emitted by `set_health_failure_threshold`.
 #[contracttype]
 #[derive(Clone)]

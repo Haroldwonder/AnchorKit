@@ -27,6 +27,8 @@ pub enum StorageKey {
     /// First attestation ID not covered by the attestor's latest revocation.
     /// Attestations with a lower ID remain revoked after re-registration.
     AttestorRevokedBefore(Address),
+    /// Admin suspension flag: freezes an attestor without revoking it (#1570).
+    AttestorSuspended(Address),
     /// HTTPS endpoint URL for an attestor (persistent).
     Endpoint(Address),
     /// Supported services record for an anchor (persistent).

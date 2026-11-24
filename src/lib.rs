@@ -114,6 +114,9 @@ mod is_initialized_tests;
 mod contract_health_tests;
 
 #[cfg(test)]
+mod attestor_suspension_tests;
+
+#[cfg(test)]
 mod get_attestation_tests;
 
 #[cfg(test)]

@@ -58,7 +58,8 @@ const LEDGER_PERIOD_SECS: u64 = 5; // approximate seconds per ledger
 use crate::events::{
     AdminTransferCancelled, AdminTransferred, AnchorDeactivated, AttestationRevoked, AttestEvent,
     AuditLogEvent, AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated,
-    QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent,
+    QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent, AttestorSuspended,
+    AttestorUnsuspended,
     // #1361 – new admin governance events
     AnchorJurisdictionSet, AnchorMetadataSet, AttestorRateLimitSet, CapabilitiesCached,
     CredentialPolicySet, CredentialRotated, CredentialStored, HealthStatusUpdated,
@@ -870,6 +871,7 @@ impl AnchorKitContract {
         if env.storage().persistent().has(&key) {
             panic_with_error!(env, ErrorCode::AttestorAlreadyRegistered);
         }
+        Self::require_attestor_active(env, &attestor);
         // Clear any prior revocation marker so re-registered attestors are not
         // permanently flagged as revoked on new attestations.
         env.storage().persistent().remove(&StorageKey::AttestorRevoked(attestor.clone()));
@@ -973,6 +975,7 @@ impl AnchorKitContract {
         if attestation.issuer != attestor {
             panic_with_error!(&env, ErrorCode::UnauthorizedAttestor);
         }
+        Self::require_attestor_active(&env, &attestor);
         let revoked_key = StorageKey::AttestationRevoked(attestation_id);
         env.storage().persistent().set(&revoked_key, &true);
         env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
@@ -986,6 +989,55 @@ impl AnchorKitContract {
         env.storage()
             .persistent()
             .get::<_, bool>(&StorageKey::Attestor(attestor))
+            .unwrap_or(false)
+    }
+
+    /// Freeze an attestor without removing its registration or history (#1570).
+    pub fn suspend_attestor(env: Env, attestor: Address) {
+        Self::require_not_paused(&env);
+        Self::require_admin(&env);
+        Self::check_attestor(&env, &attestor);
+        let key = StorageKey::AttestorSuspended(attestor.clone());
+        env.storage().persistent().set(&key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        let admin = Self::get_admin(env.clone());
+        env.events().publish(
+            (symbol_short!("attestor"), symbol_short!("suspended")),
+            AttestorSuspended {
+                attestor,
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Lift an admin suspension (#1570).
+    pub fn unsuspend_attestor(env: Env, attestor: Address) {
+        Self::require_not_paused(&env);
+        Self::require_admin(&env);
+        Self::check_attestor(&env, &attestor);
+        let key = StorageKey::AttestorSuspended(attestor.clone());
+        env.storage().persistent().set(&key, &false);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        let admin = Self::get_admin(env.clone());
+        env.events().publish(
+            (symbol_short!("attestor"), symbol_short!("unsuspend")),
+            AttestorUnsuspended {
+                attestor,
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+    }
+
+    pub fn is_suspended_attestor(env: Env, attestor: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get::<_, bool>(&StorageKey::AttestorSuspended(attestor))
             .unwrap_or(false)
     }
 
@@ -1046,6 +1098,7 @@ impl AnchorKitContract {
         Self::require_not_paused(&env);
         attestor.require_auth();
         Self::check_attestor(&env, &attestor);
+        Self::require_attestor_active(&env, &attestor);
 
         let len = endpoint.len() as usize;
         let mut rust_buf = [0u8; 128];
@@ -1108,6 +1161,7 @@ impl AnchorKitContract {
         {
             panic_with_error!(&env, ErrorCode::AttestorNotRegistered);
         }
+        Self::require_attestor_active(&env, &anchor);
         if let Err(e) = Self::validate_service_codes(&env, &services) {
             panic_with_error!(&env, e);
         }
@@ -1155,6 +1209,7 @@ impl AnchorKitContract {
         Self::require_not_paused(&env);
         issuer.require_auth();
         Self::check_attestor(&env, &issuer);
+        Self::require_attestor_active(&env, &issuer);
         if let Err(e) = crate::rate_limiter::RateLimiter::check_and_increment(&env, &issuer) {
             panic_with_error!(&env, e);
         }
@@ -1198,6 +1253,7 @@ impl AnchorKitContract {
         Self::require_not_paused(&env);
         issuer.require_auth();
         Self::check_attestor(&env, &issuer);
+        Self::require_attestor_active(&env, &issuer);
 
         let mut ids = Vec::new(&env);
         for i in 0..inputs.len() {
@@ -1253,6 +1309,7 @@ impl AnchorKitContract {
     ) -> u64 {
         issuer.require_auth();
         Self::check_attestor(&env, &issuer);
+        Self::require_attestor_active(&env, &issuer);
         if let Err(e) = crate::rate_limiter::RateLimiter::check_and_increment(&env, &issuer) {
             panic_with_error!(&env, e);
         }
@@ -1301,6 +1358,7 @@ impl AnchorKitContract {
         Self::require_not_paused(&env);
         anchor.require_auth();
         Self::check_attestor(&env, &anchor);
+        Self::require_attestor_active(&env, &anchor);
 
         let services_record = env
             .storage()
@@ -1526,6 +1584,7 @@ impl AnchorKitContract {
         Self::require_not_paused(&env);
         anchor.require_auth();
         Self::check_attestor(&env, &anchor);
+        Self::require_attestor_active(&env, &anchor);
 
         let services_record = env
             .storage()
@@ -1648,6 +1707,7 @@ impl AnchorKitContract {
         }
         issuer.require_auth();
         Self::check_attestor(&env, &issuer);
+        Self::require_attestor_active(&env, &issuer);
         // Enforce per-issuer rate limit, keeping parity with submit_attestation
         // and submit_with_request_id.
         if let Err(e) = crate::rate_limiter::RateLimiter::check_and_increment(&env, &issuer) {
@@ -2971,6 +3031,7 @@ impl AnchorKitContract {
         // Only registered attestors may cache TOML data. Without this, any funded
         // account could append itself to CANCHORS and grow it without bound.
         Self::check_attestor(&env, &anchor);
+        Self::require_attestor_active(&env, &anchor);
 
         // Validate network_passphrase matches a known network before caching.
         // Prevents caching a TOML from the wrong network, which would cause
@@ -3240,6 +3301,18 @@ impl AnchorKitContract {
             .has(&StorageKey::Attestor(attestor.clone()))
         {
             panic_with_error!(env, ErrorCode::AttestorNotRegistered);
+        }
+    }
+
+    /// Suspended attestors keep their registration and history but cannot act (#1570).
+    fn require_attestor_active(env: &Env, attestor: &Address) {
+        if env
+            .storage()
+            .persistent()
+            .get::<_, bool>(&StorageKey::AttestorSuspended(attestor.clone()))
+            .unwrap_or(false)
+        {
+            panic_with_error!(env, ErrorCode::AttestorSuspended);
         }
     }
 
