@@ -19,9 +19,10 @@ use crate::storage::{
 // ---------------------------------------------------------------------------
 
 pub use crate::types::{
-    AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CapabilitiesCache,
-    CachedToml, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
-    RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
+    AnchorMetadata, AnchorServices, AssetInfo, Attestation, AttestationSchema, AuditLog,
+    CachedToml, CapabilitiesCache, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache,
+    OperationContext, Quote, RequestId, RoutingOptions, RoutingRequest, Session, StellarToml,
+    StoredCredential, TracingSpan,
     SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES, ServiceType,
 };
 
@@ -33,6 +34,8 @@ pub struct AttestationInput {
     pub timestamp: u64,
     pub payload_hash: Bytes,
     pub signature: Bytes,
+    /// Optional ID of a registered payload schema (#1514).
+    pub schema_id: Option<Symbol>,
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +65,8 @@ use crate::events::{
     // #1361 – new admin governance events
     AnchorJurisdictionSet, AnchorMetadataSet, AttestorRateLimitSet, CapabilitiesCached,
     CredentialPolicySet, CredentialRotated, CredentialStored, HealthStatusUpdated,
-    HealthThresholdSet, MetadataCached, RateLimitConfigUpdated, Sep10KeyAdded, Sep10KeyRemoved,
+    HealthThresholdSet, MetadataCached, RateLimitConfigUpdated, SchemaRegistered, SchemaRemoved,
+    Sep10KeyAdded, Sep10KeyRemoved,
 };
 
 // ---------------------------------------------------------------------------
@@ -132,6 +136,13 @@ pub const MAX_CLOCK_SKEW_SECONDS: u64 = 300;
 /// Maximum accepted replay window (in seconds) for timestamp validation.
 /// Defaults to one day; larger windows accept arbitrarily old timestamps (#1430).
 pub const MAX_REPLAY_WINDOW_SECONDS: u64 = 86_400;
+
+/// Bounds for the admin-managed payload schema registry (#1514). Keeping these
+/// small avoids bloating the host budget when a registry entry is read during
+/// attestation submission.
+pub const MAX_SCHEMA_NAME_LEN: u32 = 128;
+pub const MAX_SCHEMA_VERSION_LEN: u32 = 64;
+pub const MAX_SCHEMA_URI_LEN: u32 = 512;
 
 fn pending_admin_key(env: &Env) -> soroban_sdk::Vec<soroban_sdk::Symbol> {
     soroban_sdk::vec![env, symbol_short!("PADMIN")]
@@ -344,6 +355,65 @@ impl AnchorKitContract {
             (symbol_short!("clockskew"), symbol_short!("updated")),
             seconds,
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Attestation payload schema registry (#1514)
+    // -----------------------------------------------------------------------
+
+    /// Register or update the schema describing a class of attestation
+    /// payloads. Admin-only; `schema_id` is the key used on submission.
+    pub fn register_attestation_schema(
+        env: Env,
+        schema_id: Symbol,
+        name: String,
+        version: String,
+        uri: String,
+    ) {
+        Self::require_admin(&env);
+        Self::validate_schema_registration(&env, &name, &version, &uri);
+
+        let key = StorageKey::AttestationSchema(schema_id.clone());
+        env.storage().persistent().set(
+            &key,
+            &AttestationSchema { name, version, uri },
+        );
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+
+        let admin = Self::get_admin(env.clone());
+        env.events().publish(
+            (symbol_short!("schema"), symbol_short!("set")),
+            SchemaRegistered {
+                schema_id,
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Remove a schema from the registry. Existing attestations keep their
+    /// `schema_id`; only *new* submissions are prevented from using the ID.
+    pub fn remove_attestation_schema(env: Env, schema_id: Symbol) {
+        Self::require_admin(&env);
+        env.storage().persistent().remove(&StorageKey::AttestationSchema(schema_id.clone()));
+
+        let admin = Self::get_admin(env.clone());
+        env.events().publish(
+            (symbol_short!("schema"), symbol_short!("rm")),
+            SchemaRemoved {
+                schema_id,
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Look up schema metadata. Returns `None` for an unregistered ID.
+    pub fn get_attestation_schema(env: Env, schema_id: Symbol) -> Option<AttestationSchema> {
+        let key = StorageKey::AttestationSchema(schema_id);
+        let record = env.storage().persistent().get::<_, AttestationSchema>(&key)?;
+        env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        Some(record)
     }
 
     /// Pause the contract (admin only).
@@ -1042,6 +1112,7 @@ impl AnchorKitContract {
     // Attestation submission (plain)
     // -----------------------------------------------------------------------
 
+    /// Submit an attestation without payload schema metadata.
     pub fn submit_attestation(
         env: Env,
         issuer: Address,
@@ -1050,9 +1121,34 @@ impl AnchorKitContract {
         payload_hash: Bytes,
         signature: Bytes,
     ) -> u64 {
+        Self::submit_attestation_with_schema(
+            env,
+            issuer,
+            subject,
+            timestamp,
+            payload_hash,
+            signature,
+            None,
+        )
+    }
+
+    /// Submit an attestation whose payload is described by `schema_id` (#1514).
+    ///
+    /// `None` is equivalent to `submit_attestation`. `Some(id)` must reference a
+    /// schema registered by the admin via `register_attestation_schema`.
+    pub fn submit_attestation_with_schema(
+        env: Env,
+        issuer: Address,
+        subject: Address,
+        timestamp: u64,
+        payload_hash: Bytes,
+        signature: Bytes,
+        schema_id: Option<Symbol>,
+    ) -> u64 {
         Self::require_not_paused(&env);
         issuer.require_auth();
         Self::check_attestor(&env, &issuer);
+        Self::validate_schema_id(&env, &schema_id);
         if let Err(e) = crate::rate_limiter::RateLimiter::check_and_increment(&env, &issuer) {
             panic_with_error!(&env, e);
         }
@@ -1065,7 +1161,17 @@ impl AnchorKitContract {
         }
 
         let id = Self::next_attestation_id(&env);
-        Self::store_attestation(&env, id, issuer.clone(), subject.clone(), timestamp, payload_hash.clone(), signature, None);
+        Self::store_attestation(
+            &env,
+            id,
+            issuer.clone(),
+            subject.clone(),
+            timestamp,
+            payload_hash.clone(),
+            signature,
+            None,
+            schema_id,
+        );
 
         env.storage().persistent().set(&used_key, &true);
         env.storage().persistent().extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
@@ -1106,6 +1212,8 @@ impl AnchorKitContract {
                 panic_with_error!(&env, e);
             }
             Self::check_timestamp(&env, input.timestamp);
+            // #1514: reject unknown schema IDs before doing any signature work.
+            Self::validate_schema_id(&env, &input.schema_id);
             // Verify each item's signature, mirroring submit_attestation (#871).
             Self::verify_attestation_signature(&env, &issuer, &input.payload_hash, &input.signature);
 
@@ -1124,6 +1232,7 @@ impl AnchorKitContract {
                 input.payload_hash.clone(),
                 input.signature,
                 None,
+                input.schema_id.clone(),
             );
 
             env.storage().persistent().set(&used_key, &true);
@@ -1149,8 +1258,34 @@ impl AnchorKitContract {
         signature: Bytes,
         expires_at: Option<u64>,
     ) -> u64 {
+        Self::submit_request_with_schema(
+            env,
+            request_id,
+            issuer,
+            subject,
+            timestamp,
+            payload_hash,
+            signature,
+            expires_at,
+            None,
+        )
+    }
+
+    /// Request-ID submission with an optional registered payload `schema_id`.
+    pub fn submit_request_with_schema(
+        env: Env,
+        request_id: RequestId,
+        issuer: Address,
+        subject: Address,
+        timestamp: u64,
+        payload_hash: Bytes,
+        signature: Bytes,
+        expires_at: Option<u64>,
+        schema_id: Option<Symbol>,
+    ) -> u64 {
         issuer.require_auth();
         Self::check_attestor(&env, &issuer);
+        Self::validate_schema_id(&env, &schema_id);
         if let Err(e) = crate::rate_limiter::RateLimiter::check_and_increment(&env, &issuer) {
             panic_with_error!(&env, e);
         }
@@ -1163,7 +1298,17 @@ impl AnchorKitContract {
         }
 
         let id = Self::next_attestation_id(&env);
-        Self::store_attestation(&env, id, issuer.clone(), subject.clone(), timestamp, payload_hash.clone(), signature, expires_at);
+        Self::store_attestation(
+            &env,
+            id,
+            issuer.clone(),
+            subject.clone(),
+            timestamp,
+            payload_hash.clone(),
+            signature,
+            expires_at,
+            schema_id,
+        );
 
         env.storage().persistent().set(&used_key, &true);
         env.storage().persistent().extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
@@ -1536,6 +1681,31 @@ impl AnchorKitContract {
         signature: Bytes,
         expires_at: Option<u64>,
     ) -> u64 {
+        Self::submit_session_with_schema(
+            env,
+            session_id,
+            issuer,
+            subject,
+            timestamp,
+            payload_hash,
+            signature,
+            expires_at,
+            None,
+        )
+    }
+
+    /// Session-aware submission with an optional registered payload `schema_id`.
+    pub fn submit_session_with_schema(
+        env: Env,
+        session_id: u64,
+        issuer: Address,
+        subject: Address,
+        timestamp: u64,
+        payload_hash: Bytes,
+        signature: Bytes,
+        expires_at: Option<u64>,
+        schema_id: Option<Symbol>,
+    ) -> u64 {
         Self::require_not_paused(&env);
         if let Err(e) = Self::check_session_expiry(&env, session_id) {
             panic_with_error!(&env, e);
@@ -1546,6 +1716,7 @@ impl AnchorKitContract {
         }
         issuer.require_auth();
         Self::check_attestor(&env, &issuer);
+        Self::validate_schema_id(&env, &schema_id);
         // Enforce per-issuer rate limit, keeping parity with submit_attestation
         // and submit_with_request_id.
         if let Err(e) = crate::rate_limiter::RateLimiter::check_and_increment(&env, &issuer) {
@@ -1560,7 +1731,17 @@ impl AnchorKitContract {
         }
 
         let id = Self::next_attestation_id(&env);
-        Self::store_attestation(&env, id, issuer.clone(), subject.clone(), timestamp, payload_hash.clone(), signature, expires_at);
+        Self::store_attestation(
+            &env,
+            id,
+            issuer.clone(),
+            subject.clone(),
+            timestamp,
+            payload_hash.clone(),
+            signature,
+            expires_at,
+            schema_id,
+        );
 
         env.storage().persistent().set(&used_key, &true);
         env.storage().persistent().extend_ttl(&used_key, PERSISTENT_TTL, PERSISTENT_TTL);
@@ -3131,6 +3312,39 @@ impl AnchorKitContract {
         }
     }
 
+    /// Validate the optional `schema_id` supplied on attestation submission.
+    ///
+    /// `None` is always accepted (schema metadata is optional). `Some(id)` must
+    /// name a schema currently present in the admin-managed registry (#1514).
+    fn validate_schema_id(env: &Env, schema_id: &Option<Symbol>) {
+        if let Some(id) = schema_id {
+            let key = StorageKey::AttestationSchema(id.clone());
+            if !env.storage().persistent().has(&key) {
+                panic_with_error!(env, ErrorCode::SchemaNotFound);
+            }
+            // Keep regularly used registry entries alive.
+            env.storage().persistent().extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        }
+    }
+
+    /// Validate the metadata supplied to `register_attestation_schema`.
+    fn validate_schema_registration(
+        env: &Env,
+        name: &String,
+        version: &String,
+        uri: &String,
+    ) {
+        if name.len() == 0
+            || name.len() > MAX_SCHEMA_NAME_LEN
+            || version.len() == 0
+            || version.len() > MAX_SCHEMA_VERSION_LEN
+            || uri.len() == 0
+            || uri.len() > MAX_SCHEMA_URI_LEN
+        {
+            panic_with_error!(env, ErrorCode::ValidationError);
+        }
+    }
+
     fn check_attestor(env: &Env, attestor: &Address) {
         if !env
             .storage()
@@ -3237,6 +3451,7 @@ impl AnchorKitContract {
         payload_hash: Bytes,
         signature: Bytes,
         expires_at: Option<u64>,
+        schema_id: Option<Symbol>,
     ) {
         let attestation = Attestation {
             id,
@@ -3247,6 +3462,7 @@ impl AnchorKitContract {
             signature,
             issuer_revoked: false,
             expires_at,
+            schema_id,
         };
         let key = StorageKey::Attest(id);
         env.storage().persistent().set(&key, &attestation);

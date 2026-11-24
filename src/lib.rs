@@ -39,7 +39,10 @@ pub use sep6::{
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::Session;
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
-pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
+pub use contract::{
+    AnchorKitContract, Attestation, AttestationInput, AttestationSchema, get_admin,
+    get_attestation_count, get_endpoint, set_endpoint,
+};
 pub use events::EndpointUpdated;
 pub use transaction_state_tracker::{
     StateTransition, TransactionState, TransactionStateRecord, TransactionStateTracker,
@@ -163,3 +166,6 @@ mod forced_transfer_audit_tests;
 // Issue #956 – Rent vs capital claim separation regression.
 #[cfg(test)]
 mod typed_distribution_separation_tests;
+
+#[cfg(test)]
+mod schema_registry_tests;

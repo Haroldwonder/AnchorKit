@@ -347,7 +347,42 @@ Submits an attestation and records a `TracingSpan` keyed by `request_id`.
 fn get_attestation(env: Env, id: u64) -> Option<Attestation>
 ```
 
-Returns the `Attestation` for the given ID, or `None` if not found, has been revoked, or has expired.
+Returns the `Attestation` for the given ID, or `None` if not found, has been revoked, or has expired. The returned record includes `schema_id: Option<Symbol>`, the optional ID of the registered payload schema (#1514).
+
+---
+
+### Attestation payload schema registry
+
+An admin-managed registry maps a short `schema_id` (`Symbol`, max 32 characters) to `(name, version, uri)`. It lets verifiers interpret `payload_hash` (for example, a KYC result, deposit receipt, or quote acceptance) without changing the signed attestation digest.
+
+```rust
+fn register_attestation_schema(
+    env: Env,
+    schema_id: Symbol,
+    name: String,
+    version: String,
+    uri: String,
+) // admin only; creates or updates the entry
+
+fn get_attestation_schema(env: Env, schema_id: Symbol) -> Option<AttestationSchema>
+fn remove_attestation_schema(env: Env, schema_id: Symbol) // admin only
+```
+
+`AttestationSchema` is `{ name: String, version: String, uri: String }`. Metadata must be non-empty and within 128 / 64 / 512 characters respectively. Every registration and removal emits a `SchemaRegistered` / `SchemaRemoved` event.
+
+To attach a schema at submission time, use the optional-schema entry points (the original functions remain unchanged and submit `None`):
+
+```rust
+fn submit_attestation_with_schema(
+    env: Env, issuer: Address, subject: Address, timestamp: u64,
+    payload_hash: Bytes, signature: Bytes, schema_id: Option<Symbol>,
+) -> u64
+
+fn submit_request_with_schema(/* ... */, schema_id: Option<Symbol>) -> u64
+fn submit_session_with_schema(/* ... */, schema_id: Option<Symbol>) -> u64
+```
+
+`submit_attestation_batch` accepts `schema_id` on each `AttestationInput`. `Some(id)` must name a currently registered schema; otherwise the call fails with `SchemaNotFound (130)`. Removing a schema does not alter historical attestations — they keep their `schema_id`, and verifiers can still resolve the metadata from an earlier registry state or from their own copy.
 
 ---
 

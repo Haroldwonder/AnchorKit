@@ -225,6 +225,18 @@ pub struct RequestId {
     pub created_at: u64,
 }
 
+/// Metadata for a registered attestation payload schema (#1514).
+///
+/// The registry maps a short `schema_id` to the human-readable name, version
+/// and URI of the schema that describes the bytes behind `payload_hash`.
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestationSchema {
+    pub name: String,
+    pub version: String,
+    pub uri: String,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct Attestation {
@@ -242,6 +254,9 @@ pub struct Attestation {
     /// Optional Unix timestamp (seconds) after which this attestation is
     /// considered expired. `None` means no expiry.
     pub expires_at: Option<u64>,
+    /// Optional ID of the registered schema describing the payload. `None`
+    /// means the attestation was submitted without schema metadata.
+    pub schema_id: Option<Symbol>,
 }
 
 #[contracttype]

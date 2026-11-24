@@ -260,3 +260,25 @@ pub struct AttestorRateLimitSet {
     pub attestor: Address,
     pub timestamp: u64,
 }
+
+// ---------------------------------------------------------------------------
+// #1514 – Attestation payload schema registry events
+// ---------------------------------------------------------------------------
+
+/// Emitted when an admin registers or updates a payload schema.
+#[contracttype]
+#[derive(Clone)]
+pub struct SchemaRegistered {
+    pub schema_id: Symbol,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted when an admin removes a payload schema from the registry.
+#[contracttype]
+#[derive(Clone)]
+pub struct SchemaRemoved {
+    pub schema_id: Symbol,
+    pub admin: Address,
+    pub timestamp: u64,
+}
