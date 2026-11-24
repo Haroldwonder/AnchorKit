@@ -25,16 +25,8 @@ jobs:
         with:
           components: clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
 
       - name: Build
         run: cargo build --locked --verbose --examples
@@ -80,16 +72,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            fuzz/target
-          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('fuzz/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-fuzz-
+          workspaces: fuzz
 
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
@@ -116,16 +102,8 @@ jobs:
         with:
           components: clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-proptest-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-proptest-
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
 
       - name: Check proptest test compilation
         run: cargo check --locked --tests --features proptest-tests
@@ -148,16 +126,8 @@ jobs:
         with:
           components: clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-testnet-integration-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-testnet-integration-
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
 
       - name: Check testnet-integration test compilation
         run: cargo check --locked --tests --features testnet-integration
