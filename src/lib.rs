@@ -9,6 +9,7 @@ mod events;
 mod rate_limiter;
 mod response_validator;
 mod retry;
+pub mod sep31;
 pub mod sep10_jwt;
 pub mod sdk_config;
 mod storage;
@@ -20,6 +21,12 @@ pub mod sep6;
 pub use errors::{AnchorKitError, ErrorCode};
 
 pub use errors::Error;
+pub use sep31::{
+    callback_signature_header, MockSep31Transport, RawSep31CreationResponse,
+    RawSep31InfoResponse, RawSep31Transaction, Sep31AssetInfo, Sep31Auth, Sep31Callback,
+    Sep31Client, Sep31CreatedTransaction, Sep31CustomerReference, Sep31Info, Sep31Request,
+    Sep31Response, Sep31Status, Sep31Transaction, Sep31TransactionRequest, Sep31Transport,
+};
 pub use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitState, RateLimitStatus};
 pub use response_validator::{
     validate_anchor_info_response, validate_deposit_response, validate_quote_response,
