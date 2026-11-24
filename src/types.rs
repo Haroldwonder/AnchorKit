@@ -608,3 +608,17 @@ pub struct StoredCredential {
     pub expires_at: u64,
     pub updated_at: u64,
 }
+
+/// Cheap read-only snapshot for uptime checks and the CLI `doctor` command (#1568).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractHealth {
+    pub initialized: bool,
+    pub paused: bool,
+    /// `None` until the contract has been initialized.
+    pub admin: Option<Address>,
+    pub attestor_count: u64,
+    pub attestation_counter: u64,
+    pub session_counter: u64,
+    pub contract_version: String,
+}

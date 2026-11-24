@@ -20,7 +20,7 @@ use crate::storage::{
 
 pub use crate::types::{
     AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CapabilitiesCache,
-    CachedToml, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
+    CachedToml, ContractHealth, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
     RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
     SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES, ServiceType,
 };
@@ -135,6 +135,9 @@ const SESSION_LEDGER_TTL: u32 = 17_280;
 /// TTL values from truncating during storage TTL conversion and, together with
 /// saturating expiry arithmetic, keeps all cache getters safe at the boundary.
 const MAX_TTL_SECONDS: u64 = u32::MAX as u64;
+
+/// Contract version reported by `health()` for monitoring (#1568).
+pub const CONTRACT_VERSION: &str = "0.1.0";
 
 /// Maximum number of attestors that can be registered simultaneously.
 pub const MAX_ATTESTORS: u64 = 100;
@@ -405,6 +408,20 @@ impl AnchorKitContract {
             .instance()
             .get::<_, bool>(&StorageKey::IsPaused)
             .unwrap_or(false)
+    }
+
+    /// Cheap, non-panicking health snapshot for uptime checks and `doctor` (#1568).
+    pub fn health(env: Env) -> ContractHealth {
+        let inst = env.storage().instance();
+        ContractHealth {
+            initialized: inst.has(&key_admin(&env)),
+            paused: Self::is_paused(env.clone()),
+            admin: inst.get::<_, Address>(&key_admin(&env)),
+            attestor_count: inst.get::<_, u64>(&key_attestor_count(&env)).unwrap_or(0),
+            attestation_counter: Self::get_attestation_count(env.clone()),
+            session_counter: inst.get::<_, u64>(&key_session_counter(&env)).unwrap_or(0),
+            contract_version: String::from_str(&env, CONTRACT_VERSION),
+        }
     }
 
     // -----------------------------------------------------------------------

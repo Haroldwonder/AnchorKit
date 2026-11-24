@@ -111,6 +111,9 @@ mod attestation_pagination_tests;
 mod is_initialized_tests;
 
 #[cfg(test)]
+mod contract_health_tests;
+
+#[cfg(test)]
 mod get_attestation_tests;
 
 #[cfg(test)]
