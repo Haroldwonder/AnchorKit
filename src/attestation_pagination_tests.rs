@@ -3,7 +3,7 @@
 mod attestation_pagination_tests {
     use soroban_sdk::{
         testutils::{Address as _, Ledger, LedgerInfo},
-        Address, Bytes, Env, Vec,
+        Address, Bytes, Env, Vec, symbol_short,
     };
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
@@ -550,4 +550,35 @@ mod attestation_pagination_tests {
         let results = client.list_attestations(&subject, &0, &10);
         assert_eq!(results.len(), 0);
     }
+
+    #[test]
+    fn test_config_setters_emit_old_new_admin() {
+        use crate::events::{ClockSkewUpdated, MaxPageSizeUpdated, ReplayWindowUpdated};
+
+        let env = make_env();
+        setup_ledger(&env);
+        let contract_id = env.register_contract(None, AnchorKitContract);
+        let client = AnchorKitContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100_u64, &None, &None);
+
+        env.events().publish_expect(
+            &(symbol_short!("pagesize"), symbol_short!("updated")),
+            &MaxPageSizeUpdated { old: 50, new: 75, admin: admin.clone() },
+        );
+        client.set_max_page_size(&75);
+
+        env.events().publish_expect(
+            &(symbol_short!("replay"), symbol_short!("updated")),
+            &ReplayWindowUpdated { old: 300, new: 600, admin: admin.clone() },
+        );
+        client.set_replay_window_seconds(&600);
+
+        env.events().publish_expect(
+            &(symbol_short!("clockskew"), symbol_short!("updated")),
+            &ClockSkewUpdated { old: 60, new: 120, admin: admin.clone() },
+        );
+        client.set_clock_skew_seconds(&120);
+    }
 }
+

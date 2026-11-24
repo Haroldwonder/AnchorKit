@@ -10,7 +10,7 @@ use crate::sep10_jwt;
 use crate::storage::{
     StorageKey,
     key_admin, key_counter, key_session_counter, key_quote_counter,
-    key_audit_counter, key_anchor_list, key_health_threshold, key_replay_window,
+    key_audit_counter, key_anchor_list, key_clock_skew, key_health_threshold, key_replay_window,
     key_audit_log_offset, key_total_count,
 };
 
@@ -62,7 +62,8 @@ use crate::events::{
     // #1361 – new admin governance events
     AnchorJurisdictionSet, AnchorMetadataSet, AttestorRateLimitSet, CapabilitiesCached,
     CredentialPolicySet, CredentialRotated, CredentialStored, HealthStatusUpdated,
-    HealthThresholdSet, MetadataCached, RateLimitConfigUpdated, Sep10KeyAdded, Sep10KeyRemoved,
+    HealthThresholdSet, MaxPageSizeUpdated, MetadataCached, RateLimitConfigUpdated,
+    ReplayWindowUpdated, Sep10KeyAdded, Sep10KeyRemoved, ClockSkewUpdated,
 };
 
 // ---------------------------------------------------------------------------
@@ -304,11 +305,13 @@ impl AnchorKitContract {
         if max_page_size == 0 || max_page_size > MAX_PAGE_SIZE {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
+        let old = Self::get_max_page_size(env.clone());
+        let admin = Self::get_admin(env.clone());
         env.storage().instance().set(&StorageKey::MaxPageSize, &max_page_size);
         env.storage().instance().extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
         env.events().publish(
             (symbol_short!("pagesize"), symbol_short!("updated")),
-            max_page_size,
+            MaxPageSizeUpdated { old, new: max_page_size, admin },
         );
     }
 
@@ -320,12 +323,16 @@ impl AnchorKitContract {
         if seconds > MAX_REPLAY_WINDOW_SECONDS {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
+        let old = env.storage().instance()
+            .get::<_, u64>(&key_replay_window(&env))
+            .unwrap_or(300u64);
+        let admin = Self::get_admin(env.clone());
         let inst = env.storage().instance();
         inst.set(&key_replay_window(&env), &seconds);
         inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
         env.events().publish(
             (symbol_short!("replay"), symbol_short!("updated")),
-            seconds,
+            ReplayWindowUpdated { old, new: seconds, admin },
         );
     }
 
@@ -337,12 +344,16 @@ impl AnchorKitContract {
         if seconds > MAX_CLOCK_SKEW_SECONDS {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
+        let old = env.storage().instance()
+            .get::<_, u64>(&key_clock_skew(&env))
+            .unwrap_or(60u64);
+        let admin = Self::get_admin(env.clone());
         let inst = env.storage().instance();
         inst.set(&key_clock_skew(&env), &seconds);
         inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
         env.events().publish(
             (symbol_short!("clockskew"), symbol_short!("updated")),
-            seconds,
+            ClockSkewUpdated { old, new: seconds, admin },
         );
     }
 

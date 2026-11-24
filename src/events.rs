@@ -260,3 +260,29 @@ pub struct AttestorRateLimitSet {
     pub attestor: Address,
     pub timestamp: u64,
 }
+
+/// Emitted by the admin config setters (#1566) so monitors can see the
+/// previous value alongside the new one.
+#[contracttype]
+#[derive(Clone)]
+pub struct MaxPageSizeUpdated {
+    pub old: u32,
+    pub new: u32,
+    pub admin: Address,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ReplayWindowUpdated {
+    pub old: u64,
+    pub new: u64,
+    pub admin: Address,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ClockSkewUpdated {
+    pub old: u64,
+    pub new: u64,
+    pub admin: Address,
+}
