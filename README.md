@@ -400,19 +400,19 @@ Criterion writes HTML reports and saves the previous run as a baseline under
 #### Linux/macOS
 ```bash
 # Validate all configurations
-./validate_all.sh
+./scripts/validate_all.sh
 
 # Pre-deployment validation
-./pre_deploy_validate.sh
+./scripts/pre_deploy_validate.sh
 ```
 
 #### Windows
 ```powershell
 # Validate all configurations
-.\validate_all.ps1
+.\scripts\validate_all.ps1
 
 # Pre-deployment validation
-.\pre_deploy_validate.ps1
+.\scripts\pre_deploy_validate.ps1
 ```
 
 ## Backward Compatibility

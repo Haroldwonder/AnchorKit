@@ -147,8 +147,8 @@ cargo test contract_tests
 To validate configuration files (PowerShell equivalents of the bash scripts):
 
 ```powershell
-.\validate_all.ps1
-.\pre_deploy_validate.ps1
+.\scripts\validate_all.ps1
+.\scripts\pre_deploy_validate.ps1
 ```
 
 ---
@@ -192,13 +192,13 @@ AnchorKit ships PowerShell scripts for validating TOML configs and running the d
 
 ```powershell
 # Validate all configuration files
-.\validate_all.ps1
+.\scripts\validate_all.ps1
 
 # Run pre-deployment checks
-.\pre_deploy_validate.ps1
+.\scripts\pre_deploy_validate.ps1
 
 # Validate a specific config
-.\validate_health_score.ps1
+.\scripts\validate_health_score.ps1
 ```
 
 The CLI doctor command checks your environment end-to-end:

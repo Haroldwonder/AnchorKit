@@ -56,7 +56,7 @@ The Webhook Event Monitor is a real-time debugging panel that displays incoming 
 
 ```bash
 # Open in browser
-open webhook_monitor.html
+open tools/webhook_monitor.html
 ```
 
 ### Integration with Backend

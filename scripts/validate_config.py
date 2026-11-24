@@ -196,7 +196,7 @@ def main():
         if not target.is_absolute():
             target = Path.cwd() / target
     else:
-        target = script_dir / "configs"
+        target = script_dir.parent / "configs"
 
     if target.is_file():
         # Single file mode

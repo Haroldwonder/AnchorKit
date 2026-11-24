@@ -30,7 +30,7 @@ storybook:
 
 ## validate: Run repo validation (configs + Rust validation)
 validate:
-	./validate_all.sh
+	./scripts/validate_all.sh
 
 ## coverage: Run Rust + UI coverage (best-effort)
 coverage:

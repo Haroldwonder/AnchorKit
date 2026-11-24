@@ -106,7 +106,7 @@ make fmt            # cargo fmt
 make storybook      # cd ui && npm run storybook
 
 # Validation & deploy
-make validate       # ./validate_all.sh (repo config + Rust validation)
+make validate       # ./scripts/validate_all.sh (repo config + Rust validation)
 make deploy-testnet # deploy to Stellar testnet (depends on build-wasm)
 make clean          # cargo clean
 
@@ -163,10 +163,10 @@ Validate configuration files:
 
 ```bash
 # Linux/macOS
-./validate_all.sh
+./scripts/validate_all.sh
 
 # Windows
-.\validate_all.ps1
+.\scripts\validate_all.ps1
 ```
 
 ## Code Style Guidelines
