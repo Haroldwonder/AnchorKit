@@ -107,6 +107,17 @@ pub struct AttestationRevoked {
     pub timestamp: u64,
 }
 
+/// Emitted when the issuing attestor extends an attestation's expiry (#1513).
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestationExpiryExtended {
+    pub attestation_id: u64,
+    pub issuer: Address,
+    pub old_expires_at: Option<u64>,
+    pub new_expires_at: u64,
+    pub timestamp: u64,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct AdminTransferred {

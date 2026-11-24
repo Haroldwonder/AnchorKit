@@ -198,6 +198,9 @@ See **[docs/README.md](./docs/README.md)** for the complete documentation index.
 - `register_attestor_with_session(...)` - Register attestor with logging
 - `revoke_attestor_with_session(...)` - Revoke attestor with logging
 
+### Attestation Lifecycle
+- `extend_attestation_expiry(attestor, id, new_expires_at)` - Issuer-only expiry extension (#1513)
+
 ## New Data Structures
 
 - `InteractionSession` - Represents a session with metadata
@@ -208,6 +211,7 @@ See **[docs/README.md](./docs/README.md)** for the complete documentation index.
 
 - `SessionCreated` - Emitted when session is created
 - `OperationLogged` - Emitted when operation is logged
+- `AttestationExpiryExtended` - Emitted when the issuer extends an attestation expiry
 
 ## Platform Support
 
