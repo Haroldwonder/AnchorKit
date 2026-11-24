@@ -56,8 +56,8 @@ const MIN_TEMP_TTL: u32 = 15; // min_temp_entry_ttl - 1
 const LEDGER_PERIOD_SECS: u64 = 5; // approximate seconds per ledger
 
 use crate::events::{
-    AdminTransferCancelled, AdminTransferred, AnchorDeactivated, AttestationRevoked, AttestEvent,
-    AuditLogEvent, AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated,
+    AdminTransferCancelled, AdminTransferred, AnchorDeactivated, AnchorReactivated, AnchorRemoved,
+    AttestationRevoked, AttestEvent, AuditLogEvent, AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated,
     QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent,
     // #1361 – new admin governance events
     AnchorJurisdictionSet, AnchorMetadataSet, AttestorRateLimitSet, CapabilitiesCached,
@@ -2402,6 +2402,10 @@ impl AnchorKitContract {
         metadata.is_active = true;
         env.storage().persistent().set(&meta_key, &metadata);
         env.storage().persistent().extend_ttl(&meta_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("areactiv")),
+            AnchorReactivated { anchor, timestamp: env.ledger().timestamp() },
+        );
     }
 
     /// Remove an anchor from the routing candidate list without deleting its
@@ -2422,6 +2426,10 @@ impl AnchorKitContract {
         }
         env.storage().persistent().set(&list_key, &filtered);
         env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("aremove")),
+            AnchorRemoved { anchor, timestamp: env.ledger().timestamp() },
+        );
     }
 
     pub fn get_routing_anchors(env: Env) -> Vec<Address> {
