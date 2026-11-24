@@ -12,6 +12,8 @@ env:
 jobs:
   coverage:
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -38,8 +40,8 @@ jobs:
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
-        if: ${{ github.event.pull_request == null || secrets.CODECOV_TOKEN != '' }}
+        if: ${{ github.event.pull_request == null || env.CODECOV_TOKEN != '' }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
           files: cobertura.xml
           fail_ci_if_error: true
