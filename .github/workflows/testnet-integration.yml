@@ -14,6 +14,8 @@ on:
     branches: [main]
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sunday at 00:00 UTC
+  # Manual trigger for the end-to-end CLI smoke test (#1574).
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -46,3 +48,57 @@ jobs:
 
       - name: Run clippy on testnet-integration
         run: cargo clippy --locked --features testnet-integration -- -D warnings
+
+  # #1574: exercise the CLI end to end against testnet. Runs on the same
+  # scheduled trigger as the integration suite and can be dispatched manually.
+  cli-testnet-smoke:
+    runs-on: ubuntu-latest
+    env:
+      ANCHORKIT_NETWORK: testnet
+      ADMIN_ADDRESS: ${{ secrets.TESTNET_ADMIN_ADDRESS }}
+      ATTESTOR_ADDRESS: ${{ secrets.TESTNET_ATTESTOR_ADDRESS }}
+      SUBJECT_ADDRESS: ${{ secrets.TESTNET_SUBJECT_ADDRESS }}
+      CONTRACT_ID: ${{ secrets.TESTNET_CONTRACT_ID }}
+      RPC_URL: ${{ secrets.TESTNET_RPC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --version 22.1.0
+
+      - name: Build CLI
+        run: cargo build --locked --bin anchorkit --features std
+
+      - name: Deploy contract to testnet
+        run: ./target/debug/anchorkit deploy --network testnet
+
+      - name: Initialize contract
+        run: ./target/debug/anchorkit init --admin "$ADMIN_ADDRESS" --network testnet
+
+      - name: Register attestor (JSON output)
+        run: |
+          ./target/debug/anchorkit register --address "$ATTESTOR_ADDRESS" \
+            --services deposits,quotes --endpoint https://example.org \
+            --output json | tee register.json
+          python3 -c "import json; d=json.load(open('register.json')); assert d"
+
+      - name: Submit attestation
+        run: |
+          ./target/debug/anchorkit attest --subject "$SUBJECT_ADDRESS" \
+            --payload-hash 0000000000000000000000000000000000000000000000000000000000000001 \
+            --network testnet
+
+      - name: Query attestation (JSON output)
+        run: |
+          ./target/debug/anchorkit query --transaction-id 1 --output json \
+            --network testnet | tee query.json
+          python3 -c "import json; d=json.load(open('query.json')); assert d"
+
+      - name: Health check (JSON output)
+        run: |
+          ./target/debug/anchorkit health --attestor "$ATTESTOR_ADDRESS" \
+            --output json | tee health.json
+          python3 -c "import json; d=json.load(open('health.json')); assert d"
