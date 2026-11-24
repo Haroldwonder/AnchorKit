@@ -10,6 +10,7 @@ mod routing_tests {
     use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+    use crate::errors::ErrorCode;
     use crate::types::{RoutingOptions, RoutingRequest};
     use crate::sep10_test_util::register_attestor_with_sep10;
     use crate::events::{AnchorReactivated, AnchorRemoved, RoutingDecisionEvent};
@@ -1244,5 +1245,24 @@ mod routing_tests {
 
         // Must panic — no active anchors remain
         client.route_transaction(&options);
+    }
+
+    #[test]
+    fn test_remove_anchor_missing_returns_error_without_write() {
+        let env = make_env();
+        let (client, _admin) = setup(&env);
+        let anchor = Address::generate(&env);
+        let missing = Address::generate(&env);
+
+        client.set_anchor_metadata(&anchor, &80, &10, &1000000, &100, &500000, &String::from_str(&env, "https://example.com"));
+        let before = client.get_routing_anchors();
+        let event_count = env.events().all().len();
+
+        assert_eq!(
+            client.try_remove_anchor(&missing).unwrap_err().unwrap(),
+            ErrorCode::AnchorNotFound
+        );
+        assert_eq!(client.get_routing_anchors(), before);
+        assert_eq!(env.events().all().len(), event_count);
     }
 }

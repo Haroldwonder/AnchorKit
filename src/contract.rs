@@ -2469,6 +2469,9 @@ impl AnchorKitContract {
             .persistent()
             .get(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
+        if !list.contains(&anchor) {
+            panic_with_error!(&env, ErrorCode::AnchorNotFound);
+        }
         let mut filtered = Vec::new(&env);
         for candidate in list.iter() {
             if candidate != anchor {
