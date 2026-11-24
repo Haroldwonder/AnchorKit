@@ -20,7 +20,7 @@ use crate::storage::{
 
 pub use crate::types::{
     AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CapabilitiesCache,
-    CachedToml, ContractHealth, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
+    CachedToml, ContractConfig, ContractHealth, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
     RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
     SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES, ServiceType,
 };
@@ -409,6 +409,29 @@ impl AnchorKitContract {
             .instance()
             .get::<_, bool>(&StorageKey::IsPaused)
             .unwrap_or(false)
+    }
+
+    /// All admin-tunable settings in a single read for operators/`doctor` (#1567).
+    pub fn get_config(env: Env) -> ContractConfig {
+        let inst = env.storage().instance();
+        ContractConfig {
+            max_page_size: Self::get_max_page_size(env.clone()),
+            replay_window_seconds: inst
+                .get::<_, u64>(&key_replay_window(&env))
+                .unwrap_or(300),
+            clock_skew_seconds: inst
+                .get::<_, u64>(&key_clock_skew(&env))
+                .unwrap_or(60),
+            health_failure_threshold: inst
+                .get::<_, u32>(&key_health_threshold(&env))
+                .unwrap_or(0),
+            rate_limit_config: crate::rate_limiter::RateLimiter::get_config(env.clone()),
+            audit_log_max_size: inst
+                .get::<_, u64>(&StorageKey::AuditLogMaxSize)
+                .unwrap_or(0),
+            attestor_cap: MAX_ATTESTORS,
+            paused: Self::is_paused(env.clone()),
+        }
     }
 
     /// Cheap, non-panicking health snapshot for uptime checks and `doctor` (#1568).
