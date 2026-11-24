@@ -13,6 +13,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -27,6 +30,8 @@ jobs:
     # Non-blocking: a regression is surfaced as a warning, not a build failure.
     # Flip to false once baseline numbers are stable and thresholds are agreed.
     continue-on-error: true
+    permissions:
+      contents: write  # auto-push benchmark baseline to gh-pages
 
     steps:
       - uses: actions/checkout@v4
