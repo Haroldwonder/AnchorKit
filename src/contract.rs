@@ -91,6 +91,25 @@ struct AttestorRegistered(Address);
 #[derive(Clone)]
 struct AttestorRevoked(Address);
 
+/// Self-service key rotation overlap window (#1569).
+#[contracttype]
+#[derive(Clone)]
+struct AttestationKeyRotation {
+    old_key: Bytes,
+    valid_until: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+struct AttestationKeyRotated {
+    attestor: Address,
+    old_key: Bytes,
+    new_key: Bytes,
+    overlap_secs: u64,
+    valid_until: u64,
+    timestamp: u64,
+}
+
 // ---------------------------------------------------------------------------
 // TTLs (in ledgers)
 //
@@ -588,6 +607,72 @@ impl AnchorKitContract {
             .persistent()
             .get(&StorageKey::AttestationKey(issuer))
             .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Self-service key rotation for a registered attestor (#1569).
+    ///
+    /// The attestor authenticates itself, supplies a new 32-byte Ed25519 key and
+    /// an overlap period in seconds. The current key remains valid until the
+    /// overlap ends, allowing in-flight signers to switch keys without downtime.
+    pub fn rotate_attestation_key(
+        env: Env,
+        attestor: Address,
+        new_key: Bytes,
+        overlap_secs: u64,
+    ) {
+        Self::require_not_paused(&env);
+        attestor.require_auth();
+        Self::check_attestor(&env, &attestor);
+        if new_key.len() != 32 {
+            panic_with_error!(&env, ErrorCode::ValidationError);
+        }
+
+        // Retire any key left over from a previous rotation before adding another.
+        Self::prune_expired_attestation_key(&env, &attestor);
+
+        let key = StorageKey::AttestationKey(attestor.clone());
+        let mut keys: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(&env));
+        if keys.is_empty() {
+            panic_with_error!(&env, ErrorCode::MissingSigningKey);
+        }
+        if keys.contains(&new_key) || keys.len() >= sep10_jwt::MAX_VERIFYING_KEYS {
+            panic_with_error!(&env, ErrorCode::ValidationError);
+        }
+        let old_key = keys.get(keys.len() - 1).unwrap();
+        keys.push_back(new_key.clone());
+        env.storage().persistent().set(&key, &keys);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+
+        let timestamp = env.ledger().timestamp();
+        let valid_until = timestamp.saturating_add(overlap_secs);
+        let rotation_key = StorageKey::AttestationKeyRotation(attestor.clone());
+        env.storage().persistent().set(
+            &rotation_key,
+            &AttestationKeyRotation {
+                old_key: old_key.clone(),
+                valid_until,
+            },
+        );
+        env.storage()
+            .persistent()
+            .extend_ttl(&rotation_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.events().publish(
+            (symbol_short!("attestor"), symbol_short!("keyrot")),
+            AttestationKeyRotated {
+                attestor,
+                old_key,
+                new_key,
+                overlap_secs,
+                valid_until,
+                timestamp,
+            },
+        );
     }
 
     /// One-time migration helper (admin-only): copy the issuer's existing SEP-10
@@ -3141,6 +3226,38 @@ impl AnchorKitContract {
         }
     }
 
+    /// Remove the previous key once its self-service overlap window has ended.
+    fn prune_expired_attestation_key(env: &Env, attestor: &Address) {
+        let rotation_key = StorageKey::AttestationKeyRotation(attestor.clone());
+        let Some(rotation) = env
+            .storage()
+            .persistent()
+            .get::<_, AttestationKeyRotation>(&rotation_key)
+        else {
+            return;
+        };
+        if env.ledger().timestamp() < rotation.valid_until {
+            return;
+        }
+        let key = StorageKey::AttestationKey(attestor.clone());
+        let keys: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(env));
+        let mut remaining = Vec::new(env);
+        for existing in keys.iter() {
+            if existing != rotation.old_key {
+                remaining.push_back(existing);
+            }
+        }
+        env.storage().persistent().set(&key, &remaining);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.storage().persistent().remove(&rotation_key);
+    }
+
     fn clear_attestor_revocation(env: &Env, attestor: &Address) {
         let revoked_key = StorageKey::AttestorRevoked(attestor.clone());
         if env.storage().persistent().has(&revoked_key) {
@@ -3320,6 +3437,9 @@ impl AnchorKitContract {
         signature: &Bytes,
     ) {
         use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+        // A rotated-out key is only accepted while its overlap window is open.
+        Self::prune_expired_attestation_key(env, issuer);
 
         // Retrieve the list of registered attestation keys for the issuer.
         let keys: Vec<Bytes> = env
@@ -3617,6 +3737,10 @@ mod attestation_validation_tests;
 #[cfg(test)]
 #[path = "attestor_event_tests.rs"]
 mod attestor_event_tests;
+
+#[cfg(test)]
+#[path = "attestor_key_rotation_tests.rs"]
+mod attestor_key_rotation_tests;
 
 /// Domain separator for attestation signatures; bump on any format change.
 pub const ATTESTATION_SIGNING_DOMAIN: &[u8] = b"anchorkit-attest-v1";
