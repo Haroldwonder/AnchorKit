@@ -37,3 +37,11 @@ jobs:
       - name: Run tests
         run: npm test -- --ci
         working-directory: ui
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: ui
+
+      - name: Run Storybook interaction tests
+        run: npm run test-storybook -- --ci
+        working-directory: ui
