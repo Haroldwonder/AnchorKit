@@ -499,3 +499,6 @@ For questions or issues:
 
 <!-- handsoff-issue-1576 -->
 - #1576: Add an anchorkit revoke command
+
+<!-- handsoff-issue-1577 -->
+- #1577: Add an anchorkit pause / unpause command
