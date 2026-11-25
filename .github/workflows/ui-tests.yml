@@ -37,3 +37,38 @@ jobs:
       - name: Run tests
         run: npm test -- --ci
         working-directory: ui
+
+  bindings-drift:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --features opt
+
+      - name: Install UI dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Regenerate contract bindings
+        run: ./scripts/generate-bindings.sh
+
+      - name: Fail if committed bindings are out of date
+        run: |
+          if ! git diff --quiet -- ui/src/contracts; then
+            echo "::error::Committed contract bindings are out of date. Run ./scripts/generate-bindings.sh and commit the result."
+            git diff -- ui/src/contracts
+            exit 1
+          fi

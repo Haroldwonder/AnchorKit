@@ -1,4 +1,4 @@
-.PHONY: build test testnet-integration lint fmt clean deploy-testnet help build-wasm storybook validate coverage bench
+.PHONY: build test testnet-integration lint fmt clean deploy-testnet help build-wasm storybook validate coverage bench bindings bindings-check
 
 ## build: Build the contract in release mode
 build:
@@ -23,6 +23,18 @@ lint:
 ## build-wasm: Build the contract WASM artifact used for deployment
 build-wasm:
 	cargo build --release --target wasm32-unknown-unknown
+
+## bindings: Regenerate the typed TS contract client from the built WASM
+bindings: build-wasm
+	stellar contract bindings typescript \
+		--wasm target/wasm32-unknown-unknown/release/anchorkit.wasm \
+		--output-dir ui/src/contracts/anchorkit \
+		--overwrite
+
+## bindings-check: Fail if committed bindings drift from the contract spec
+bindings-check: bindings
+	@git diff --exit-code -- ui/src/contracts/anchorkit \
+		|| (echo "Committed contract bindings are out of date. Run 'make bindings' and commit the result." && exit 1)
 
 ## storybook: Run Storybook (UI components)
 storybook:
