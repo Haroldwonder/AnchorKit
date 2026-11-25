@@ -36,6 +36,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "time"], optional = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap = { version = "4.5", features = ["derive"] }
+# OS keyring backend for sourcing CLI secrets without exposing them as flags
+# (issue #1581).
+keyring = "3"
 
 [dev-dependencies]
 soroban-sdk = { version = "26.1.0", features = ["testutils"] }
