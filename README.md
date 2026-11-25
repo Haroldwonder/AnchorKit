@@ -496,3 +496,6 @@ For questions or issues:
 
 <!-- handsoff-issue-1426 -->
 - #1426: submit_attestation_batch has no maximum batch size
+
+<!-- handsoff-issue-1576 -->
+- #1576: Add an anchorkit revoke command
