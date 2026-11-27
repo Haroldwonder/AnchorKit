@@ -39,11 +39,11 @@ export interface UseAnchorHealthOptions {
 
 // --- Validation ---
 
-/** Accepts 56-char Stellar StrKey starting with G (ed25519) or C (contract). */
-export function isValidAttestor(addr: string | null | undefined): addr is string {
-  if (!addr) return false;
-  return /^[GC][A-Z2-7]{55}$/.test(addr);
-}
+/**
+ * Accepts a checksum-valid Stellar StrKey starting with G (ed25519) or C
+ * (contract). Re-exported from the shared `strkey` validator.
+ */
+export { isValidAttestor };
 
 /**
  * Minimum allowed polling interval (ms). Prevents accidental 0/negative values

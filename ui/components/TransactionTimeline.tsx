@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { formatAmount, formatDateTime, formatRelativeTime } from '../src/intl';
 
 import './themes.css';
+import './rtl.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,13 +66,6 @@ function getOrderIndex(s: TxStatus): number { return STATUS_ORDER.indexOf(s); }
 
 function truncateHash(h: string): string {
   return h.length > 16 ? `${h.slice(0, 8)}…${h.slice(-8)}` : h;
-}
-
-function formatTs(ts?: string): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return ts;
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 // ─── Inline styles helpers ────────────────────────────────────────────────────
@@ -267,9 +262,8 @@ export function TransactionTimeline({
         {/* Amount */}
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <span style={{ ...serif, fontSize: 36, fontWeight: 400, color: failed ? "var(--ak-status-failed-color)" : completed ? "var(--ak-status-completed-color)" : "var(--ak-text)", lineHeight: 1 }}>
-            {amount}
+            {formatAmount(amount, asset)}
           </span>
-          <span style={{ ...mono, fontSize: 14, color: "var(--ak-text-muted)", fontWeight: 500 }}>{asset}</span>
         </div>
 
         {/* Status badge */}
@@ -310,7 +304,7 @@ export function TransactionTimeline({
             const isLast = i === steps.length - 1;
             const nextMeta = !isLast ? STATUS_META[steps[i + 1].status] : null;
             const desc = step.event?.description ?? DEFAULT_DESCRIPTIONS[step.status][type];
-            const ts = step.event?.timestamp ? formatTs(step.event.timestamp) : null;
+            const ts = step.event?.timestamp ? formatDateTime(step.event.timestamp, { dateStyle: 'short', timeStyle: 'short' }) : null;
 
             return (
               <div key={step.status} style={{ display: "flex", gap: 16, position: "relative", paddingBottom: isLast ? 0 : 32 }}>
@@ -432,7 +426,7 @@ export function TransactionTimeline({
                       <div>
                         <span style={{ ...mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ak-text-muted)" }}>Timestamp</span>
                         <p style={{ ...mono, fontSize: 11, color: "var(--ak-text)", margin: "3px 0 0" }}>
-                          {step.event?.timestamp ? formatTs(step.event.timestamp) : "—"}
+                          {step.event?.timestamp ? formatDateTime(step.event.timestamp, { dateStyle: 'medium', timeStyle: 'short' }) : "—"}
                         </p>
                       </div>
 
@@ -502,7 +496,7 @@ export function TransactionTimeline({
                   </p>
                   {events.find(e => e.status === "failed")?.timestamp && (
                     <span style={{ ...mono, fontSize: 10, color: "var(--ak-status-failed-color)", marginTop: 4, display: "block" }}>
-                      {formatTs(events.find(e => e.status === "failed")!.timestamp)}
+                      {formatDateTime(events.find(e => e.status === "failed")!.timestamp, { dateStyle: 'medium', timeStyle: 'short' })}
                     </span>
                   )}
                 </div>
@@ -513,7 +507,7 @@ export function TransactionTimeline({
                       {ev?.timestamp && (
                         <div>
                           <span style={{ ...mono, fontSize: 9, letterSpacing: "0.1em", color: "var(--ak-status-failed-color)", textTransform: "uppercase", display: "block", marginBottom: 2 }}>Timestamp</span>
-                          <span style={{ ...mono, fontSize: 11, color: "var(--ak-status-failed-color)" }}>{ev.timestamp}</span>
+                          <span style={{ ...mono, fontSize: 11, color: "var(--ak-status-failed-color)" }}>{formatDateTime(ev.timestamp, { dateStyle: 'medium', timeStyle: 'short' })}</span>
                         </div>
                       )}
                       {ev?.error && (
@@ -559,7 +553,7 @@ export function TransactionTimeline({
                 </p>
                 {events.find(e => e.status === "refunded")?.timestamp && (
                   <span style={{ ...mono, fontSize: 10, color: "var(--ak-status-refunded-color-subtle)", marginTop: 4, display: "block" }}>
-                    {formatTs(events.find(e => e.status === "refunded")!.timestamp)}
+                    {formatDateTime(events.find(e => e.status === "refunded")!.timestamp, { dateStyle: 'medium', timeStyle: 'short' })}
                   </span>
                 )}
               </div>

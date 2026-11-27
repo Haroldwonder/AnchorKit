@@ -397,13 +397,13 @@ mockito = "1.2"  # Mock HTTP for testing
 export SOROBAN_RPC_URL=https://soroban-testnet.stellar.org:443
 
 # 2. Create testnet identity
-soroban config identity generate --global my-audit-test
+stellar keys generate --global my-audit-test
 
 # 3. Fund account (via friendbot or testnet faucet)
 curl "https://friendbot.stellar.org?addr=GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 
 # 4. Deploy test contract
-soroban contract deploy --wasm wasm/anchorkit.wasm ...
+stellar contract deploy --wasm wasm/anchorkit.wasm ...
 ```
 
 ### Run Commands

@@ -24,6 +24,8 @@ export {
   getRateLimitStatus,
   setRateLimitClient,
   resetRateLimitClient,
+  isNotConfiguredError,
+  NOT_CONFIGURED,
   type RateLimitStatusFetcher,
   type RateLimitStatusRaw,
   ContractError,
@@ -60,3 +62,7 @@ export {
   SERVICE_QUOTES,
   SERVICE_KYC,
 } from './useAnchorCapabilities';
+export { useQuotes } from './useQuotes';
+export type { Quote, UseQuotesOptions, UseQuotesResult } from './useQuotes';
+export { useAttestation } from './useAttestation';
+export type { Attestation, UseAttestationResult } from './useAttestation';
