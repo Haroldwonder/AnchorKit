@@ -318,6 +318,10 @@ enum Commands {
         /// Output format: json, text, or table
         #[arg(long, default_value = "text")]
         output: String,
+        /// Target network (testnet, mainnet, futurenet).
+        /// Defaults to the ANCHORKIT_NETWORK env var, then "testnet".
+        #[arg(long, value_parser = validate_network_arg)]
+        network: Option<String>,
     },
     /// Run contract tests
     Test {
@@ -443,8 +447,8 @@ fn main() {
             run_attest(&subject, &payload_hash, session.as_deref(), network.as_deref())
         }
         Commands::Query { transaction_id, output, network } => run_query(&transaction_id, &output, network.as_deref()),
-        Commands::Health { attestor, watch, interval, output } => {
-            run_health(attestor.as_deref(), watch, interval, &output)
+        Commands::Health { attestor, watch, interval, output, network } => {
+            run_health(attestor.as_deref(), watch, interval, &output, network.as_deref())
         }
         Commands::Test { pattern, verbose } => run_test(pattern.as_deref(), verbose),
         Commands::ExportAudit { format, output } => run_export_audit(&format, &output),
@@ -517,8 +521,8 @@ fn run_deploy(network: &str) {
     }
     
     println!("📋 Deployment steps:");
-    println!("  1. Use soroban CLI to deploy:");
-    println!("     soroban contract deploy \\");
+    println!("  1. Use stellar CLI to deploy:");
+    println!("     stellar contract deploy \\");
     println!("       --wasm {} \\", wasm_path);
     println!("       --source <YOUR_ACCOUNT> \\");
     println!("       --network {}", network);
@@ -526,7 +530,7 @@ fn run_deploy(network: &str) {
     println!("  2. Initialize the contract:");
     println!("     anchorkit init --admin <ADMIN_ADDRESS>");
     println!();
-    println!("💡 Note: Actual deployment requires soroban CLI and configured account");
+    println!("💡 Note: Actual deployment requires stellar CLI and configured account");
 }
 
 // ── init ────────────────────────────────────────────────────────────────────
@@ -546,8 +550,8 @@ fn run_init(admin: &str, network_flag: Option<&str>) {
     }
 
     println!("📋 Initialization steps:");
-    println!("  Use soroban CLI to initialize:");
-    println!("  soroban contract invoke \\");
+    println!("  Use stellar CLI to initialize:");
+    println!("  stellar contract invoke \\");
     println!("    --id <CONTRACT_ID> \\");
     println!("    --source {} \\", admin);
     println!("    --network {} \\", network);
@@ -584,8 +588,8 @@ fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>, network_
     }
 
     println!("📋 Attestation steps:");
-    println!("  Use soroban CLI to submit:");
-    println!("  soroban contract invoke \\");
+    println!("  Use stellar CLI to submit:");
+    println!("  stellar contract invoke \\");
     println!("    --id <CONTRACT_ID> \\");
     println!("    --source <ATTESTOR_ACCOUNT> \\");
     println!("    --network {} \\", network);
@@ -699,7 +703,7 @@ fn run_query(transaction_id: &str, output: &str, network_flag: Option<&str>) {
             print_ascii_table(headers, &rows);
             println!("\n💡 Fetch live data:");
             println!(
-                "   soroban contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
+                "   stellar contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
                  --network {} -- get_attestation --attestation-id {}",
                 network, transaction_id
             );
@@ -710,8 +714,8 @@ fn run_query(transaction_id: &str, output: &str, network_flag: Option<&str>) {
             for (k, v) in &record {
                 println!("  {:<16} {}", format!("{}:", k), v);
             }
-            println!("\n📋 Fetch live data with soroban CLI:");
-            println!("  soroban contract invoke \\");
+            println!("\n📋 Fetch live data with stellar CLI:");
+            println!("  stellar contract invoke \\");
             println!("    --id <CONTRACT_ID> \\");
             println!("    --source <ACCOUNT> \\");
             println!("    --network {} \\", network);
@@ -724,8 +728,16 @@ fn run_query(transaction_id: &str, output: &str, network_flag: Option<&str>) {
 
 // ── health ──────────────────────────────────────────────────────────────────
 
-fn run_health(attestor: Option<&str>, watch: bool, interval: u64, output: &str) {
+fn run_health(attestor: Option<&str>, watch: bool, interval: u64, output: &str, network_flag: Option<&str>) {
     validate_output_format(output);
+
+    // Issue #1493: respect the configured network and fail clearly when the
+    // contract / RPC endpoint are not configured instead of printing samples.
+    let network = resolve_network(network_flag);
+    if let Err(e) = health_config(&network) {
+        eprintln!("❌ Health check not configured: {}", e);
+        std::process::exit(1);
+    }
 
     if watch {
         if interval == 0 {
@@ -734,90 +746,91 @@ fn run_health(attestor: Option<&str>, watch: bool, interval: u64, output: &str) 
         }
         eprintln!("👀 Watch mode enabled (interval: {}s) — press Ctrl+C to stop", interval);
         loop {
-            render_health(attestor, output);
+            if let Err(e) = render_health(attestor, output, &network) {
+                eprintln!("❌ {}", e);
+            }
             std::thread::sleep(std::time::Duration::from_secs(interval));
         }
     }
 
-    render_health(attestor, output);
+    if let Err(e) = render_health(attestor, output, &network) {
+        eprintln!("❌ {}", e);
+        std::process::exit(1);
+    }
 }
 
-fn render_health(attestor: Option<&str>, output: &str) {
-    // Simulated health records.  In a real implementation these come from
-    // on-chain queries; the shape maps 1-to-1 with HealthStatus in types.rs.
-    let records: Vec<[&str; 4]> = if let Some(addr) = attestor {
-        vec![[addr, "18", "0", "99"]]
-    } else {
-        vec![
-            ["G…attestor-1", "18",  "0", "99"],
-            ["G…attestor-2", "42",  "1", "97"],
-            ["G…attestor-3", "120", "3", "92"],
-        ]
-    };
+fn render_health(attestor: Option<&str>, output: &str, network: &str) -> Result<(), String> {
+    // Live health records read from the contract's HealthStatus storage
+    // (the data returned by `get_health_status`).
+    let records = get_health_rpc(attestor, network)?;
 
     match output {
         "json" => {
             let json_records: Vec<serde_json::Value> = records
                 .iter()
                 .map(|r| serde_json::json!({
-                    "anchor":               r[0],
-                    "latency_ms":           r[1].parse::<u64>().unwrap_or(0),
-                    "failure_count":        r[2].parse::<u32>().unwrap_or(0),
-                    "availability_percent": r[3].parse::<u32>().unwrap_or(0),
+                    "anchor":               r.anchor,
+                    "latency_ms":           r.latency_ms,
+                    "failure_count":        r.failure_count,
+                    "availability_percent": r.availability_percent,
                 }))
                 .collect();
             println!("{}", serde_json::to_string_pretty(&json_records).unwrap());
         }
         "table" => {
-            println!("🏥 Health status\n");
+            println!("🏥 Health status ({})\n", network);
             let headers = &["Anchor", "Latency (ms)", "Failures", "Availability (%)"];
             let rows: Vec<Vec<String>> = records
                 .iter()
-                .map(|r| r.iter().map(|c| c.to_string()).collect())
+                .map(|r| vec![
+                    r.anchor.clone(),
+                    r.latency_ms.to_string(),
+                    r.failure_count.to_string(),
+                    r.availability_percent.to_string(),
+                ])
                 .collect();
             print_ascii_table(headers, &rows);
-            println!("\n💡 Fetch live data:");
+            if records.is_empty() {
+                println!("  No health status recorded for any attestor");
+            }
             if let Some(addr) = attestor {
+                println!("\n💡 Health score:");
                 println!(
-                    "   soroban contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
-                     --network testnet -- get_anchor_health_score --anchor {}",
-                    addr
-                );
-            } else {
-                println!(
-                    "   soroban contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
-                     --network testnet -- get_all_attestors"
+                    "   stellar contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
+                     --network {} -- get_anchor_health_score --anchor {}",
+                    network, addr
                 );
             }
         }
         _ => {
             // "text" (default)
             if let Some(addr) = attestor {
-                println!("🏥 Health for attestor: {}", addr);
+                println!("🏥 Health for attestor: {} ({})", addr, network);
             } else {
-                println!("🏥 Health for all attestors:");
+                println!("🏥 Health for all attestors ({}):", network);
+            }
+            if records.is_empty() {
+                println!("  No health status recorded for any attestor");
             }
             for r in &records {
                 println!(
                     "  anchor={} latency={}ms failures={} availability={}%",
-                    r[0], r[1], r[2], r[3]
+                    r.anchor, r.latency_ms, r.failure_count, r.availability_percent
                 );
             }
-            println!("\n📋 Fetch live data:");
-            println!("  soroban contract invoke \\");
-            println!("    --id <CONTRACT_ID> \\");
-            println!("    --source <ACCOUNT> \\");
-            println!("    --network testnet \\");
-            println!("    -- \\");
             if let Some(addr) = attestor {
+                println!("\n📋 Health score:");
+                println!("  stellar contract invoke \\");
+                println!("    --id <CONTRACT_ID> \\");
+                println!("    --source <ACCOUNT> \\");
+                println!("    --network {} \\", network);
+                println!("    -- \\");
                 println!("    get_anchor_health_score \\");
                 println!("    --anchor {}", addr);
-            } else {
-                println!("    get_all_attestors");
             }
-            println!("\n💡 Note: Health monitoring requires active contract deployment");
         }
     }
+    Ok(())
 }
 
 // ── test ────────────────────────────────────────────────────────────────────
@@ -1786,9 +1799,9 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
                 vec!["Status".to_string(),   status.to_string()],
             ];
             print_ascii_table(headers, &rows);
-            println!("\n💡 Execute with soroban CLI:");
+            println!("\n💡 Execute with stellar CLI:");
             println!(
-                "   soroban contract invoke --id <CONTRACT_ID> --source <ADMIN_ACCOUNT> \
+                "   stellar contract invoke --id <CONTRACT_ID> --source <ADMIN_ACCOUNT> \
                  --network testnet -- register_attestor --attestor {}",
                 address
             );
@@ -1800,8 +1813,8 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
             if let Some(e) = endpoint { println!("  Endpoint: {}", e); }
 
             println!("\n📋 Registration steps:");
-            println!("  1. Use soroban CLI to register attestor:");
-            println!("     soroban contract invoke \\");
+            println!("  1. Use stellar CLI to register attestor:");
+            println!("     stellar contract invoke \\");
             println!("       --id <CONTRACT_ID> \\");
             println!("       --source <ADMIN_ACCOUNT> \\");
             println!("       --network testnet \\");
@@ -1811,7 +1824,7 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
 
             if let Some(s) = services {
                 println!("\n  2. Configure services:");
-                println!("     soroban contract invoke \\");
+                println!("     stellar contract invoke \\");
                 println!("       --id <CONTRACT_ID> \\");
                 println!("       --source <ADMIN_ACCOUNT> \\");
                 println!("       --network testnet \\");
@@ -1823,7 +1836,7 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
 
             if let Some(e) = endpoint {
                 println!("\n  3. Set endpoint:");
-                println!("     soroban contract invoke \\");
+                println!("     stellar contract invoke \\");
                 println!("       --id <CONTRACT_ID> \\");
                 println!("       --source <ADMIN_ACCOUNT> \\");
                 println!("       --network testnet \\");
@@ -1834,7 +1847,7 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
             }
 
             println!("\n💡 Note: Replace <CONTRACT_ID> and <ADMIN_ACCOUNT> with actual values");
-            println!("🔗 This will create actual on-chain transactions when executed with soroban CLI");
+            println!("🔗 This will create actual on-chain transactions when executed with stellar CLI");
         }
     }
 }

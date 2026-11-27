@@ -7,6 +7,36 @@ on:
     branches: [main, master]
 
 jobs:
+  msrv:
+    name: MSRV (rust-version from Cargo.toml)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check rust-version matches rust-toolchain.toml
+        id: msrv
+        run: |
+          msrv=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)
+          pinned=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)
+          echo "Cargo.toml rust-version=$msrv, rust-toolchain.toml channel=$pinned"
+          if [ "$msrv" != "$pinned" ]; then
+            echo "::error::rust-version ($msrv) must equal rust-toolchain.toml channel ($pinned)"
+            exit 1
+          fi
+          echo "version=$msrv" >> "$GITHUB_OUTPUT"
+
+      - name: Install exact MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - name: cargo check (locked) with MSRV
+        run: cargo +${{ steps.msrv.outputs.version }} check --locked --all-targets
+
+      - name: cargo check fuzz/ (locked) with MSRV
+        working-directory: fuzz
+        run: cargo +${{ steps.msrv.outputs.version }} check --locked
+
   build-and-test:
     runs-on: ubuntu-latest
 

@@ -24,13 +24,16 @@ export {
   getRateLimitStatus,
   setRateLimitClient,
   resetRateLimitClient,
+  isNotConfiguredError,
+  NOT_CONFIGURED,
   type RateLimitStatusFetcher,
   type RateLimitStatusRaw,
   ContractError,
 } from './contractClient';
 export { useSep10Auth } from './useSep10Auth';
 export type { Sep10AuthAdapters, UseSep10AuthResult } from './useSep10Auth';
-export { useAnchorHealth, isValidAttestor } from './useAnchorHealth';
+export { useAnchorHealth } from './useAnchorHealth';
+export { isValidAttestor, isValidEd25519PublicKey, isValidContract } from './strkey';
 export type { GetHealthScoreFn, UseAnchorHealthResult } from './useAnchorHealth';
 export { useTransactionStatus } from './useTransactionStatus';
 export type {
@@ -54,3 +57,7 @@ export {
   SERVICE_QUOTES,
   SERVICE_KYC,
 } from './useAnchorCapabilities';
+export { useQuotes } from './useQuotes';
+export type { Quote, UseQuotesOptions, UseQuotesResult } from './useQuotes';
+export { useAttestation } from './useAttestation';
+export type { Attestation, UseAttestationResult } from './useAttestation';
