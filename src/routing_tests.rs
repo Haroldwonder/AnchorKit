@@ -926,6 +926,61 @@ mod routing_tests {
         assert_eq!(client.get_anchor_jurisdiction(&anchor), None);
     }
 
+    #[test]
+    fn test_set_anchor_jurisdiction_accepts_alpha3_codes() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        for code in ["USA", "GBR", "DEU", "NGA"] {
+            client.set_anchor_jurisdiction(&anchor, &jurisdiction(&env, code));
+            assert_eq!(
+                client.get_anchor_jurisdiction(&anchor),
+                jurisdiction(&env, code)
+            );
+        }
+    }
+
+    #[test]
+    fn test_set_anchor_jurisdiction_rejects_invalid_codes() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        for code in ["usa", "Usa", "US", "USAA", "", "United States", "US1", "U A", "ÜSA"] {
+            let result = client.try_set_anchor_jurisdiction(&anchor, &jurisdiction(&env, code));
+            assert_eq!(
+                result.unwrap_err().unwrap(),
+                crate::errors::ErrorCode::ValidationError,
+                "expected ValidationError for jurisdiction {:?}",
+                code
+            );
+            assert_eq!(client.get_anchor_jurisdiction(&anchor), None);
+        }
+    }
+
+    #[test]
+    fn test_set_anchor_jurisdiction_invalid_code_keeps_previous_value() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        client.set_anchor_jurisdiction(&anchor, &jurisdiction(&env, "USA"));
+
+        let result = client.try_set_anchor_jurisdiction(&anchor, &jurisdiction(&env, "usa"));
+        assert!(result.is_err());
+        assert_eq!(
+            client.get_anchor_jurisdiction(&anchor),
+            jurisdiction(&env, "USA")
+        );
+    }
+
     fn make_lowest_fee_options(env: &Env) -> RoutingOptions {
         let mut strategy = Vec::new(env);
         strategy.push_back(Symbol::new(env, "LowestFee"));
@@ -1034,7 +1089,7 @@ mod routing_tests {
         register_anchor(&env, &client, &us_anchor);
         register_anchor(&env, &client, &eu_anchor);
         client.set_anchor_jurisdiction(&us_anchor, &jurisdiction(&env, "USA"));
-        client.set_anchor_jurisdiction(&eu_anchor, &jurisdiction(&env, "EU"));
+        client.set_anchor_jurisdiction(&eu_anchor, &jurisdiction(&env, "DEU"));
         submit_standard_quote(&env, &client, &us_anchor, 10);
         submit_standard_quote(&env, &client, &eu_anchor, 50);
 
@@ -1046,7 +1101,7 @@ mod routing_tests {
             min_reputation: 0,
             max_anchors: 0,
             require_kyc: false,
-            jurisdiction: jurisdiction(&env, "EU"),
+            jurisdiction: jurisdiction(&env, "DEU"),
             fallback_chain: Vec::new(&env),
         };
 

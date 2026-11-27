@@ -1,0 +1,5 @@
+# MSRV-aware dependency resolution (#1490): `cargo update` prefers versions
+# whose `rust-version` is compatible with ours (Cargo.toml `rust-version`),
+# so a dependency bump can no longer silently require a newer compiler.
+[resolver]
+incompatible-rust-versions = "fallback"

@@ -333,7 +333,7 @@ fn test_config_directory_path() {
 
 #[test]
 fn test_validator_script_path() {
-    let validator = Path::new("validate_config_strict.py");
+    let validator = Path::new("scripts/validate_config_strict.py");
     assert_eq!(validator.extension().and_then(|s| s.to_str()), Some("py"));
 }
 

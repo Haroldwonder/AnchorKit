@@ -1,10 +1,18 @@
-use soroban_sdk::{contracttype, Address, Bytes, String, Symbol};
+use soroban_sdk::{contracttype, Address, Bytes, BytesN, String, Symbol};
 
 #[contracttype]
 #[derive(Clone)]
 pub struct SessionCreatedEvent {
     pub session_id: u64,
     pub initiator: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct QuoteCancelledEvent {
+    pub quote_id: u64,
+    pub anchor: Address,
     pub timestamp: u64,
 }
 
@@ -141,6 +149,24 @@ pub struct ContractUnpaused {
 // #1361 – Admin governance events (previously silent)
 // ---------------------------------------------------------------------------
 
+/// Emitted by `suspend_attestor` (#1570).
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestorSuspended {
+    pub attestor: Address,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted by `unsuspend_attestor` (#1570).
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestorUnsuspended {
+    pub attestor: Address,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
 /// Emitted by `set_health_failure_threshold`.
 #[contracttype]
 #[derive(Clone)]
@@ -169,6 +195,19 @@ pub struct AnchorMetadataSet {
     pub reputation_score: u32,
     pub uptime_percentage: u32,
     pub is_active: bool,
+    pub timestamp: u64,
+}
+
+/// Emitted by `upgrade` after the contract WASM has been replaced.
+#[contracttype]
+#[derive(Clone)]
+pub struct ContractUpgraded {
+    /// Contract version before the upgrade.
+    pub old_version: u32,
+    /// Contract version after the upgrade (`old_version + 1`).
+    pub new_version: u32,
+    /// Hash of the installed WASM the contract now runs.
+    pub new_wasm_hash: BytesN<32>,
     pub timestamp: u64,
 }
 

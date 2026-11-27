@@ -51,3 +51,7 @@ export type { EmptyStateProps } from './ui/EmptyState';
 
 export { AttestationPanel } from './playground/AttestationPanel';
 export type { AttestationPanelProps, AttestationEntry } from './playground/AttestationPanel';
+export { AttestationCard } from './AttestationCard';
+export type { AttestationCardProps } from './AttestationCard';
+export { QuoteComparison } from './QuoteComparison';
+export type { QuoteComparisonProps, Quote as QuoteComparisonQuote } from './QuoteComparison';
