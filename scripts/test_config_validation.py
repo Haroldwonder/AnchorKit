@@ -770,7 +770,7 @@ def main():
         return
     
     if args.validate_all:
-        config_dir = Path('configs')
+        config_dir = Path(__file__).resolve().parent.parent / "configs"
         if not config_dir.exists():
             print(f"Error: configs directory not found")
             sys.exit(1)

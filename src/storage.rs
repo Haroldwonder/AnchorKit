@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Bytes};
+use soroban_sdk::{contracttype, Address, Bytes, String};
 
 /// Typed storage keys for all contract state.
 ///
@@ -57,6 +57,12 @@ pub enum StorageKey {
     Quote(Address, u64),
     /// Latest quote ID for an anchor (persistent).
     LatestQuote(Address),
+    /// Cancellation marker for an anchor's quote (persistent, #1508).
+    QuoteCancelled(Address, u64),
+    /// Index of an anchor's active quote IDs, pruned on expiry/cancel (persistent, #1510).
+    AnchorQuotes(Address),
+    /// Anchors whose latest quote covers `(base_asset, quote_asset)` (persistent, #1511).
+    PairAnchors(String, String),
     /// Metadata cache for an anchor (temporary).
     MetadataCache(Address),
     /// Capabilities cache for an anchor (temporary).
@@ -87,6 +93,8 @@ pub enum StorageKey {
     CredentialPolicy(Address),
     /// Stored credential for an attestor (persistent).
     StoredCredential(Address),
+    /// Contract code version, bumped by every `upgrade` (instance storage).
+    ContractVersion,
     // --- Instance-storage counters (stored as Vec<Symbol> keys) ---
     // These are kept as plain symbol_short! vecs because instance storage
     // requires a Vec<Symbol> key; they are defined as named constants below.

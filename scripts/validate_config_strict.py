@@ -273,7 +273,7 @@ def main():
         sys.exit(1)
     
     config_path = sys.argv[1]
-    schema_path = sys.argv[2] if len(sys.argv) > 2 else "config_schema.json"
+    schema_path = sys.argv[2] if len(sys.argv) > 2 else str(Path(__file__).resolve().parent.parent / "config_schema.json")
     
     if not Path(config_path).exists():
         print(f"❌ Config file not found: {config_path}")

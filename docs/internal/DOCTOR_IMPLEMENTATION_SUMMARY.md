@@ -30,7 +30,7 @@ Implemented the `anchorkit doctor` command - an automated environment diagnostic
    - Added environment diagnostics section
    - Reference to detailed documentation
 
-5. **test_doctor.sh** (NEW)
+5. **scripts/test_doctor.sh** (NEW)
    - Test script demonstrating doctor command
    - Validates both success and failure scenarios
 
@@ -148,7 +148,7 @@ cargo run --bin anchorkit -- doctor
 ### Automated Testing
 ```bash
 # Run test script
-./test_doctor.sh
+./scripts/test_doctor.sh
 ```
 
 ## Acceptance Criteria

@@ -2,8 +2,11 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useSep10Auth } from "../hooks/useSep10Auth";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { SkeletonLoader } from "./SkeletonLoader";
+import { useTranslate } from '../src/i18n';
+import { verifyChallenge } from '../src/sep10Challenge';
 
 import './themes.css';
+import './rtl.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Step =
@@ -56,11 +59,11 @@ const mockJWT = () => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ─── Step Config ──────────────────────────────────────────────────────────────
-const STEPS = [
-  { id: "connect", label: "Connect Wallet", icon: "◎", num: 1 },
-  { id: "challenge", label: "Fetch Challenge", icon: "⟁", num: 2 },
-  { id: "sign", label: "Sign Challenge", icon: "✦", num: 3 },
-  { id: "token", label: "Auth Token", icon: "◈", num: 4 },
+const STEP_KEYS = [
+  { id: "connect", labelKey: 'common.connectWallet', icon: "◎", num: 1 },
+  { id: "challenge", labelKey: 'common.fetchChallenge', icon: "⟁", num: 2 },
+  { id: "sign", labelKey: 'common.signChallenge', icon: "✦", num: 3 },
+  { id: "token", labelKey: 'common.token', icon: "◈", num: 4 },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -323,7 +326,7 @@ function TokenDisplay({ jwt }: { jwt: string }) {
 
 // Exported so the expiry/validity logic can be tested directly; rendering the
 // full SEP10AuthFlow flow to reach it would require stubbing the SEP-10 server.
-export function AuthStatusBadge({ wallet, jwt }: { wallet: WalletInfo; jwt: string }) {
+export function AuthStatusBadge({ wallet, jwt, t }: { wallet: WalletInfo; jwt: string; t: (key: string) => string }) {
   // One clock drives the whole badge. Previously `age` and `isExpired` were
   // separate state updated by two overlapping intervals.
   const [now, setNow] = useState(() => Date.now());
@@ -379,10 +382,10 @@ export function AuthStatusBadge({ wallet, jwt }: { wallet: WalletInfo; jwt: stri
   const statusColor = isExpired ? "#ff3670" : expiresIn < 3600 ? "#ff8c00" : "#00ff9d";
   const statusBg = isExpired ? "rgba(255,54,112,0.06)" : expiresIn < 3600 ? "rgba(255,140,0,0.06)" : "rgba(0,255,157,0.06)";
   const statusBorder = isExpired ? "rgba(255,54,112,0.3)" : expiresIn < 3600 ? "rgba(255,140,0,0.3)" : "rgba(0,255,157,0.3)";
-  const statusLabel = isExpired ? "EXPIRED" : "AUTHENTICATED";
+  const statusLabel = isExpired ? t('common.expired') : t('common.authenticated');
   const statusSubtext = isExpired
-    ? "Token has expired · Re-authenticate required"
-    : "Session active · SEP-10 verified";
+    ? t('common.reauthenticateRequired')
+    : t('common.sessionActive');
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -531,6 +534,8 @@ export function AuthStatusBadge({ wallet, jwt }: { wallet: WalletInfo; jwt: stri
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function SEP10AuthFlow() {
+  const t = useTranslate();
+
   const [step, setStep] = useState<Step>("idle");
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [challenge, setChallenge] = useState<string | null>(null);
@@ -550,6 +555,10 @@ export default function SEP10AuthFlow() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [log]);
 
+  // Server signing key from stellar.toml (in real app, fetch from stellar.toml)
+  // For demo, we'll use a placeholder - in production this should come from the anchor's stellar.toml
+  const serverSigningKey = "G..."; // Placeholder - replace with actual key from stellar.toml
+
   // ── useSep10Auth ──────────────────────────────────────────────────────────
   // Each adapter reflects the mock demo logic while also providing the values
   // the hook needs to progress through the SEP-10 protocol.
@@ -562,26 +571,35 @@ export default function SEP10AuthFlow() {
   } = useSep10Auth(domain, {
     // Returns the challenge XDR already fetched by the "Fetch Challenge" step.
     fetchChallenge: async (_d: string, _addr: string): Promise<string> => {
-      if (!challenge) throw new Error("Challenge not yet fetched");
+      if (!challenge) throw new Error(t('common.challengeNotFetched'));
       return challenge;
     },
     // Returns the signed XDR already produced by the "Sign Challenge" step.
     signChallenge: async (_xdr: string): Promise<string> => {
-      if (!signedXdr) throw new Error("Challenge not yet signed");
+      if (!signedXdr) throw new Error(t('common.challengeNotSigned'));
       return signedXdr;
     },
     // Submits to the anchor and receives the JWT. This is where the actual
     // network call (or mock) lives — the only step not yet done by the UI.
     submitChallenge: async (d: string, _signed: string): Promise<string> => {
-      addLog(`POST https://${d}/auth`);
-      addLog("Sending signed XDR...");
+      addLog(`${t('common.postAuth')}https://${d}/auth`);
+      addLog(t('common.sendingSignedXdr'));
       await sleep(700);
-      addLog("Response: 200 OK");
+      addLog(t('common.responseOk'));
       await sleep(300);
       const token = mockJWT();
-      addLog("JWT received ✓");
-      addLog("Auth session established — expires in 24h");
+      addLog(t('common.jwtReceivedCheck'));
+      addLog(t('common.authSessionEstablishedCheck'));
       return token;
+    },
+  }, {
+    // Challenge verification config
+    serverSigningKey,
+    homeDomain: domain,
+    webAuthDomain: domain,
+    enabled: !!serverSigningKey && serverSigningKey !== "G...",
+    onVerificationFailed: (error) => {
+      addLog(`${t('common.error')}: ${error}`);
     },
   });
 
@@ -591,6 +609,12 @@ export default function SEP10AuthFlow() {
   }, [jwt]);
 
   const NEON = "#00e5ff";
+
+  // Translated steps
+  const STEPS = STEP_KEYS.map(s => ({
+    ...s,
+    label: t(s.labelKey),
+  }));
 
   const completedSteps = (() => {
     const map: Record<string, boolean> = {};
@@ -614,14 +638,14 @@ export default function SEP10AuthFlow() {
   // ── Step handlers ──
   const connectWallet = async () => {
     setLoading(true);
-    addLog("Requesting wallet connection...");
+    addLog(t('common.requestingWalletConnection'));
     await sleep(900);
-    addLog("Scanning for available wallets...");
+    addLog(t('common.scanningWallets'));
     await sleep(700);
     const addr = mockAddress();
-    addLog(`Wallet found: ${addr.slice(0, 8)}...`);
+    addLog(`${t('common.walletFound')} ${addr.slice(0, 8)}...`);
     await sleep(400);
-    addLog("Connection approved ✓");
+    addLog(t('common.connectionApproved'));
     setWallet({ address: addr, network: "Testnet" });
     setStep("challenge");
     setLoading(false);
@@ -633,7 +657,7 @@ export default function SEP10AuthFlow() {
       `GET https://${domain}/auth?account=${wallet?.address.slice(0, 8)}...`,
     );
     await sleep(600);
-    addLog("Response: 200 OK");
+    addLog(t('common.responseOk'));
     await sleep(300);
     const xdr = mockXDR();
     addLog(`Challenge XDR received (${xdr.length} chars)`);
@@ -644,12 +668,12 @@ export default function SEP10AuthFlow() {
 
   const signChallenge = async () => {
     setLoading(true);
-    addLog("Sending challenge XDR to wallet for signing...");
+    addLog(t('common.sendingChallengeToWallet'));
     await sleep(800);
-    addLog("User approved signature request");
+    addLog(t('common.userApprovedSignature'));
     await sleep(600);
     const signed = mockXDR();
-    addLog("Transaction signed with ED25519 key ✓");
+    addLog(t('common.transactionSigned'));
     setSignedXdr(signed);
     setStep("token");
     setLoading(false);
@@ -677,9 +701,9 @@ export default function SEP10AuthFlow() {
   const stepCards = [
     {
       id: "connect",
-      title: "Connect Wallet",
+      title: t('common.connectWallet'),
       icon: "◎",
-      subtitle: "Link your Stellar keypair",
+      subtitle: t('common.linkStellarKeypair'),
       ready: step === "idle" || step === "connect",
       done: !!wallet,
       content: wallet ? (
@@ -757,24 +781,23 @@ export default function SEP10AuthFlow() {
               marginBottom: 14,
             }}
           >
-            Connect your Stellar wallet to begin the SEP-10 authentication
-            handshake. Your private key never leaves your wallet.
+            {t('common.privateKeyNeverLeaves')}
           </p>
           <button
             onClick={connectWallet}
             disabled={loading}
             style={btnStyle(NEON, loading)}
           >
-            {loading ? <Spinner /> : <>{walletIcon} Connect Wallet</>}
+            {loading ? <Spinner /> : <>{walletIcon} {t('common.connectWallet')}</>}
           </button>
         </div>
       ),
     },
     {
       id: "challenge",
-      title: "Fetch Challenge",
+      title: t('common.fetchChallenge'),
       icon: "⟁",
-      subtitle: "Server issues a signed transaction",
+      subtitle: t('common.serverIssuesChallenge'),
       ready: !!wallet,
       done: !!challenge,
       content: challenge ? (
@@ -787,7 +810,7 @@ export default function SEP10AuthFlow() {
               marginBottom: 4,
             }}
           >
-            CHALLENGE XDR
+            {t('common.challengeXdr')}
           </div>
           <div
             style={{
@@ -807,7 +830,7 @@ export default function SEP10AuthFlow() {
             {challenge.slice(0, 160)}…
           </div>
           <div style={{ fontSize: 9, color: "var(--ak-text-muted)" }}>
-            Received from{" "}
+            {t('common.receivedFrom')}{" "}
             <span style={{ color: "var(--ak-text-muted)" }}>{domain}/auth</span>
           </div>
         </div>
@@ -835,7 +858,7 @@ export default function SEP10AuthFlow() {
               disabled={loading || !wallet}
               style={btnStyle(NEON, loading || !wallet)}
             >
-              <>{fetchIcon} Fetch Challenge</>
+              <>{fetchIcon} {t('common.fetchChallenge')}</>
             </button>
           )}
         </div>
@@ -843,9 +866,9 @@ export default function SEP10AuthFlow() {
     },
     {
       id: "sign",
-      title: "Sign Challenge",
+      title: t('common.signChallenge'),
       icon: "✦",
-      subtitle: "Prove keypair ownership",
+      subtitle: t('common.proveKeypairOwnership'),
       ready: !!challenge,
       done: !!signedXdr,
       content: signedXdr ? (
@@ -858,7 +881,7 @@ export default function SEP10AuthFlow() {
               marginBottom: 4,
             }}
           >
-            SIGNED XDR
+            {t('common.signedXdr')}
           </div>
           <div
             style={{
@@ -886,7 +909,7 @@ export default function SEP10AuthFlow() {
               color: "#00ff9d",
             }}
           >
-            <span>✓</span> ED25519 signature applied
+            <span>✓</span> {t('common.ed25519SignatureApplied')}
           </div>
         </div>
       ) : (
@@ -908,16 +931,16 @@ export default function SEP10AuthFlow() {
             disabled={loading || !challenge}
             style={btnStyle("#7effc7", loading || !challenge)}
           >
-            {loading ? <Spinner /> : <>{signIcon} Sign with Wallet</>}
+            {loading ? <Spinner /> : <>{signIcon} {t('common.signChallenge')}</>}
           </button>
         </div>
       ),
     },
     {
       id: "token",
-      title: "Auth Token",
+      title: t('common.token'),
       icon: "◈",
-      subtitle: "Receive your JWT bearer token",
+      subtitle: t('common.submitGetToken'),
       ready: !!signedXdr,
       done: !!jwt,
       content: jwt ? (
@@ -947,7 +970,7 @@ export default function SEP10AuthFlow() {
             disabled={loading || !signedXdr}
             style={btnStyle("#ff7eb3", loading || !signedXdr)}
           >
-            {loading ? <Spinner /> : <>{submitIcon} Submit & Get Token</>}
+            {loading ? <Spinner /> : <>{submitIcon} {t('common.submitGetToken')}</>}
           </button>
         </div>
       ),
@@ -1080,7 +1103,7 @@ export default function SEP10AuthFlow() {
                 lineHeight: 1.2,
               }}
             >
-              Authentication
+              {t('common.authentication')}
               <br />
               <span style={{ color: NEON, textShadow: `0 0 30px ${NEON}60` }}>
                 Flow
@@ -1133,7 +1156,7 @@ export default function SEP10AuthFlow() {
                   fontFamily: "inherit",
                   width: 200,
                 }}
-                placeholder="anchor.example.com"
+                placeholder={t('common.placeholderAnchorDomain')}
               />
             </div>
             {step !== "idle" && (
@@ -1154,7 +1177,7 @@ export default function SEP10AuthFlow() {
                   transition: "all 0.2s",
                 }}
               >
-                ↺ RESET
+                ↺ {t('common.reset')}
               </button>
             )}
           </div>
@@ -1241,7 +1264,7 @@ export default function SEP10AuthFlow() {
                     letterSpacing: "0.1em",
                   }}
                 >
-                  STEP {s.num}
+                  {t('common.step')} {s.num}
                 </div>
               </div>
             );
@@ -1440,7 +1463,7 @@ export default function SEP10AuthFlow() {
                     letterSpacing: "0.06em",
                   }}
                 >
-                  Auth Status
+                  {t('common.authStatus')}
                 </div>
                 <div
                   style={{
@@ -1450,11 +1473,11 @@ export default function SEP10AuthFlow() {
                     letterSpacing: "0.1em",
                   }}
                 >
-                  Live session monitor
+                  {t('common.liveSessionMonitor')}
                 </div>
               </div>
             </div>
-            <AuthStatusBadge wallet={wallet} jwt={jwt} />
+            <AuthStatusBadge wallet={wallet} jwt={jwt} t={t} />
           </div>
         )}
 
