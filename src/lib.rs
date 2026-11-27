@@ -17,7 +17,7 @@ pub mod transaction_state_tracker;
 pub mod transport;
 mod types;
 pub mod sep6;
-pub mod sep38;
+pub mod sep31;
 
 pub use errors::{AnchorKitError, ErrorCode};
 
@@ -58,6 +58,16 @@ pub use sep38::{
     Sep38PricesResponse, Sep38Price,
     Sep38PriceResponse, Sep38Fee, Sep38FeeDetail,
     Sep38QuoteResponse,
+};
+pub use sep31::{
+    get_sep31_info, initiate_sep31_transaction, get_sep31_transaction,
+    update_sep31_transaction, set_sep31_callback, handle_sep31_http_status,
+    RawSep31InfoResponse, RawSep31Asset, RawSep31Field,
+    RawSep31TransactionRequest, RawSep31TransactionResponse,
+    RawSep31TransactionStatusResponse, RawSep31UpdateRequest, RawSep31CallbackRequest,
+    Sep31InfoResponse, Sep31Asset, Sep31Field,
+    Sep31TransactionResponse, Sep31TransactionStatusResponse,
+    Sep31TransactionStatus,
 };
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::Session;

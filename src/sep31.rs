@@ -1,1180 +1,75 @@
-//! SEP-31 Cross-Border Payments API client for sending anchors.
+//! SEP-31 Cross-Border Payments Service Layer
 //!
-//! A sending anchor talks to a receiving anchor's `DIRECT_PAYMENT_SERVER`.
-//! This module provides a small, typed, transport-agnostic client for the
-//! endpoints involved in that flow:
+//! Implements the sending-anchor client for SEP-31: the protocol used to send
+//! payments directly between two anchors on behalf of a retail sender and
+//! receiver.
 //!
-//! | Endpoint                        | Client method                       |
-//! |---------------------------------|-------------------------------------|
-//! | `GET /info`                     | [`Sep31Client::get_info`]           |
-//! | `POST /transactions`            | [`Sep31Client::create_transaction`] |
-//! | `GET /transactions/:id`         | [`Sep31Client::get_transaction`]    |
-//! | `PATCH /transactions/:id`       | [`Sep31Client::patch_transaction`]  |
-//! | `PUT /transactions/:id/callback`| [`Sep31Client::register_callback`]  |
-//! | callback `POST`                 | [`Sep31Callback`]                   |
+//! | Endpoint                              | Function                            |
+//! |---------------------------------------|-------------------------------------|
+//! | `GET  /info`                          | [`get_sep31_info`]                  |
+//! | `POST /transactions`                  | [`initiate_sep31_transaction`]      |
+//! | `GET  /transactions/:id`              | [`get_sep31_transaction`]           |
+//! | `PUT  /transactions/:id`              | [`update_sep31_transaction`]        |
+//! | `PUT  /transactions/:id/callback`     | [`set_sep31_callback`]              |
 //!
-//! # Authentication
+//! # Design
 //!
-//! SEP-31 requires SEP-10 Web Authentication on every request. Callers obtain
-//! a JWT through the SEP-10 flow and wrap it in [`Sep31Auth`]; the client adds
-//! `Authorization: Bearer <jwt>` to each request. A missing or malformed token
-//! is rejected locally, and a `401`/`403` from the anchor is surfaced as
-//! [`ErrorCode::InvalidSep10Token`].
+//! All functions in this module follow the same pattern used by [`crate::sep6`]:
 //!
-//! # SEP-12 customer references
+//! - Callers supply raw HTTP response data via `Raw*` input structs.
+//! - Each function validates inputs and returns a normalized output struct.
+//! - No HTTP calls are made inside this module.
 //!
-//! `POST /transactions` carries the IDs returned by SEP-12 `PUT /customer`
-//! for the sending and receiving clients. [`Sep31CustomerReference`] keeps the
-//! customer ID together with the optional SEP-12 `type` that was used to
-//! register it. [`Sep31Info`] also exposes the customer types advertised by
-//! the anchor so callers know which SEP-12 type to request.
-//!
-//! # Transport
-//!
-//! The module makes no HTTP calls itself. A caller supplies a
-//! [`Sep31Transport`], which keeps it usable from `std` HTTP backends as well
-//! as tests using [`MockSep31Transport`]. All amounts are represented as
-//! decimal strings so no floating-point rounding is introduced by the client.
+//! SEP-10 authentication is enforced by the caller — the SEP-10 JWT must be
+//! obtained via [`crate::sep10_jwt::verify_sep10_jwt`] and passed as the
+//! `Authorization: Bearer <jwt>` header on every request. Customer references
+//! (`sender_id`, `receiver_id`) correspond to SEP-12 KYC identifiers.
 
 extern crate alloc;
-
-use alloc::boxed::Box;
-use alloc::format;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec::Vec;
 
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use base64::Engine as _;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-
 use crate::errors::{Error, ErrorCode};
-use crate::validate_anchor_domain;
 
-// ── Status ────────────────────────────────────────────────────────────────────
+// ── Validation helpers ────────────────────────────────────────────────────────
 
-/// SEP-31 transaction status values.
-///
-/// The known variants are the statuses defined by SEP-31.
-/// [`Unknown`](Self::Unknown) preserves a new value returned by an anchor so
-/// parsing never discards information.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Sep31Status {
-    /// Awaiting the Stellar payment from the sending anchor.
-    PendingSender,
-    /// Submitted to Stellar but not yet confirmed.
-    PendingStellar,
-    /// SEP-9 KYC values need to be updated through SEP-12.
-    PendingCustomerInfoUpdate,
-    /// Deprecated per-transaction `fields` need to be updated through PATCH.
-    PendingTransactionInfoUpdate,
-    /// The receiving anchor is processing the payment.
-    PendingReceiver,
-    /// Submitted to the external network but not yet confirmed.
-    PendingExternal,
-    /// Funds were delivered to the receiving client.
-    Completed,
-    /// Funds were refunded to the sending anchor.
-    Refunded,
-    /// The transaction was abandoned by the sending client.
-    Expired,
-    /// Catch-all error status.
-    Error,
-    /// A status value not yet known to this client.
-    Unknown(String),
+/// Stellar asset code: 1–12 alphanumeric characters.
+fn is_valid_asset_code(s: &str) -> bool {
+    let len = s.len();
+    len >= 1 && len <= 12 && s.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
-impl Sep31Status {
-    /// Parse a SEP-31 status string.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Self {
-        match s.trim() {
-            "pending_sender" => Self::PendingSender,
-            "pending_stellar" => Self::PendingStellar,
-            "pending_customer_info_update" => Self::PendingCustomerInfoUpdate,
-            "pending_transaction_info_update" => Self::PendingTransactionInfoUpdate,
-            "pending_receiver" => Self::PendingReceiver,
-            "pending_external" => Self::PendingExternal,
-            "completed" => Self::Completed,
-            "refunded" => Self::Refunded,
-            "expired" => Self::Expired,
-            "error" => Self::Error,
-            _ => Self::Unknown(String::from(s)),
-        }
-    }
-
-    /// Canonical SEP-31 wire representation of this status.
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::PendingSender => "pending_sender",
-            Self::PendingStellar => "pending_stellar",
-            Self::PendingCustomerInfoUpdate => "pending_customer_info_update",
-            Self::PendingTransactionInfoUpdate => "pending_transaction_info_update",
-            Self::PendingReceiver => "pending_receiver",
-            Self::PendingExternal => "pending_external",
-            Self::Completed => "completed",
-            Self::Refunded => "refunded",
-            Self::Expired => "expired",
-            Self::Error => "error",
-            Self::Unknown(s) => s.as_str(),
-        }
-    }
-
-    /// `true` when no further status change is expected.
-    pub fn is_terminal(&self) -> bool {
-        matches!(
-            self,
-            Self::Completed | Self::Refunded | Self::Expired | Self::Error
-        )
-    }
-
-    /// `true` when the sending anchor must collect updated KYC or transaction
-    /// information before the payment can continue.
-    pub fn requires_info_update(&self) -> bool {
-        matches!(
-            self,
-            Self::PendingCustomerInfoUpdate | Self::PendingTransactionInfoUpdate
-        )
-    }
-}
-
-// ── Info ──────────────────────────────────────────────────────────────────────
-
-/// An asset the receiving anchor accepts in `GET /info`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Sep31AssetInfo {
-    pub asset_code: String,
-    pub funding_methods: Vec<String>,
-    pub min_amount: Option<String>,
-    pub max_amount: Option<String>,
-    pub fee_fixed: Option<String>,
-    pub fee_percent: Option<String>,
-    pub quotes_supported: bool,
-    pub quotes_required: bool,
-}
-
-impl Sep31AssetInfo {
-    pub fn new(asset_code: &str, funding_methods: &[&str]) -> Self {
-        Self {
-            asset_code: String::from(asset_code),
-            funding_methods: funding_methods.iter().map(|s| String::from(*s)).collect(),
-            min_amount: None,
-            max_amount: None,
-            fee_fixed: None,
-            fee_percent: None,
-            quotes_supported: false,
-            quotes_required: false,
-        }
-    }
-
-    pub fn with_limits(mut self, min: Option<&str>, max: Option<&str>) -> Self {
-        self.min_amount = min.map(String::from);
-        self.max_amount = max.map(String::from);
-        self
-    }
-}
-
-/// Typed result of `GET /info`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Sep31Info {
-    /// Stellar assets the receiving anchor can receive.
-    pub receive: Vec<Sep31AssetInfo>,
-    /// SEP-12 customer types accepted for the sending client.
-    pub sender_customer_types: Vec<String>,
-    /// SEP-12 customer types accepted for the receiving client.
-    pub receiver_customer_types: Vec<String>,
-}
-
-impl Sep31Info {
-    /// `true` when the anchor advertises a SEP-12 type for the given role.
-    pub fn requires_customer(&self, sender: bool) -> bool {
-        if sender {
-            !self.sender_customer_types.is_empty()
-        } else {
-            !self.receiver_customer_types.is_empty()
-        }
-    }
-}
-
-/// Raw `GET /info` body returned by a [`Sep31Transport`].
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RawSep31InfoResponse {
-    pub status_code: u16,
-    pub receive: Vec<Sep31AssetInfo>,
-    pub sender_customer_types: Vec<String>,
-    pub receiver_customer_types: Vec<String>,
-}
-
-impl RawSep31InfoResponse {
-    pub fn new(receive: Vec<Sep31AssetInfo>) -> Self {
-        Self {
-            status_code: 200,
-            receive,
-            sender_customer_types: Vec::new(),
-            receiver_customer_types: Vec::new(),
-        }
-    }
-
-    pub fn with_customer_types(mut self, sender_types: &[&str], receiver_types: &[&str]) -> Self {
-        self.sender_customer_types = sender_types.iter().map(|s| String::from(*s)).collect();
-        self.receiver_customer_types = receiver_types.iter().map(|s| String::from(*s)).collect();
-        self
-    }
-
-    pub fn with_status_code(mut self, status_code: u16) -> Self {
-        self.status_code = status_code;
-        self
-    }
-}
-
-// ── Requests ──────────────────────────────────────────────────────────────────
-
-/// A SEP-12 customer ID referenced by a SEP-31 transaction.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Sep31CustomerReference {
-    /// The `id` returned by SEP-12 `PUT /customer`.
-    pub id: String,
-    /// The SEP-12 `type` used to register the customer, when known.
-    pub customer_type: Option<String>,
-}
-
-impl Sep31CustomerReference {
-    pub fn new(id: &str) -> Self {
-        Self {
-            id: String::from(id),
-            customer_type: None,
-        }
-    }
-
-    pub fn with_type(id: &str, customer_type: &str) -> Self {
-        Self {
-            id: String::from(id),
-            customer_type: Some(String::from(customer_type)),
-        }
-    }
-}
-
-/// Body of a SEP-31 `POST /transactions` request.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Sep31TransactionRequest {
-    pub amount: String,
-    pub asset_code: String,
-    pub funding_method: String,
-    pub asset_issuer: Option<String>,
-    pub destination_asset: Option<String>,
-    pub quote_id: Option<String>,
-    pub sender: Option<Sep31CustomerReference>,
-    pub receiver: Option<Sep31CustomerReference>,
-    pub refund_memo: Option<String>,
-    pub refund_memo_type: Option<String>,
-    pub fields: Vec<(String, String)>,
-}
-
-impl Sep31TransactionRequest {
-    /// Create a request for a plain (non-quoted) payment.
-    pub fn new(amount: &str, asset_code: &str, funding_method: &str) -> Self {
-        Self {
-            amount: String::from(amount),
-            asset_code: String::from(asset_code),
-            funding_method: String::from(funding_method),
-            asset_issuer: None,
-            destination_asset: None,
-            quote_id: None,
-            sender: None,
-            receiver: None,
-            refund_memo: None,
-            refund_memo_type: None,
-            fields: Vec::new(),
-        }
-    }
-
-    pub fn with_asset_issuer(mut self, issuer: &str) -> Self {
-        self.asset_issuer = Some(String::from(issuer));
-        self
-    }
-
-    pub fn with_destination_asset(mut self, asset: &str) -> Self {
-        self.destination_asset = Some(String::from(asset));
-        self
-    }
-
-    pub fn with_quote_id(mut self, quote_id: &str) -> Self {
-        self.quote_id = Some(String::from(quote_id));
-        self
-    }
-
-    /// Attach the SEP-12 ID of the sending client.
-    pub fn with_sender(mut self, customer: Sep31CustomerReference) -> Self {
-        self.sender = Some(customer);
-        self
-    }
-
-    /// Attach the SEP-12 ID of the receiving client.
-    pub fn with_receiver(mut self, customer: Sep31CustomerReference) -> Self {
-        self.receiver = Some(customer);
-        self
-    }
-
-    pub fn with_sender_id(self, id: &str) -> Self {
-        self.with_sender(Sep31CustomerReference::new(id))
-    }
-
-    pub fn with_receiver_id(self, id: &str) -> Self {
-        self.with_receiver(Sep31CustomerReference::new(id))
-    }
-
-    pub fn with_refund_memo(mut self, memo: &str, memo_type: &str) -> Self {
-        self.refund_memo = Some(String::from(memo));
-        self.refund_memo_type = Some(String::from(memo_type));
-        self
-    }
-
-    /// Add a deprecated per-transaction `fields` entry.
-    pub fn with_field(mut self, name: &str, value: &str) -> Self {
-        self.fields.push((String::from(name), String::from(value)));
-        self
-    }
-
-    /// Validate the request locally, before a transport call is made.
-    pub fn validate(&self) -> Result<(), Error> {
-        if !is_valid_decimal(&self.amount) {
-            return Err(invalid_field("amount"));
-        }
-        if !is_valid_asset_code(&self.asset_code) {
-            return Err(invalid_field("asset_code"));
-        }
-        if self.funding_method.is_empty() {
-            return Err(invalid_field("funding_method"));
-        }
-        if let Some(issuer) = &self.asset_issuer {
-            if !is_valid_stellar_address(issuer) {
-                return Err(invalid_field("asset_issuer"));
-            }
-        }
-        if let Some(customer) = &self.sender {
-            validate_customer_reference(customer, "sender.id")?;
-        }
-        if let Some(customer) = &self.receiver {
-            validate_customer_reference(customer, "receiver.id")?;
-        }
-        match (&self.refund_memo, &self.refund_memo_type) {
-            (None, None) => {}
-            (Some(memo), Some(memo_type)) => {
-                if memo.is_empty() || !is_valid_memo_type(memo_type) {
-                    return Err(invalid_field("refund_memo"));
-                }
-            }
-            _ => return Err(invalid_field("refund_memo_type")),
-        }
-        for (name, _) in &self.fields {
-            if name.is_empty() {
-                return Err(invalid_field("fields"));
-            }
-        }
-        Ok(())
-    }
-}
-
-/// A request handed to a [`Sep31Transport`].
-///
-/// Every variant carries a well-formed `Authorization: Bearer ...` value,
-/// built from a validated [`Sep31Auth`].
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Sep31Request {
-    Info {
-        lang: Option<String>,
-        authorization: String,
-    },
-    CreateTransaction {
-        request: Box<Sep31TransactionRequest>,
-        authorization: String,
-    },
-    GetTransaction {
-        id: String,
-        authorization: String,
-    },
-    PatchTransaction {
-        id: String,
-        fields: Vec<(String, String)>,
-        authorization: String,
-    },
-    RegisterCallback {
-        id: String,
-        url: String,
-        authorization: String,
-    },
-}
-
-impl Sep31Request {
-    pub fn info(jwt: &str, lang: Option<&str>) -> Self {
-        Self::Info {
-            lang: lang.map(String::from),
-            authorization: bearer_header(jwt),
-        }
-    }
-
-    pub fn create(request: &Sep31TransactionRequest, jwt: &str) -> Self {
-        Self::CreateTransaction {
-            request: Box::new(request.clone()),
-            authorization: bearer_header(jwt),
-        }
-    }
-
-    pub fn get(id: &str, jwt: &str) -> Self {
-        Self::GetTransaction {
-            id: String::from(id),
-            authorization: bearer_header(jwt),
-        }
-    }
-
-    pub fn patch(id: &str, fields: &[(&str, &str)], jwt: &str) -> Self {
-        Self::PatchTransaction {
-            id: String::from(id),
-            fields: fields
-                .iter()
-                .map(|(name, value)| (String::from(*name), String::from(*value)))
-                .collect(),
-            authorization: bearer_header(jwt),
-        }
-    }
-
-    pub fn register_callback(id: &str, url: &str, jwt: &str) -> Self {
-        Self::RegisterCallback {
-            id: String::from(id),
-            url: String::from(url),
-            authorization: bearer_header(jwt),
-        }
-    }
-
-    /// The `Authorization` header value carried by this request.
-    pub fn authorization(&self) -> &str {
-        match self {
-            Self::Info { authorization, .. }
-            | Self::CreateTransaction { authorization, .. }
-            | Self::GetTransaction { authorization, .. }
-            | Self::PatchTransaction { authorization, .. }
-            | Self::RegisterCallback { authorization, .. } => authorization,
-        }
-    }
-
-    /// HTTP method used by this endpoint.
-    pub fn method(&self) -> &'static str {
-        match self {
-            Self::Info { .. } | Self::GetTransaction { .. } => "GET",
-            Self::CreateTransaction { .. } => "POST",
-            Self::PatchTransaction { .. } => "PATCH",
-            Self::RegisterCallback { .. } => "PUT",
-        }
-    }
-
-    /// Request path relative to the receiving anchor's `DIRECT_PAYMENT_SERVER`.
-    pub fn path(&self) -> String {
-        match self {
-            Self::Info { .. } => String::from("/info"),
-            Self::CreateTransaction { .. } => String::from("/transactions"),
-            Self::GetTransaction { id, .. } | Self::PatchTransaction { id, .. } => {
-                format!("/transactions/{id}")
-            }
-            Self::RegisterCallback { id, .. } => format!("/transactions/{id}/callback"),
-        }
-    }
-
-    /// The transaction ID in the path, when the request targets a transaction.
-    pub fn transaction_id(&self) -> Option<&str> {
-        match self {
-            Self::GetTransaction { id, .. }
-            | Self::PatchTransaction { id, .. }
-            | Self::RegisterCallback { id, .. } => Some(id.as_str()),
-            _ => None,
-        }
-    }
-}
-
-// ── Responses ─────────────────────────────────────────────────────────────────
-
-/// Result of a successful `POST /transactions` request.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Sep31CreatedTransaction {
-    pub id: String,
-    pub stellar_account_id: Option<String>,
-    pub stellar_memo: Option<String>,
-    pub stellar_memo_type: Option<String>,
-}
-
-impl Sep31CreatedTransaction {
-    /// `true` once the anchor has supplied the Stellar payment instructions.
-    pub fn is_ready_to_pay(&self) -> bool {
-        self.stellar_account_id.is_some()
-            && self.stellar_memo.is_some()
-            && self.stellar_memo_type.is_some()
-    }
-}
-
-/// Typed SEP-31 transaction from `GET`/`PATCH /transactions/:id`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Sep31Transaction {
-    pub id: String,
-    pub status: Sep31Status,
-    pub status_eta: Option<u64>,
-    pub status_message: Option<String>,
-    pub amount_in: Option<String>,
-    pub amount_in_asset: Option<String>,
-    pub amount_out: Option<String>,
-    pub amount_out_asset: Option<String>,
-    pub amount_fee: Option<String>,
-    pub quote_id: Option<String>,
-    pub stellar_account_id: Option<String>,
-    pub stellar_memo: Option<String>,
-    pub stellar_memo_type: Option<String>,
-    pub stellar_transaction_id: Option<String>,
-    pub external_transaction_id: Option<String>,
-    pub started_at: Option<String>,
-    pub updated_at: Option<String>,
-    pub completed_at: Option<String>,
-    pub required_info_message: Option<String>,
-}
-
-/// Raw `POST /transactions` body returned by a [`Sep31Transport`].
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RawSep31CreationResponse {
-    pub status_code: u16,
-    pub id: String,
-    pub stellar_account_id: Option<String>,
-    pub stellar_memo: Option<String>,
-    pub stellar_memo_type: Option<String>,
-}
-
-impl RawSep31CreationResponse {
-    pub fn new(id: &str) -> Self {
-        Self {
-            status_code: 201,
-            id: String::from(id),
-            stellar_account_id: None,
-            stellar_memo: None,
-            stellar_memo_type: None,
-        }
-    }
-
-    pub fn with_stellar(mut self, account_id: &str, memo: &str, memo_type: &str) -> Self {
-        self.stellar_account_id = Some(String::from(account_id));
-        self.stellar_memo = Some(String::from(memo));
-        self.stellar_memo_type = Some(String::from(memo_type));
-        self
-    }
-
-    pub fn with_status_code(mut self, status_code: u16) -> Self {
-        self.status_code = status_code;
-        self
-    }
-}
-
-/// Raw transaction body returned by a [`Sep31Transport`].
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RawSep31Transaction {
-    pub status_code: u16,
-    pub id: String,
-    pub status: String,
-    pub status_eta: Option<u64>,
-    pub status_message: Option<String>,
-    pub amount_in: Option<String>,
-    pub amount_in_asset: Option<String>,
-    pub amount_out: Option<String>,
-    pub amount_out_asset: Option<String>,
-    pub amount_fee: Option<String>,
-    pub quote_id: Option<String>,
-    pub stellar_account_id: Option<String>,
-    pub stellar_memo: Option<String>,
-    pub stellar_memo_type: Option<String>,
-    pub stellar_transaction_id: Option<String>,
-    pub external_transaction_id: Option<String>,
-    pub started_at: Option<String>,
-    pub updated_at: Option<String>,
-    pub completed_at: Option<String>,
-    pub required_info_message: Option<String>,
-}
-
-impl RawSep31Transaction {
-    pub fn new(id: &str, status: Sep31Status) -> Self {
-        Self {
-            status_code: 200,
-            id: String::from(id),
-            status: String::from(status.as_str()),
-            status_eta: None,
-            status_message: None,
-            amount_in: None,
-            amount_in_asset: None,
-            amount_out: None,
-            amount_out_asset: None,
-            amount_fee: None,
-            quote_id: None,
-            stellar_account_id: None,
-            stellar_memo: None,
-            stellar_memo_type: None,
-            stellar_transaction_id: None,
-            external_transaction_id: None,
-            started_at: None,
-            updated_at: None,
-            completed_at: None,
-            required_info_message: None,
-        }
-    }
-
-    pub fn with_status_code(mut self, status_code: u16) -> Self {
-        self.status_code = status_code;
-        self
-    }
-
-    pub fn with_amounts(mut self, amount_in: &str, amount_out: &str, fee: &str) -> Self {
-        self.amount_in = Some(String::from(amount_in));
-        self.amount_out = Some(String::from(amount_out));
-        self.amount_fee = Some(String::from(fee));
-        self
-    }
-
-    pub fn with_stellar(mut self, account_id: &str, memo: &str, memo_type: &str) -> Self {
-        self.stellar_account_id = Some(String::from(account_id));
-        self.stellar_memo = Some(String::from(memo));
-        self.stellar_memo_type = Some(String::from(memo_type));
-        self
-    }
-
-    pub fn with_message(mut self, message: &str) -> Self {
-        self.status_message = Some(String::from(message));
-        self
-    }
-}
-
-/// A response returned by a [`Sep31Transport`].
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Sep31Response {
-    Info(RawSep31InfoResponse),
-    Created(RawSep31CreationResponse),
-    /// Boxed because a transaction body is considerably larger than the other
-    /// response variants.
-    Transaction(Box<RawSep31Transaction>),
-    CallbackRegistered {
-        status_code: u16,
-    },
-}
-
-impl Sep31Response {
-    pub fn info(receive: Vec<Sep31AssetInfo>) -> Self {
-        Self::Info(RawSep31InfoResponse::new(receive))
-    }
-
-    pub fn created(id: &str) -> Self {
-        Self::Created(RawSep31CreationResponse::new(id))
-    }
-
-    pub fn transaction(id: &str, status: Sep31Status) -> Self {
-        Self::Transaction(Box::new(RawSep31Transaction::new(id, status)))
-    }
-
-    pub fn callback_registered() -> Self {
-        Self::CallbackRegistered { status_code: 204 }
-    }
-}
-
-/// Abstraction over the HTTP exchange for SEP-31 endpoints.
-pub trait Sep31Transport {
-    fn send(&mut self, request: Sep31Request) -> Result<Sep31Response, Error>;
-}
-
-// ── Authentication ────────────────────────────────────────────────────────────
-
-/// A SEP-10 JWT used to authenticate SEP-31 requests.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Sep31Auth {
-    jwt: String,
-}
-
-impl Sep31Auth {
-    /// Wrap a SEP-10 JWT.
-    ///
-    /// Accepts either a bare token or a value already prefixed with `Bearer `.
-    /// Empty tokens and tokens containing whitespace are rejected before any
-    /// transport call is made.
-    pub fn new(jwt: &str) -> Result<Self, Error> {
-        let token = jwt.strip_prefix("Bearer ").unwrap_or(jwt).trim();
-        if token.is_empty() || token.bytes().any(|b| b.is_ascii_whitespace()) {
-            return Err(Error::with_context(
-                ErrorCode::InvalidSep10Token,
-                "SEP-10 JWT must be a non-empty, whitespace-free token",
-                "authorization",
-            ));
-        }
-        Ok(Self {
-            jwt: String::from(token),
-        })
-    }
-
-    /// The raw JWT value, without the `Bearer ` prefix.
-    pub fn jwt(&self) -> &str {
-        &self.jwt
-    }
-
-    /// The complete `Authorization` header value.
-    pub fn authorization_header(&self) -> String {
-        bearer_header(&self.jwt)
-    }
-}
-
-fn bearer_header(jwt: &str) -> String {
-    format!("Bearer {}", jwt)
-}
-
-// ── Client ────────────────────────────────────────────────────────────────────
-
-/// Transport-agnostic SEP-31 sending-anchor client.
-pub struct Sep31Client<T: Sep31Transport> {
-    transport: T,
-    auth: Sep31Auth,
-}
-
-impl<T: Sep31Transport> Sep31Client<T> {
-    pub fn new(transport: T, auth: Sep31Auth) -> Self {
-        Self { transport, auth }
-    }
-
-    /// The SEP-10 authentication attached to every request.
-    pub fn auth(&self) -> &Sep31Auth {
-        &self.auth
-    }
-
-    pub fn transport(&self) -> &T {
-        &self.transport
-    }
-
-    pub fn transport_mut(&mut self) -> &mut T {
-        &mut self.transport
-    }
-
-    /// `GET /info` — supported assets and SEP-12 customer types.
-    pub fn get_info(&mut self, lang: Option<&str>) -> Result<Sep31Info, Error> {
-        if let Some(lang) = lang {
-            validate_lang(lang)?;
-        }
-        let request = Sep31Request::info(self.auth.jwt(), lang);
-        match self.transport.send(request)? {
-            Sep31Response::Info(raw) => {
-                ensure_success(raw.status_code)?;
-                Ok(Sep31Info {
-                    receive: raw.receive,
-                    sender_customer_types: raw.sender_customer_types,
-                    receiver_customer_types: raw.receiver_customer_types,
-                })
-            }
-            other => Err(unexpected_response(other)),
-        }
-    }
-
-    /// `POST /transactions` — create a transaction with the receiving anchor.
-    pub fn create_transaction(
-        &mut self,
-        request: &Sep31TransactionRequest,
-    ) -> Result<Sep31CreatedTransaction, Error> {
-        request.validate()?;
-        let wire_request = Sep31Request::create(request, self.auth.jwt());
-        match self.transport.send(wire_request)? {
-            Sep31Response::Created(raw) => {
-                ensure_success(raw.status_code)?;
-                if raw.id.is_empty() {
-                    return Err(Error::validation_error(
-                        "SEP-31 creation response is missing transaction id",
-                    ));
-                }
-                Ok(Sep31CreatedTransaction {
-                    id: raw.id,
-                    stellar_account_id: raw.stellar_account_id,
-                    stellar_memo: raw.stellar_memo,
-                    stellar_memo_type: raw.stellar_memo_type,
-                })
-            }
-            other => Err(unexpected_response(other)),
-        }
-    }
-
-    /// `GET /transactions/:id` — fetch the current transaction state.
-    pub fn get_transaction(&mut self, id: &str) -> Result<Sep31Transaction, Error> {
-        validate_transaction_id(id)?;
-        let request = Sep31Request::get(id, self.auth.jwt());
-        transaction_from_response(self.transport.send(request)?)
-    }
-
-    /// `PATCH /transactions/:id` — supply transaction fields requested by the
-    /// receiving anchor while the status is `pending_transaction_info_update`.
-    pub fn patch_transaction(
-        &mut self,
-        id: &str,
-        fields: &[(&str, &str)],
-    ) -> Result<Sep31Transaction, Error> {
-        validate_transaction_id(id)?;
-        if fields.is_empty() || fields.iter().any(|(name, _)| name.is_empty()) {
-            return Err(Error::validation_error(
-                "SEP-31 PATCH requires at least one named field",
-            ));
-        }
-        let request = Sep31Request::patch(id, fields, self.auth.jwt());
-        transaction_from_response(self.transport.send(request)?)
-    }
-
-    /// `PUT /transactions/:id/callback` — register the HTTPS URL the receiving
-    /// anchor should POST status updates to.
-    pub fn register_callback(&mut self, id: &str, url: &str) -> Result<(), Error> {
-        validate_transaction_id(id)?;
-        // SEP-31 is HTTPS-only; the callback URL is supplied by us, so make
-        // sure we never register an insecure or malformed endpoint.
-        validate_anchor_domain(url)?;
-        let request = Sep31Request::register_callback(id, url, self.auth.jwt());
-        match self.transport.send(request)? {
-            Sep31Response::CallbackRegistered { status_code } => ensure_success(status_code),
-            other => Err(unexpected_response(other)),
-        }
-    }
-}
-
-fn transaction_from_response(response: Sep31Response) -> Result<Sep31Transaction, Error> {
-    match response {
-        Sep31Response::Transaction(raw) => {
-            ensure_success(raw.status_code)?;
-            normalize_transaction(*raw)
-        }
-        other => Err(unexpected_response(other)),
-    }
-}
-
-fn normalize_transaction(raw: RawSep31Transaction) -> Result<Sep31Transaction, Error> {
-    if raw.id.is_empty() {
-        return Err(Error::validation_error(
-            "SEP-31 transaction response is missing id",
-        ));
-    }
-    Ok(Sep31Transaction {
-        id: raw.id,
-        status: Sep31Status::from_str(&raw.status),
-        status_eta: raw.status_eta,
-        status_message: raw.status_message,
-        amount_in: raw.amount_in,
-        amount_in_asset: raw.amount_in_asset,
-        amount_out: raw.amount_out,
-        amount_out_asset: raw.amount_out_asset,
-        amount_fee: raw.amount_fee,
-        quote_id: raw.quote_id,
-        stellar_account_id: raw.stellar_account_id,
-        stellar_memo: raw.stellar_memo,
-        stellar_memo_type: raw.stellar_memo_type,
-        stellar_transaction_id: raw.stellar_transaction_id,
-        external_transaction_id: raw.external_transaction_id,
-        started_at: raw.started_at,
-        updated_at: raw.updated_at,
-        completed_at: raw.completed_at,
-        required_info_message: raw.required_info_message,
-    })
-}
-
-fn ensure_success(status_code: u16) -> Result<(), Error> {
-    if (200..=299).contains(&status_code) {
-        Ok(())
-    } else {
-        Err(http_error(status_code))
-    }
-}
-
-fn unexpected_response(response: Sep31Response) -> Error {
-    let name = match response {
-        Sep31Response::Info(_) => "info",
-        Sep31Response::Created(_) => "created",
-        Sep31Response::Transaction(_) => "transaction",
-        Sep31Response::CallbackRegistered { .. } => "callback_registered",
-    };
-    Error::with_context(
-        ErrorCode::ValidationError,
-        "unexpected SEP-31 transport response",
-        name,
-    )
-}
-
-fn http_error(status_code: u16) -> Error {
-    match status_code {
-        400 | 422 => Error::validation_error("SEP-31 request was rejected by the anchor"),
-        401 | 403 => Error::invalid_sep10_token(),
-        404 => Error::with_context(
-            ErrorCode::TransactionNotFound,
-            "SEP-31 transaction not found",
-            "transaction",
-        ),
-        408 => Error::from_code(ErrorCode::TransportTimeout),
-        429 => Error::rate_limit_exceeded(),
-        500..=599 => Error::from_code(ErrorCode::ServerError),
-        _ => Error::with_context(
-            ErrorCode::ValidationError,
-            "unexpected SEP-31 HTTP status",
-            &status_code.to_string(),
-        ),
-    }
-}
-
-// ── Callback handling ─────────────────────────────────────────────────────────
-
-/// A parsed SEP-31 callback POST from a receiving anchor.
-///
-/// The receiving anchor signs `<timestamp>.<host>.<body>` with the Ed25519
-/// key from its `SIGNING_KEY` stellar.toml entry and sends the signature in
-/// `Signature: t=<unix timestamp>, s=<base64 signature>`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Sep31Callback {
-    pub transaction: Sep31Transaction,
-    pub timestamp: u64,
-    /// Base64-encoded Ed25519 signature from the callback header.
-    pub signature: String,
-    /// The sending-anchor host that was included in the signed payload.
-    pub host: String,
-}
-
-impl Sep31Callback {
-    /// Parse and validate a callback request.
-    ///
-    /// `signature_header` is the value of the `Signature` (or deprecated
-    /// `X-Stellar-Signature`) header. `now` and `max_age_seconds` let callers
-    /// enforce freshness and reject replays.
-    pub fn parse(
-        signature_header: &str,
-        host: &str,
-        body: RawSep31Transaction,
-        now: u64,
-        max_age_seconds: u64,
-    ) -> Result<Self, Error> {
-        if host.is_empty() || max_age_seconds == 0 {
-            return Err(Error::validation_error(
-                "callback host and maximum age are required",
-            ));
-        }
-        let (timestamp, signature) = parse_signature_header(signature_header)?;
-        if timestamp > now {
-            return Err(Error::with_context(
-                ErrorCode::InvalidTimestamp,
-                "SEP-31 callback timestamp is in the future",
-                "callback",
-            ));
-        }
-        if now - timestamp > max_age_seconds {
-            return Err(Error::with_context(
-                ErrorCode::ReplayAttack,
-                "SEP-31 callback timestamp is too old",
-                "callback",
-            ));
-        }
-        let transaction = normalize_transaction(body)?;
-        Ok(Self {
-            transaction,
-            timestamp,
-            signature: String::from(signature),
-            host: String::from(host),
-        })
-    }
-
-    /// Rebuild the exact string the receiving anchor signed.
-    ///
-    /// `body_json` must be the raw request body bytes, before JSON parsing.
-    pub fn signing_payload(&self, body_json: &str) -> String {
-        format!("{}.{}.{}", self.timestamp, self.host, body_json)
-    }
-
-    /// Verify the callback signature with the receiving anchor's 32-byte
-    /// Ed25519 `SIGNING_KEY`.
-    pub fn verify(&self, body_json: &str, signing_key: &[u8; 32]) -> Result<(), Error> {
-        let decoded = BASE64_STANDARD
-            .decode(self.signature.as_str())
-            .map_err(|_| {
-                Error::with_context(
-                    ErrorCode::InvalidSep10Token,
-                    "SEP-31 callback signature is not valid base64",
-                    "signature",
-                )
-            })?;
-        if decoded.len() != 64 {
-            return Err(Error::with_context(
-                ErrorCode::InvalidSep10Token,
-                "SEP-31 callback signature must be 64 bytes",
-                "signature",
-            ));
-        }
-        let mut bytes = [0u8; 64];
-        bytes.copy_from_slice(&decoded);
-        let signature = Signature::from_bytes(&bytes);
-        let verifying_key = VerifyingKey::from_bytes(signing_key).map_err(|_| {
-            Error::with_context(
-                ErrorCode::InvalidSep10Token,
-                "invalid receiving anchor signing key",
-                "signing_key",
-            )
-        })?;
-        let payload = self.signing_payload(body_json);
-        verifying_key
-            .verify(payload.as_bytes(), &signature)
-            .map_err(|_| {
-                Error::with_context(
-                    ErrorCode::InvalidSep10Token,
-                    "SEP-31 callback signature verification failed",
-                    "signature",
-                )
-            })
-    }
-}
-
-/// Pick the callback signature header, preferring `Signature` over the
-/// deprecated `X-Stellar-Signature`.
-pub fn callback_signature_header<'a>(
-    signature: Option<&'a str>,
-    legacy: Option<&'a str>,
-) -> Result<&'a str, Error> {
-    signature
-        .or(legacy)
-        .filter(|header| !header.trim().is_empty())
-        .ok_or_else(|| {
-            Error::with_context(
-                ErrorCode::InvalidSep10Token,
-                "SEP-31 callback signature header is missing",
-                "signature",
-            )
-        })
-}
-
-/// Parse `t=<timestamp>, s=<base64 signature>`.
-fn parse_signature_header(header: &str) -> Result<(u64, &str), Error> {
-    let mut timestamp = None;
-    let mut signature = None;
-    for part in header.split(',') {
-        let mut pair = part.trim().splitn(2, '=');
-        let key = pair.next().unwrap_or("").trim();
-        let value = pair.next().unwrap_or("").trim();
-        match key {
-            "t" => {
-                timestamp = Some(value.parse::<u64>().map_err(|_| {
-                    Error::with_context(
-                        ErrorCode::ValidationError,
-                        "callback timestamp must be a Unix timestamp",
-                        "t",
-                    )
-                })?);
-            }
-            "s" => {
-                if value.is_empty() {
-                    return Err(Error::with_context(
-                        ErrorCode::InvalidSep10Token,
-                        "callback signature is empty",
-                        "s",
-                    ));
-                }
-                signature = Some(value);
-            }
-            _ => {}
-        }
-    }
-    match (timestamp, signature) {
-        (Some(t), Some(s)) => Ok((t, s)),
-        _ => Err(Error::with_context(
-            ErrorCode::InvalidSep10Token,
-            "callback header must contain t and s",
-            "signature",
-        )),
-    }
-}
-
-// ── Validation ────────────────────────────────────────────────────────────────
-
-fn invalid_field(field: &str) -> Error {
-    Error::with_context(
-        ErrorCode::ValidationError,
-        "invalid SEP-31 request field",
-        field,
-    )
-}
-
-fn validate_transaction_id(id: &str) -> Result<(), Error> {
-    if id.is_empty()
-        || id.len() > 128
-        || id
-            .chars()
-            .any(|c| c.is_whitespace() || c == '/' || c == '?' || c == '#')
-    {
-        return Err(invalid_field("id"));
-    }
-    Ok(())
-}
-
-fn validate_lang(lang: &str) -> Result<(), Error> {
-    if lang.len() == 2 && lang.bytes().all(|b| b.is_ascii_alphabetic()) {
-        Ok(())
-    } else {
-        Err(invalid_field("lang"))
-    }
-}
-
-fn validate_customer_reference(
-    customer: &Sep31CustomerReference,
-    field: &str,
-) -> Result<(), Error> {
-    if customer.id.is_empty() {
-        return Err(invalid_field(field));
-    }
-    if customer
-        .customer_type
-        .as_deref()
-        .is_some_and(|t| t.is_empty())
-    {
-        return Err(invalid_field("customer_type"));
-    }
-    Ok(())
-}
-
-fn is_valid_decimal(value: &str) -> bool {
-    let mut dots = 0usize;
-    let mut digits = 0usize;
-    for byte in value.bytes() {
-        match byte {
-            b'0'..=b'9' => digits += 1,
-            b'.' => dots += 1,
-            _ => return false,
-        }
-    }
-    dots <= 1 && digits > 0
-}
-
-fn is_valid_asset_code(code: &str) -> bool {
-    (4..=12).contains(&code.len())
-        && code
-            .bytes()
-            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
-}
-
-fn is_valid_memo_type(memo_type: &str) -> bool {
-    matches!(memo_type, "text" | "id" | "hash")
-}
-
-const STRKEY_VERSION_ACCOUNT_ID: u8 = 6 << 3;
-const BASE32_ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
+/// Stellar StrKey version byte for account IDs (the 'G' prefix).
+const STRKEY_VERSION_ACCOUNT_ID: u8 = 6 << 3; // 48
+
+/// Base32 decode a 56-character Stellar StrKey string into 35 bytes.
+/// Returns `None` on any non-base32 character or wrong length.
 fn decode_strkey(s: &str) -> Option<[u8; 35]> {
-    if s.len() != 56 || !s.is_ascii() {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    if s.len() != 56 {
         return None;
     }
     let mut out = [0u8; 35];
     let mut buffer: u64 = 0;
     let mut bits: u32 = 0;
-    let mut idx = 0usize;
-    for &byte in s.as_bytes() {
-        let value = BASE32_ALPHABET.iter().position(|&c| c == byte)? as u64;
-        buffer = (buffer << 5) | value;
+    let mut out_idx = 0usize;
+    for byte in s.bytes() {
+        let val = ALPHABET.iter().position(|&c| c == byte)? as u64;
+        buffer = (buffer << 5) | val;
         bits += 5;
         if bits >= 8 {
             bits -= 8;
-            out[idx] = ((buffer >> bits) & 0xFF) as u8;
-            idx += 1;
+            if out_idx >= 35 {
+                return None;
+            }
+            out[out_idx] = ((buffer >> bits) & 0xFF) as u8;
+            out_idx += 1;
         }
     }
     Some(out)
 }
 
+/// CRC16-XModem checksum used in Stellar StrKey encoding.
 fn crc16_xmodem(data: &[u8]) -> u16 {
     let mut crc: u16 = 0;
     for &byte in data {
@@ -1190,80 +85,611 @@ fn crc16_xmodem(data: &[u8]) -> u16 {
     crc
 }
 
+/// Validate a full Stellar G-address (StrKey + CRC16 checksum).
 fn is_valid_stellar_address(s: &str) -> bool {
-    match decode_strkey(s) {
-        Some(decoded) if decoded[0] == STRKEY_VERSION_ACCOUNT_ID => {
-            let expected = u16::from_le_bytes([decoded[33], decoded[34]]);
-            crc16_xmodem(&decoded[..33]) == expected
+    let decoded = match decode_strkey(s) {
+        Some(d) => d,
+        None => return false,
+    };
+    if decoded[0] != STRKEY_VERSION_ACCOUNT_ID {
+        return false;
+    }
+    let payload = &decoded[..33];
+    let expected = u16::from_le_bytes([decoded[33], decoded[34]]);
+    crc16_xmodem(payload) == expected
+}
+
+// ── Status enum ──────────────────────────────────────────────────────────────
+
+/// SEP-31 transaction status values as defined in the protocol specification.
+///
+/// Maps directly to the string values returned by an anchor's
+/// `GET /transactions/:id` endpoint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Sep31TransactionStatus {
+    /// Waiting for the sending anchor to initiate the Stellar payment.
+    PendingSender,
+    /// Stellar payment submitted; waiting for on-chain confirmation.
+    PendingStellar,
+    /// Receiver anchor needs updated KYC from the sender or receiver.
+    PendingCustomerInfoUpdate,
+    /// Receiver anchor needs corrected transaction fields.
+    PendingTransactionInfoUpdate,
+    /// Funds received on-chain; receiver anchor is processing.
+    PendingReceiver,
+    /// Receiver anchor is waiting for external (off-chain) delivery.
+    PendingExternal,
+    /// Funds successfully delivered to the receiver.
+    Completed,
+    /// Transaction refunded back to the sender.
+    Refunded,
+    /// Transaction expired before it could be completed.
+    Expired,
+    /// Transaction failed; see `message` for details.
+    Error,
+    /// Catch-all for status values not yet covered by this enum.
+    Unknown(String),
+}
+
+impl Sep31TransactionStatus {
+    /// Parse a raw status string from the anchor into a typed variant.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "pending_sender"                    => Self::PendingSender,
+            "pending_stellar"                   => Self::PendingStellar,
+            "pending_customer_info_update"      => Self::PendingCustomerInfoUpdate,
+            "pending_transaction_info_update"   => Self::PendingTransactionInfoUpdate,
+            "pending_receiver"                  => Self::PendingReceiver,
+            "pending_external"                  => Self::PendingExternal,
+            "completed"                         => Self::Completed,
+            "refunded"                          => Self::Refunded,
+            "expired"                           => Self::Expired,
+            "error"                             => Self::Error,
+            other                               => Self::Unknown(String::from(other)),
         }
-        _ => false,
+    }
+
+    /// Return the canonical string representation of this status.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::PendingSender                 => "pending_sender",
+            Self::PendingStellar                => "pending_stellar",
+            Self::PendingCustomerInfoUpdate     => "pending_customer_info_update",
+            Self::PendingTransactionInfoUpdate  => "pending_transaction_info_update",
+            Self::PendingReceiver               => "pending_receiver",
+            Self::PendingExternal               => "pending_external",
+            Self::Completed                     => "completed",
+            Self::Refunded                      => "refunded",
+            Self::Expired                       => "expired",
+            Self::Error                         => "error",
+            Self::Unknown(s)                    => s.as_str(),
+        }
+    }
+
+    /// `true` when no further status transitions are expected.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Completed | Self::Refunded | Self::Expired | Self::Error)
+    }
+
+    /// `true` when the sender or receiver must supply additional information
+    /// before the transaction can proceed.
+    pub fn requires_action(&self) -> bool {
+        matches!(self, Self::PendingCustomerInfoUpdate | Self::PendingTransactionInfoUpdate)
     }
 }
 
-// ── Mock transport ────────────────────────────────────────────────────────────
+// ── Raw input structs (anchor-agnostic) ──────────────────────────────────────
 
-/// Deterministic [`Sep31Transport`] for tests and examples: returns
-/// preconfigured responses and records every request it receives.
-#[derive(Default)]
-pub struct MockSep31Transport {
-    responses: Vec<(Sep31Request, Sep31Response)>,
-    calls: Vec<Sep31Request>,
-    should_fail: bool,
+/// Fields required by the sending anchor when calling `POST /transactions`.
+///
+/// `sender_id` and `receiver_id` are SEP-12 KYC identifiers obtained after
+/// the customer has completed the KYC flow with the respective anchors.
+pub struct RawSep31TransactionRequest {
+    /// Amount to send in stroops (1 XLM = 10 000 000 stroops). Must be > 0.
+    pub amount: u64,
+    /// Asset code to send (e.g. `"USDC"`). 1–12 alphanumeric characters.
+    pub asset_code: String,
+    /// Optional Stellar issuer G-address for the asset.
+    pub asset_issuer: Option<String>,
+    /// Optional destination asset for a cross-asset payment (SEP-38 integration).
+    pub destination_asset: Option<String>,
+    /// Optional SEP-38 quote ID to lock in the exchange rate.
+    pub quote_id: Option<String>,
+    /// SEP-12 KYC identifier of the sender.
+    pub sender_id: String,
+    /// SEP-12 KYC identifier of the receiver.
+    pub receiver_id: String,
+    /// Optional arbitrary key-value fields required by the receiving anchor.
+    pub fields: Option<Vec<(String, String)>>,
 }
 
-impl MockSep31Transport {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn add_response(&mut self, request: Sep31Request, response: Sep31Response) {
-        self.responses.push((request, response));
-    }
-
-    pub fn with_response(mut self, request: Sep31Request, response: Sep31Response) -> Self {
-        self.add_response(request, response);
-        self
-    }
-
-    pub fn set_should_fail(&mut self, should_fail: bool) {
-        self.should_fail = should_fail;
-    }
-
-    pub fn calls(&self) -> &[Sep31Request] {
-        &self.calls
-    }
-
-    pub fn call_count(&self) -> usize {
-        self.calls.len()
-    }
-
-    pub fn take_calls(&mut self) -> Vec<Sep31Request> {
-        core::mem::take(&mut self.calls)
-    }
-
-    pub fn reset(&mut self) {
-        self.responses.clear();
-        self.calls.clear();
-        self.should_fail = false;
-    }
+/// Raw response body from `POST /transactions`.
+#[derive(Clone, Debug)]
+pub struct RawSep31TransactionResponse {
+    /// Anchor-assigned transaction ID.
+    pub id: String,
+    /// Stellar account the sending anchor should send funds to.
+    pub stellar_account_id: String,
+    /// Memo to attach to the Stellar payment, if required.
+    pub stellar_memo: Option<String>,
+    /// Memo type (`"text"`, `"id"`, or `"hash"`).
+    pub stellar_memo_type: Option<String>,
 }
 
-impl Sep31Transport for MockSep31Transport {
-    fn send(&mut self, request: Sep31Request) -> Result<Sep31Response, Error> {
-        if self.should_fail {
-            return Err(Error::from_code(ErrorCode::TransportTimeout));
-        }
-        self.calls.push(request.clone());
-        for (expected, response) in &self.responses {
-            if *expected == request {
-                return Ok(response.clone());
-            }
-        }
-        Err(Error::with_context(
+/// Raw response body from `GET /transactions/:id`.
+#[derive(Clone, Debug)]
+pub struct RawSep31TransactionStatusResponse {
+    /// Anchor-assigned transaction ID.
+    pub id: String,
+    /// Raw status string (e.g. `"pending_stellar"`).
+    pub status: String,
+    /// Human-readable status message from the anchor.
+    pub message: Option<String>,
+    /// Amount sent by the user in stroops, if reported.
+    pub amount_in: Option<u64>,
+    /// Amount delivered to the receiver in stroops, if reported.
+    pub amount_out: Option<u64>,
+    /// Fee charged in stroops, if reported.
+    pub amount_fee: Option<u64>,
+    /// Stellar account the sending anchor should send funds to.
+    pub stellar_account_id: String,
+    /// Memo to attach to the Stellar payment.
+    pub stellar_memo: Option<String>,
+    /// Memo type (`"text"`, `"id"`, or `"hash"`).
+    pub stellar_memo_type: Option<String>,
+    /// Unix timestamp when the transaction was initiated.
+    pub started_at: Option<u64>,
+    /// Unix timestamp when the transaction reached a terminal state.
+    pub completed_at: Option<u64>,
+    /// External tracking ID assigned by the receiver anchor.
+    pub external_transaction_id: Option<String>,
+}
+
+/// Request body for `PUT /transactions/:id` (update transaction fields).
+pub struct RawSep31UpdateRequest {
+    /// Transaction ID to update.
+    pub transaction_id: String,
+    /// Updated fields to send to the receiver anchor.
+    pub fields: Vec<(String, String)>,
+}
+
+/// Request body for `PUT /transactions/:id/callback`.
+pub struct RawSep31CallbackRequest {
+    /// Transaction ID to register the callback for.
+    pub transaction_id: String,
+    /// URL that the receiver anchor should POST status updates to (must be HTTPS).
+    pub callback_url: String,
+}
+
+/// A single asset entry from `GET /info`.
+#[derive(Clone, Debug)]
+pub struct RawSep31Asset {
+    /// Asset code (e.g. `"USDC"`).
+    pub asset_code: String,
+    /// SEP-12 customer types required for senders.
+    pub sep12_sender_types: Vec<String>,
+    /// SEP-12 customer types required for receivers.
+    pub sep12_receiver_types: Vec<String>,
+    /// Minimum sendable amount in stroops.
+    pub min_amount: Option<u64>,
+    /// Maximum sendable amount in stroops.
+    pub max_amount: Option<u64>,
+    /// Fixed fee in stroops.
+    pub fee_fixed: Option<u64>,
+    /// Percentage fee in basis points (e.g. `150` = 1.50%).
+    pub fee_percent: Option<u32>,
+    /// Required transaction fields for this asset.
+    pub fields: Vec<RawSep31Field>,
+}
+
+/// A single field descriptor from `GET /info`.
+#[derive(Clone, Debug)]
+pub struct RawSep31Field {
+    /// Field name (the key expected in `RawSep31TransactionRequest::fields`).
+    pub name: String,
+    /// Human-readable description shown in wallets.
+    pub description: String,
+    /// Whether this field is optional.
+    pub optional: bool,
+    /// Allowed values, if the anchor restricts choices.
+    pub choices: Vec<String>,
+}
+
+/// Raw body of a `GET /info` response.
+pub struct RawSep31InfoResponse {
+    /// Assets the receiver anchor can accept.
+    pub assets: Vec<RawSep31Asset>,
+}
+
+// ── Normalized output structs ─────────────────────────────────────────────────
+
+/// Normalized response after initiating a SEP-31 transaction (`POST /transactions`).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep31TransactionResponse {
+    /// Anchor-assigned transaction ID.
+    pub id: String,
+    /// Stellar account the sending anchor must send funds to.
+    pub stellar_account_id: String,
+    /// Memo string to attach to the Stellar payment.
+    pub stellar_memo: Option<String>,
+    /// Memo type: `"text"`, `"id"`, or `"hash"`.
+    pub stellar_memo_type: Option<String>,
+}
+
+/// Normalized full transaction status (from `GET /transactions/:id`).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep31TransactionStatusResponse {
+    /// Anchor-assigned transaction ID.
+    pub id: String,
+    /// Typed transaction status.
+    pub status: Sep31TransactionStatus,
+    /// Human-readable status message from the anchor.
+    pub message: Option<String>,
+    /// Amount sent in stroops, if reported.
+    pub amount_in: Option<u64>,
+    /// Amount delivered in stroops, if reported.
+    pub amount_out: Option<u64>,
+    /// Fee charged in stroops, if reported.
+    pub amount_fee: Option<u64>,
+    /// Stellar account the sending anchor should send funds to.
+    pub stellar_account_id: String,
+    /// Memo string.
+    pub stellar_memo: Option<String>,
+    /// Memo type.
+    pub stellar_memo_type: Option<String>,
+    /// Unix timestamp when the transaction was initiated.
+    pub started_at: Option<u64>,
+    /// Unix timestamp when the transaction reached a terminal state.
+    pub completed_at: Option<u64>,
+    /// External tracking ID assigned by the receiver anchor.
+    pub external_transaction_id: Option<String>,
+}
+
+/// A single normalized field descriptor from `GET /info`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep31Field {
+    pub name: String,
+    pub description: String,
+    pub optional: bool,
+    pub choices: Vec<String>,
+}
+
+/// A single normalized asset entry from `GET /info`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep31Asset {
+    pub asset_code: String,
+    pub sep12_sender_types: Vec<String>,
+    pub sep12_receiver_types: Vec<String>,
+    pub min_amount: Option<u64>,
+    pub max_amount: Option<u64>,
+    pub fee_fixed: Option<u64>,
+    pub fee_percent: Option<u32>,
+    pub fields: Vec<Sep31Field>,
+}
+
+/// Normalized `GET /info` response.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep31InfoResponse {
+    pub assets: Vec<Sep31Asset>,
+}
+
+// ── Internal helpers ─────────────────────────────────────────────────────────
+
+fn normalize_field(raw: RawSep31Field) -> Result<Sep31Field, Error> {
+    if raw.name.is_empty() {
+        return Err(Error::with_context(
             ErrorCode::ValidationError,
-            "no mock SEP-31 response configured for this request",
-            "request",
-        ))
+            "SEP-31 field name must not be empty",
+            "fields[].name",
+        ));
+    }
+    Ok(Sep31Field {
+        name: raw.name,
+        description: raw.description,
+        optional: raw.optional,
+        choices: raw.choices,
+    })
+}
+
+fn normalize_asset(raw: RawSep31Asset) -> Result<Sep31Asset, Error> {
+    if !is_valid_asset_code(&raw.asset_code) {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "Invalid SEP-31 asset code",
+            &raw.asset_code,
+        ));
+    }
+    let mut fields = Vec::new();
+    for f in raw.fields {
+        fields.push(normalize_field(f)?);
+    }
+    Ok(Sep31Asset {
+        asset_code: raw.asset_code,
+        sep12_sender_types: raw.sep12_sender_types,
+        sep12_receiver_types: raw.sep12_receiver_types,
+        min_amount: raw.min_amount,
+        max_amount: raw.max_amount,
+        fee_fixed: raw.fee_fixed,
+        fee_percent: raw.fee_percent,
+        fields,
+    })
+}
+
+fn validate_memo_type(memo_type: &str) -> Result<(), Error> {
+    if !matches!(memo_type, "text" | "id" | "hash") {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "Invalid stellar_memo_type: must be \"text\", \"id\", or \"hash\"",
+            memo_type,
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_sep31_transaction(
+    raw: RawSep31TransactionResponse,
+) -> Result<Sep31TransactionResponse, Error> {
+    if raw.id.is_empty() {
+        return Err(Error::invalid_transaction_intent());
+    }
+    if raw.stellar_account_id.is_empty() {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "SEP-31 transaction missing stellar_account_id",
+            "stellar_account_id",
+        ));
+    }
+    if !is_valid_stellar_address(&raw.stellar_account_id) {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "Invalid stellar_account_id: must be a valid Stellar G-address",
+            &raw.stellar_account_id,
+        ));
+    }
+    if let Some(ref memo_type) = raw.stellar_memo_type {
+        validate_memo_type(memo_type)?;
+    }
+    Ok(Sep31TransactionResponse {
+        id: raw.id,
+        stellar_account_id: raw.stellar_account_id,
+        stellar_memo: raw.stellar_memo,
+        stellar_memo_type: raw.stellar_memo_type,
+    })
+}
+
+fn normalize_sep31_transaction_status(
+    raw: RawSep31TransactionStatusResponse,
+) -> Result<Sep31TransactionStatusResponse, Error> {
+    if raw.id.is_empty() {
+        return Err(Error::invalid_transaction_intent());
+    }
+    if raw.stellar_account_id.is_empty() {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "SEP-31 transaction missing stellar_account_id",
+            "stellar_account_id",
+        ));
+    }
+    if !is_valid_stellar_address(&raw.stellar_account_id) {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "Invalid stellar_account_id: must be a valid Stellar G-address",
+            &raw.stellar_account_id,
+        ));
+    }
+    if let Some(ref memo_type) = raw.stellar_memo_type {
+        validate_memo_type(memo_type)?;
+    }
+    Ok(Sep31TransactionStatusResponse {
+        id: raw.id,
+        status: Sep31TransactionStatus::from_str(&raw.status),
+        message: raw.message,
+        amount_in: raw.amount_in,
+        amount_out: raw.amount_out,
+        amount_fee: raw.amount_fee,
+        stellar_account_id: raw.stellar_account_id,
+        stellar_memo: raw.stellar_memo,
+        stellar_memo_type: raw.stellar_memo_type,
+        started_at: raw.started_at,
+        completed_at: raw.completed_at,
+        external_transaction_id: raw.external_transaction_id,
+    })
+}
+
+// ── Public service functions ──────────────────────────────────────────────────
+
+/// Normalize a raw `GET /info` response into a typed [`Sep31InfoResponse`].
+///
+/// Returns `Err(ValidationError)` if any asset code is invalid or if any
+/// field descriptor has an empty name.
+///
+/// # SEP-31 reference
+/// <https://stellar.org/protocol/sep-31#get-info>
+pub fn get_sep31_info(raw: RawSep31InfoResponse) -> Result<Sep31InfoResponse, Error> {
+    let mut assets = Vec::new();
+    for a in raw.assets {
+        assets.push(normalize_asset(a)?);
+    }
+    Ok(Sep31InfoResponse { assets })
+}
+
+/// Validate a `POST /transactions` request and normalize the anchor response.
+///
+/// Validates:
+/// - `amount` is non-zero.
+/// - `asset_code` is 1–12 alphanumeric characters.
+/// - `asset_issuer`, if provided, is a valid Stellar G-address.
+/// - `sender_id` and `receiver_id` are both non-empty (required SEP-12 KYC identifiers).
+/// - The anchor response contains a non-empty `id` and a valid `stellar_account_id`.
+/// - `stellar_memo_type`, if present, is one of `"text"`, `"id"`, or `"hash"`.
+///
+/// Returns `Err(InvalidAmount)` for a zero amount.
+/// Returns `Err(ValidationError)` for any format violation.
+/// Returns `Err(InvalidTransactionIntent)` if the anchor response is missing
+/// required fields (`id` or `stellar_account_id`).
+///
+/// # SEP-31 reference
+/// <https://stellar.org/protocol/sep-31#post-transactions>
+pub fn initiate_sep31_transaction(
+    req: RawSep31TransactionRequest,
+    raw: RawSep31TransactionResponse,
+) -> Result<Sep31TransactionResponse, Error> {
+    if req.amount == 0 {
+        return Err(Error::invalid_amount());
+    }
+    if !is_valid_asset_code(&req.asset_code) {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "Invalid asset code format: must be 1-12 alphanumeric characters",
+            &req.asset_code,
+        ));
+    }
+    if let Some(ref issuer) = req.asset_issuer {
+        if !is_valid_stellar_address(issuer) {
+            return Err(Error::with_context(
+                ErrorCode::ValidationError,
+                "Invalid asset_issuer: must be a valid Stellar G-address",
+                issuer,
+            ));
+        }
+    }
+    if req.sender_id.is_empty() {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "sender_id must not be empty (required SEP-12 KYC identifier)",
+            "sender_id",
+        ));
+    }
+    if req.receiver_id.is_empty() {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "receiver_id must not be empty (required SEP-12 KYC identifier)",
+            "receiver_id",
+        ));
+    }
+    normalize_sep31_transaction(raw)
+}
+
+/// Normalize a `GET /transactions/:id` response, dispatching on HTTP status.
+///
+/// | HTTP status | Result                                       |
+/// |-------------|----------------------------------------------|
+/// | 200–299     | Normalized [`Sep31TransactionStatusResponse`]|
+/// | 404         | `Err(TransactionNotFound)`                   |
+/// | 408         | `Err(TransportTimeout)` (retryable)          |
+/// | 429         | `Err(RateLimitExceeded)`                     |
+/// | 5xx         | `Err(ServerError)` (retryable)               |
+/// | other       | `Err(ValidationError)`                       |
+///
+/// # SEP-31 reference
+/// <https://stellar.org/protocol/sep-31#get-transaction>
+pub fn get_sep31_transaction(
+    http_status: u32,
+    raw: RawSep31TransactionStatusResponse,
+) -> Result<Sep31TransactionStatusResponse, Error> {
+    match http_status {
+        404       => Err(Error::from_code(ErrorCode::TransactionNotFound)),
+        408       => Err(Error::from_code(ErrorCode::TransportTimeout)),
+        429       => Err(Error::rate_limit_exceeded()),
+        500..=599 => Err(Error::from_code(ErrorCode::ServerError)),
+        200..=299 => normalize_sep31_transaction_status(raw),
+        _         => Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "HTTP request failed",
+            &alloc::format!("HTTP {}", http_status),
+        )),
+    }
+}
+
+/// Validate a `PUT /transactions/:id` update request.
+///
+/// Ensures the `transaction_id` is non-empty and that at least one field is
+/// provided. The caller is responsible for serializing the validated fields
+/// into the HTTP request body.
+///
+/// Returns `Err(InvalidTransactionIntent)` for a missing `transaction_id`.
+/// Returns `Err(ValidationError)` for an empty fields list.
+///
+/// # SEP-31 reference
+/// <https://stellar.org/protocol/sep-31#patch-transaction>
+pub fn update_sep31_transaction(
+    req: RawSep31UpdateRequest,
+) -> Result<RawSep31UpdateRequest, Error> {
+    if req.transaction_id.is_empty() {
+        return Err(Error::invalid_transaction_intent());
+    }
+    if req.fields.is_empty() {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "update request must include at least one field",
+            "fields",
+        ));
+    }
+    Ok(req)
+}
+
+/// Validate a `PUT /transactions/:id/callback` request.
+///
+/// Ensures `transaction_id` is non-empty and `callback_url` starts with
+/// `https://` (plain HTTP callbacks are rejected to prevent data leakage).
+///
+/// Returns `Err(InvalidTransactionIntent)` for a missing `transaction_id`.
+/// Returns `Err(ValidationError)` for a missing or non-HTTPS callback URL.
+///
+/// # SEP-31 reference
+/// <https://stellar.org/protocol/sep-31#post-callback>
+pub fn set_sep31_callback(
+    req: RawSep31CallbackRequest,
+) -> Result<RawSep31CallbackRequest, Error> {
+    if req.transaction_id.is_empty() {
+        return Err(Error::invalid_transaction_intent());
+    }
+    if req.callback_url.is_empty() {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "callback_url must not be empty",
+            "callback_url",
+        ));
+    }
+    if !req.callback_url.starts_with("https://") {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "callback_url must use HTTPS",
+            &req.callback_url,
+        ));
+    }
+    Ok(req)
+}
+
+/// HTTP status dispatcher (callback style) for any SEP-31 response.
+///
+/// Calls `response_fn` only on a 2xx status; maps error codes as follows:
+///
+/// | HTTP status | Error                       |
+/// |-------------|-----------------------------|
+/// | 403         | `ComplianceNotMet`          |
+/// | 404         | `TransactionNotFound`       |
+/// | 408         | `TransportTimeout`          |
+/// | 429         | `RateLimitExceeded`         |
+/// | 5xx         | `ServerError`               |
+/// | other       | `ValidationError`           |
+pub fn handle_sep31_http_status<T>(
+    http_status: u32,
+    response_fn: impl FnOnce() -> Result<T, Error>,
+) -> Result<T, Error> {
+    match http_status {
+        403       => Err(Error::from_code(ErrorCode::ComplianceNotMet)),
+        404       => Err(Error::from_code(ErrorCode::TransactionNotFound)),
+        408       => Err(Error::from_code(ErrorCode::TransportTimeout)),
+        429       => Err(Error::rate_limit_exceeded()),
+        500..=599 => Err(Error::from_code(ErrorCode::ServerError)),
+        200..=299 => response_fn(),
+        _         => Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "HTTP request failed",
+            &alloc::format!("HTTP {}", http_status),
+        )),
     }
 }
 
@@ -1272,395 +698,445 @@ impl Sep31Transport for MockSep31Transport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{Signer, SigningKey};
 
-    const ACCOUNT: &str = "GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZX";
-    const JWT: &str = "header.payload.signature";
-    const HOST: &str = "https://sending.example.com/callback";
-    const BODY: &str = r#"{"transaction":{"id":"tx-1","status":"pending_sender"}}"#;
+    // ── Fixtures ─────────────────────────────────────────────────────────────
 
-    fn auth() -> Sep31Auth {
-        Sep31Auth::new(JWT).unwrap()
-    }
+    /// Valid Stellar G-address with correct CRC16 checksum (same as sep6.rs tests).
+    const VALID_ACCOUNT: &str = "GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZX";
 
-    #[test]
-    fn status_round_trips_all_sep31_values() {
-        for status in [
-            Sep31Status::PendingSender,
-            Sep31Status::PendingStellar,
-            Sep31Status::PendingCustomerInfoUpdate,
-            Sep31Status::PendingTransactionInfoUpdate,
-            Sep31Status::PendingReceiver,
-            Sep31Status::PendingExternal,
-            Sep31Status::Completed,
-            Sep31Status::Refunded,
-            Sep31Status::Expired,
-            Sep31Status::Error,
-        ] {
-            assert_eq!(Sep31Status::from_str(status.as_str()), status);
+    fn raw_tx_request() -> RawSep31TransactionRequest {
+        RawSep31TransactionRequest {
+            amount: 10_000_000,
+            asset_code: "USDC".to_string(),
+            asset_issuer: None,
+            destination_asset: None,
+            quote_id: None,
+            sender_id: "sender-kyc-123".to_string(),
+            receiver_id: "receiver-kyc-456".to_string(),
+            fields: None,
         }
     }
 
-    #[test]
-    fn status_preserves_unknown_values_and_exposes_helpers() {
-        let status = Sep31Status::from_str("pending_new_status");
-        assert_eq!(
-            status,
-            Sep31Status::Unknown(String::from("pending_new_status"))
-        );
-        assert_eq!(status.as_str(), "pending_new_status");
-        assert!(Sep31Status::Completed.is_terminal());
-        assert!(Sep31Status::Refunded.is_terminal());
-        assert!(!Sep31Status::PendingSender.is_terminal());
-        assert!(Sep31Status::PendingCustomerInfoUpdate.requires_info_update());
-        assert!(Sep31Status::PendingTransactionInfoUpdate.requires_info_update());
-        assert!(!Sep31Status::PendingReceiver.requires_info_update());
-    }
-
-    #[test]
-    fn auth_rejects_empty_and_malformed_tokens() {
-        assert_eq!(
-            Sep31Auth::new("").unwrap_err().code,
-            ErrorCode::InvalidSep10Token
-        );
-        assert_eq!(
-            Sep31Auth::new("token with spaces").unwrap_err().code,
-            ErrorCode::InvalidSep10Token
-        );
-    }
-
-    #[test]
-    fn auth_strips_bearer_prefix() {
-        let auth = Sep31Auth::new("Bearer abc.def.ghi").unwrap();
-        assert_eq!(auth.jwt(), "abc.def.ghi");
-        assert_eq!(auth.authorization_header(), "Bearer abc.def.ghi");
-    }
-
-    #[test]
-    fn get_info_returns_typed_assets_and_sep12_types() {
-        let asset =
-            Sep31AssetInfo::new("USDC", &["SEPA", "SWIFT"]).with_limits(Some("0.1"), Some("1000"));
-        let request = Sep31Request::info(JWT, Some("en"));
-        let response = Sep31Response::Info(
-            RawSep31InfoResponse::new(alloc::vec![asset.clone()])
-                .with_customer_types(&["sep31_sender"], &["sep31_receiver"]),
-        );
-        let transport = MockSep31Transport::new().with_response(request, response);
-        let mut client = Sep31Client::new(transport, auth());
-
-        let info = client.get_info(Some("en")).unwrap();
-        assert_eq!(info.receive, alloc::vec![asset]);
-        assert_eq!(info.sender_customer_types, ["sep31_sender"]);
-        assert!(info.requires_customer(true));
-        assert!(info.requires_customer(false));
-        assert_eq!(
-            client.transport().calls()[0].authorization(),
-            "Bearer header.payload.signature"
-        );
-    }
-
-    #[test]
-    fn request_builders_carry_method_path_and_bearer_auth() {
-        let request = Sep31TransactionRequest::new("100", "USDC", "SWIFT")
-            .with_sender_id("sender-customer")
-            .with_receiver(Sep31CustomerReference::with_type(
-                "receiver-customer",
-                "sep31_receiver",
-            ));
-        let wire = Sep31Request::create(&request, JWT);
-        assert_eq!(wire.method(), "POST");
-        assert_eq!(wire.path(), "/transactions");
-        assert_eq!(wire.authorization(), "Bearer header.payload.signature");
-        match &wire {
-            Sep31Request::CreateTransaction { request, .. } => {
-                assert_eq!(request.sender.as_ref().unwrap().id, "sender-customer");
-                assert_eq!(
-                    request.receiver.as_ref().unwrap().customer_type.as_deref(),
-                    Some("sep31_receiver")
-                );
-            }
-            _ => panic!("expected CreateTransaction request"),
+    fn raw_tx_response() -> RawSep31TransactionResponse {
+        RawSep31TransactionResponse {
+            id: "txn-sep31-001".to_string(),
+            stellar_account_id: VALID_ACCOUNT.to_string(),
+            stellar_memo: Some("99887766".to_string()),
+            stellar_memo_type: Some("id".to_string()),
         }
-
-        let get = Sep31Request::get("tx-1", JWT);
-        assert_eq!(get.method(), "GET");
-        assert_eq!(get.path(), "/transactions/tx-1");
-        assert_eq!(get.transaction_id(), Some("tx-1"));
-
-        let callback = Sep31Request::register_callback("tx-1", HOST, JWT);
-        assert_eq!(callback.method(), "PUT");
-        assert_eq!(callback.path(), "/transactions/tx-1/callback");
     }
 
-    #[test]
-    fn create_transaction_sends_customer_references_and_returns_memo() {
-        let request = Sep31TransactionRequest::new("100", "USDC", "SWIFT")
-            .with_asset_issuer(ACCOUNT)
-            .with_destination_asset("iso4217:BRL")
-            .with_sender_id("sender-id")
-            .with_receiver_id("receiver-id");
-        let created =
-            RawSep31CreationResponse::new("tx-1").with_stellar(ACCOUNT, "123456789", "id");
-        let transport = MockSep31Transport::new().with_response(
-            Sep31Request::create(&request, JWT),
-            Sep31Response::Created(created),
-        );
-        let mut client = Sep31Client::new(transport, auth());
-
-        let result = client.create_transaction(&request).unwrap();
-        assert_eq!(result.id, "tx-1");
-        assert!(result.is_ready_to_pay());
-        assert_eq!(result.stellar_memo.as_deref(), Some("123456789"));
-        assert_eq!(client.transport().call_count(), 1);
+    fn raw_tx_status() -> RawSep31TransactionStatusResponse {
+        RawSep31TransactionStatusResponse {
+            id: "txn-sep31-001".to_string(),
+            status: "pending_stellar".to_string(),
+            message: Some("Waiting for Stellar payment.".to_string()),
+            amount_in: Some(10_000_000),
+            amount_out: Some(9_750_000),
+            amount_fee: Some(250_000),
+            stellar_account_id: VALID_ACCOUNT.to_string(),
+            stellar_memo: Some("99887766".to_string()),
+            stellar_memo_type: Some("id".to_string()),
+            started_at: Some(1_700_000_000),
+            completed_at: None,
+            external_transaction_id: None,
+        }
     }
 
-    #[test]
-    fn create_transaction_rejects_invalid_requests_before_transport() {
-        let request = Sep31TransactionRequest::new("100", "usdc", "SWIFT");
-        let transport = MockSep31Transport::new();
-        let mut client = Sep31Client::new(transport, auth());
-
-        assert_eq!(
-            client.create_transaction(&request).unwrap_err().code,
-            ErrorCode::ValidationError
-        );
-        assert_eq!(client.transport().call_count(), 0);
-
-        let mismatched_memo =
-            Sep31TransactionRequest::new("100", "USDC", "SWIFT").with_refund_memo("memo", "");
-        assert_eq!(
-            client
-                .create_transaction(&mismatched_memo)
-                .unwrap_err()
-                .code,
-            ErrorCode::ValidationError
-        );
-    }
+    // ── Sep31TransactionStatus ───────────────────────────────────────────────
 
     #[test]
-    fn get_transaction_normalizes_status_and_amounts() {
-        let raw = RawSep31Transaction::new("tx-1", Sep31Status::PendingExternal)
-            .with_amounts("100", "90", "10")
-            .with_message("Payment initiated");
-        let transport = MockSep31Transport::new().with_response(
-            Sep31Request::get("tx-1", JWT),
-            Sep31Response::Transaction(Box::new(raw)),
-        );
-        let mut client = Sep31Client::new(transport, auth());
-
-        let transaction = client.get_transaction("tx-1").unwrap();
-        assert_eq!(transaction.status, Sep31Status::PendingExternal);
-        assert_eq!(transaction.amount_in.as_deref(), Some("100"));
-        assert_eq!(
-            transaction.status_message.as_deref(),
-            Some("Payment initiated")
-        );
-    }
-
-    #[test]
-    fn get_transaction_rejects_path_traversal_and_404() {
-        let mut client = Sep31Client::new(MockSep31Transport::new(), auth());
-        assert_eq!(
-            client.get_transaction("../tx").unwrap_err().code,
-            ErrorCode::ValidationError
-        );
-        assert_eq!(client.transport().call_count(), 0);
-
-        let transport = MockSep31Transport::new().with_response(
-            Sep31Request::get("missing", JWT),
-            Sep31Response::Transaction(Box::new(
-                RawSep31Transaction::new("missing", Sep31Status::Error).with_status_code(404),
-            )),
-        );
-        let mut client = Sep31Client::new(transport, auth());
-        assert_eq!(
-            client.get_transaction("missing").unwrap_err().code,
-            ErrorCode::TransactionNotFound
-        );
-    }
-
-    #[test]
-    fn patch_transaction_sends_requested_fields() {
-        let fields: [(&str, &str); 2] = [
-            ("receiver_bank_account", "123456789"),
-            ("receiver_routing_number", "021000021"),
+    fn all_known_statuses_round_trip() {
+        let cases = [
+            ("pending_sender",                   Sep31TransactionStatus::PendingSender),
+            ("pending_stellar",                  Sep31TransactionStatus::PendingStellar),
+            ("pending_customer_info_update",     Sep31TransactionStatus::PendingCustomerInfoUpdate),
+            ("pending_transaction_info_update",  Sep31TransactionStatus::PendingTransactionInfoUpdate),
+            ("pending_receiver",                 Sep31TransactionStatus::PendingReceiver),
+            ("pending_external",                 Sep31TransactionStatus::PendingExternal),
+            ("completed",                        Sep31TransactionStatus::Completed),
+            ("refunded",                         Sep31TransactionStatus::Refunded),
+            ("expired",                          Sep31TransactionStatus::Expired),
+            ("error",                            Sep31TransactionStatus::Error),
         ];
-        let request = Sep31Request::patch("tx-1", &fields, JWT);
-        let transport = MockSep31Transport::new().with_response(
-            request.clone(),
-            Sep31Response::transaction("tx-1", Sep31Status::PendingReceiver),
-        );
-        let mut client = Sep31Client::new(transport, auth());
-
-        let transaction = client.patch_transaction("tx-1", &fields).unwrap();
-        assert_eq!(transaction.status, Sep31Status::PendingReceiver);
-        match &client.transport().calls()[0] {
-            Sep31Request::PatchTransaction { id, fields, .. } => {
-                assert_eq!(id, "tx-1");
-                assert_eq!(fields.len(), 2);
-                assert_eq!(fields[0].1, "123456789");
-            }
-            _ => panic!("expected PatchTransaction request"),
+        for (s, expected) in cases {
+            let got = Sep31TransactionStatus::from_str(s);
+            assert_eq!(got, expected, "from_str({s:?}) mismatch");
+            assert_eq!(got.as_str(), s, "as_str() roundtrip failed for {s:?}");
         }
     }
 
     #[test]
-    fn patch_transaction_requires_named_fields() {
-        let mut client = Sep31Client::new(MockSep31Transport::new(), auth());
-        assert_eq!(
-            client.patch_transaction("tx-1", &[]).unwrap_err().code,
-            ErrorCode::ValidationError
-        );
-        assert_eq!(
-            client
-                .patch_transaction("tx-1", &[("", "value")])
-                .unwrap_err()
-                .code,
-            ErrorCode::ValidationError
-        );
-        assert_eq!(client.transport().call_count(), 0);
+    fn unknown_status_preserved() {
+        let got = Sep31TransactionStatus::from_str("future_status");
+        assert_eq!(got, Sep31TransactionStatus::Unknown("future_status".to_string()));
+        assert_eq!(got.as_str(), "future_status");
     }
 
     #[test]
-    fn register_callback_uses_https_and_succeeds_on_204() {
-        let transport = MockSep31Transport::new().with_response(
-            Sep31Request::register_callback("tx-1", HOST, JWT),
-            Sep31Response::callback_registered(),
-        );
-        let mut client = Sep31Client::new(transport, auth());
-        assert!(client.register_callback("tx-1", HOST).is_ok());
+    fn terminal_statuses_correct() {
+        assert!(Sep31TransactionStatus::Completed.is_terminal());
+        assert!(Sep31TransactionStatus::Refunded.is_terminal());
+        assert!(Sep31TransactionStatus::Expired.is_terminal());
+        assert!(Sep31TransactionStatus::Error.is_terminal());
+        assert!(!Sep31TransactionStatus::PendingSender.is_terminal());
+        assert!(!Sep31TransactionStatus::PendingStellar.is_terminal());
+        assert!(!Sep31TransactionStatus::PendingReceiver.is_terminal());
+        assert!(!Sep31TransactionStatus::PendingExternal.is_terminal());
     }
 
     #[test]
-    fn register_callback_rejects_insecure_urls() {
-        let mut client = Sep31Client::new(MockSep31Transport::new(), auth());
-        assert!(client
-            .register_callback("tx-1", "http://sending.example.com/callback")
-            .is_err());
-        assert_eq!(client.transport().call_count(), 0);
+    fn requires_action_statuses_correct() {
+        assert!(Sep31TransactionStatus::PendingCustomerInfoUpdate.requires_action());
+        assert!(Sep31TransactionStatus::PendingTransactionInfoUpdate.requires_action());
+        assert!(!Sep31TransactionStatus::PendingStellar.requires_action());
+        assert!(!Sep31TransactionStatus::Completed.requires_action());
+    }
+
+    // ── initiate_sep31_transaction ───────────────────────────────────────────
+
+    #[test]
+    fn initiate_normalizes_response() {
+        let tx = initiate_sep31_transaction(raw_tx_request(), raw_tx_response()).unwrap();
+        assert_eq!(tx.id, "txn-sep31-001");
+        assert_eq!(tx.stellar_account_id, VALID_ACCOUNT);
+        assert_eq!(tx.stellar_memo, Some("99887766".to_string()));
+        assert_eq!(tx.stellar_memo_type, Some("id".to_string()));
     }
 
     #[test]
-    fn http_error_statuses_map_to_anchor_kit_errors() {
-        for (code, expected) in [
-            (400, ErrorCode::ValidationError),
-            (401, ErrorCode::InvalidSep10Token),
-            (403, ErrorCode::InvalidSep10Token),
-            (404, ErrorCode::TransactionNotFound),
-            (408, ErrorCode::TransportTimeout),
-            (429, ErrorCode::RateLimitExceeded),
-            (500, ErrorCode::ServerError),
-        ] {
-            assert_eq!(http_error(code).code, expected, "status {code}");
+    fn initiate_zero_amount_returns_invalid_amount() {
+        let mut req = raw_tx_request();
+        req.amount = 0;
+        let err = initiate_sep31_transaction(req, raw_tx_response()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidAmount);
+    }
+
+    #[test]
+    fn initiate_empty_asset_code_returns_validation_error() {
+        let mut req = raw_tx_request();
+        req.asset_code = "".to_string();
+        let err = initiate_sep31_transaction(req, raw_tx_response()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn initiate_too_long_asset_code_returns_validation_error() {
+        let mut req = raw_tx_request();
+        req.asset_code = "TOOLONGASSET1".to_string(); // 13 chars
+        let err = initiate_sep31_transaction(req, raw_tx_response()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn initiate_invalid_asset_issuer_returns_validation_error() {
+        let mut req = raw_tx_request();
+        req.asset_issuer = Some("not-a-stellar-address".to_string());
+        let err = initiate_sep31_transaction(req, raw_tx_response()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn initiate_valid_asset_issuer_accepted() {
+        let mut req = raw_tx_request();
+        req.asset_issuer = Some(VALID_ACCOUNT.to_string());
+        assert!(initiate_sep31_transaction(req, raw_tx_response()).is_ok());
+    }
+
+    #[test]
+    fn initiate_empty_sender_id_returns_validation_error() {
+        let mut req = raw_tx_request();
+        req.sender_id = "".to_string();
+        let err = initiate_sep31_transaction(req, raw_tx_response()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn initiate_empty_receiver_id_returns_validation_error() {
+        let mut req = raw_tx_request();
+        req.receiver_id = "".to_string();
+        let err = initiate_sep31_transaction(req, raw_tx_response()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn initiate_missing_response_id_returns_invalid_intent() {
+        let mut resp = raw_tx_response();
+        resp.id = "".to_string();
+        let err = initiate_sep31_transaction(raw_tx_request(), resp).unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidTransactionIntent);
+    }
+
+    #[test]
+    fn initiate_invalid_stellar_account_in_response_returns_validation_error() {
+        let mut resp = raw_tx_response();
+        resp.stellar_account_id = "not-a-stellar-address".to_string();
+        let err = initiate_sep31_transaction(raw_tx_request(), resp).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn initiate_invalid_memo_type_returns_validation_error() {
+        let mut resp = raw_tx_response();
+        resp.stellar_memo_type = Some("unknown_type".to_string());
+        let err = initiate_sep31_transaction(raw_tx_request(), resp).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn initiate_all_valid_memo_types_accepted() {
+        for memo_type in &["text", "id", "hash"] {
+            let mut resp = raw_tx_response();
+            resp.stellar_memo_type = Some(memo_type.to_string());
+            assert!(
+                initiate_sep31_transaction(raw_tx_request(), resp).is_ok(),
+                "memo_type={memo_type} should be accepted"
+            );
         }
     }
 
     #[test]
-    fn unauthorized_info_response_maps_to_invalid_sep10_token() {
-        let transport = MockSep31Transport::new().with_response(
-            Sep31Request::info(JWT, None),
-            Sep31Response::Info(RawSep31InfoResponse::new(alloc::vec![]).with_status_code(403)),
-        );
-        let mut client = Sep31Client::new(transport, auth());
-        assert_eq!(
-            client.get_info(None).unwrap_err().code,
-            ErrorCode::InvalidSep10Token
-        );
+    fn initiate_no_memo_accepted() {
+        let mut resp = raw_tx_response();
+        resp.stellar_memo = None;
+        resp.stellar_memo_type = None;
+        assert!(initiate_sep31_transaction(raw_tx_request(), resp).is_ok());
+    }
+
+    // ── get_sep31_transaction ────────────────────────────────────────────────
+
+    #[test]
+    fn get_transaction_200_normalizes() {
+        let result = get_sep31_transaction(200, raw_tx_status()).unwrap();
+        assert_eq!(result.id, "txn-sep31-001");
+        assert_eq!(result.status, Sep31TransactionStatus::PendingStellar);
+        assert_eq!(result.amount_in, Some(10_000_000));
+        assert_eq!(result.amount_fee, Some(250_000));
     }
 
     #[test]
-    fn transport_failures_propagate() {
-        let mut transport = MockSep31Transport::new();
-        transport.set_should_fail(true);
-        let mut client = Sep31Client::new(transport, auth());
-        assert_eq!(
-            client.get_transaction("tx-1").unwrap_err().code,
-            ErrorCode::TransportTimeout
-        );
+    fn get_transaction_404_returns_not_found() {
+        let err = get_sep31_transaction(404, raw_tx_status()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::TransactionNotFound);
     }
 
     #[test]
-    fn callback_header_prefers_signature_over_legacy() {
-        assert_eq!(
-            callback_signature_header(Some("t=1, s=abc"), Some("t=2, s=def")).unwrap(),
-            "t=1, s=abc"
-        );
-        assert_eq!(
-            callback_signature_header(None, Some("t=2, s=def")).unwrap(),
-            "t=2, s=def"
-        );
-        assert_eq!(
-            callback_signature_header(None, None).unwrap_err().code,
-            ErrorCode::InvalidSep10Token
-        );
+    fn get_transaction_408_returns_timeout() {
+        let err = get_sep31_transaction(408, raw_tx_status()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::TransportTimeout);
     }
 
     #[test]
-    fn callback_parse_enforces_freshness() {
-        let body = RawSep31Transaction::new("tx-1", Sep31Status::PendingSender);
-        let header = "t=1000, s=c2lnbmF0dXJl";
-        assert!(Sep31Callback::parse(header, HOST, body.clone(), 1030, 60).is_ok());
-        assert_eq!(
-            Sep31Callback::parse(header, HOST, body.clone(), 1200, 60)
-                .unwrap_err()
-                .code,
-            ErrorCode::ReplayAttack
-        );
-        assert_eq!(
-            Sep31Callback::parse(header, HOST, body, 900, 60)
-                .unwrap_err()
-                .code,
-            ErrorCode::InvalidTimestamp
-        );
+    fn get_transaction_429_returns_rate_limit() {
+        let err = get_sep31_transaction(429, raw_tx_status()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::RateLimitExceeded);
     }
 
     #[test]
-    fn callback_parse_rejects_malformed_headers() {
-        let body = RawSep31Transaction::new("tx-1", Sep31Status::Completed);
-        for header in ["", "t=1000", "s=abc", "t=x, s=abc", "t=1000, s="] {
-            assert!(Sep31Callback::parse(header, HOST, body.clone(), 1000, 60).is_err());
-        }
+    fn get_transaction_500_returns_server_error() {
+        let err = get_sep31_transaction(500, raw_tx_status()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ServerError);
     }
 
     #[test]
-    fn callback_signature_verifies_and_rejects_tampering() {
-        let signing_key = SigningKey::from_bytes(&[7u8; 32]);
-        let timestamp = 1000u64;
-        let payload = format!("{timestamp}.{HOST}.{BODY}");
-        let signature = signing_key.sign(payload.as_bytes());
-        let header = format!(
-            "t={timestamp}, s={}",
-            BASE64_STANDARD.encode(signature.to_bytes())
-        );
-        let body = RawSep31Transaction::new("tx-1", Sep31Status::PendingSender);
-        let callback = Sep31Callback::parse(&header, HOST, body, timestamp + 10, 60).unwrap();
-
-        assert!(callback
-            .verify(BODY, signing_key.verifying_key().as_bytes())
-            .is_ok());
-        assert_eq!(
-            callback
-                .verify(
-                    "{}\"tampered\":true}",
-                    signing_key.verifying_key().as_bytes()
-                )
-                .unwrap_err()
-                .code,
-            ErrorCode::InvalidSep10Token
-        );
+    fn get_transaction_503_returns_server_error() {
+        let err = get_sep31_transaction(503, raw_tx_status()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ServerError);
     }
 
     #[test]
-    fn mock_transport_records_and_resets_calls() {
-        let transport = MockSep31Transport::new().with_response(
-            Sep31Request::get("tx-1", JWT),
-            Sep31Response::transaction("tx-1", Sep31Status::PendingSender),
-        );
-        let mut client = Sep31Client::new(transport, auth());
-        assert!(client.get_transaction("tx-1").is_ok());
-        assert_eq!(client.transport().call_count(), 1);
-        assert_eq!(client.transport_mut().take_calls().len(), 1);
-        assert_eq!(client.transport().call_count(), 0);
-        client.transport_mut().reset();
+    fn get_transaction_302_returns_validation_error() {
+        let err = get_sep31_transaction(302, raw_tx_status()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn get_transaction_missing_id_returns_invalid_intent() {
+        let mut raw = raw_tx_status();
+        raw.id = "".to_string();
+        let err = get_sep31_transaction(200, raw).unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidTransactionIntent);
+    }
+
+    // ── update_sep31_transaction ─────────────────────────────────────────────
+
+    #[test]
+    fn update_valid_request_passes() {
+        let req = RawSep31UpdateRequest {
+            transaction_id: "txn-001".to_string(),
+            fields: alloc::vec![("routing_number".to_string(), "123456789".to_string())],
+        };
+        assert!(update_sep31_transaction(req).is_ok());
+    }
+
+    #[test]
+    fn update_empty_transaction_id_returns_invalid_intent() {
+        let req = RawSep31UpdateRequest {
+            transaction_id: "".to_string(),
+            fields: alloc::vec![("field".to_string(), "value".to_string())],
+        };
+        let err = update_sep31_transaction(req).unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidTransactionIntent);
+    }
+
+    #[test]
+    fn update_empty_fields_returns_validation_error() {
+        let req = RawSep31UpdateRequest {
+            transaction_id: "txn-001".to_string(),
+            fields: alloc::vec![],
+        };
+        let err = update_sep31_transaction(req).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    // ── set_sep31_callback ───────────────────────────────────────────────────
+
+    #[test]
+    fn callback_valid_https_url_passes() {
+        let req = RawSep31CallbackRequest {
+            transaction_id: "txn-001".to_string(),
+            callback_url: "https://my-service.example.com/sep31/callback".to_string(),
+        };
+        assert!(set_sep31_callback(req).is_ok());
+    }
+
+    #[test]
+    fn callback_empty_transaction_id_returns_invalid_intent() {
+        let req = RawSep31CallbackRequest {
+            transaction_id: "".to_string(),
+            callback_url: "https://example.com/cb".to_string(),
+        };
+        let err = set_sep31_callback(req).unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidTransactionIntent);
+    }
+
+    #[test]
+    fn callback_empty_url_returns_validation_error() {
+        let req = RawSep31CallbackRequest {
+            transaction_id: "txn-001".to_string(),
+            callback_url: "".to_string(),
+        };
+        let err = set_sep31_callback(req).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn callback_http_url_returns_validation_error() {
+        let req = RawSep31CallbackRequest {
+            transaction_id: "txn-001".to_string(),
+            callback_url: "http://insecure.example.com/cb".to_string(),
+        };
+        let err = set_sep31_callback(req).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    // ── handle_sep31_http_status ─────────────────────────────────────────────
+
+    #[test]
+    fn http_status_200_calls_fn() {
+        let result = handle_sep31_http_status(200, || Ok::<u32, Error>(42));
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    fn http_status_403_returns_compliance_not_met() {
+        let err = handle_sep31_http_status(403, || Ok::<u32, Error>(0)).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ComplianceNotMet);
+    }
+
+    #[test]
+    fn http_status_404_returns_not_found() {
+        let err = handle_sep31_http_status(404, || Ok::<u32, Error>(0)).unwrap_err();
+        assert_eq!(err.code, ErrorCode::TransactionNotFound);
+    }
+
+    #[test]
+    fn http_status_429_returns_rate_limit() {
+        let err = handle_sep31_http_status(429, || Ok::<u32, Error>(0)).unwrap_err();
+        assert_eq!(err.code, ErrorCode::RateLimitExceeded);
+    }
+
+    #[test]
+    fn http_status_500_returns_server_error() {
+        let err = handle_sep31_http_status(500, || Ok::<u32, Error>(0)).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ServerError);
+    }
+
+    // ── get_sep31_info ───────────────────────────────────────────────────────
+
+    #[test]
+    fn get_info_normalizes_assets() {
+        let raw = RawSep31InfoResponse {
+            assets: alloc::vec![RawSep31Asset {
+                asset_code: "USDC".to_string(),
+                sep12_sender_types: alloc::vec!["sep31-sender".to_string()],
+                sep12_receiver_types: alloc::vec!["sep31-receiver".to_string()],
+                min_amount: Some(1_000_000),
+                max_amount: Some(100_000_000),
+                fee_fixed: Some(250_000),
+                fee_percent: Some(50),
+                fields: alloc::vec![RawSep31Field {
+                    name: "routing_number".to_string(),
+                    description: "US bank routing number".to_string(),
+                    optional: false,
+                    choices: alloc::vec![],
+                }],
+            }],
+        };
+        let info = get_sep31_info(raw).unwrap();
+        assert_eq!(info.assets.len(), 1);
+        let asset = &info.assets[0];
+        assert_eq!(asset.asset_code, "USDC");
+        assert_eq!(asset.min_amount, Some(1_000_000));
+        assert_eq!(asset.fields.len(), 1);
+        assert_eq!(asset.fields[0].name, "routing_number");
+        assert!(!asset.fields[0].optional);
+    }
+
+    #[test]
+    fn get_info_invalid_asset_code_returns_validation_error() {
+        let raw = RawSep31InfoResponse {
+            assets: alloc::vec![RawSep31Asset {
+                asset_code: "INVALID!".to_string(),
+                sep12_sender_types: alloc::vec![],
+                sep12_receiver_types: alloc::vec![],
+                min_amount: None,
+                max_amount: None,
+                fee_fixed: None,
+                fee_percent: None,
+                fields: alloc::vec![],
+            }],
+        };
+        let err = get_sep31_info(raw).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn get_info_empty_field_name_returns_validation_error() {
+        let raw = RawSep31InfoResponse {
+            assets: alloc::vec![RawSep31Asset {
+                asset_code: "USDC".to_string(),
+                sep12_sender_types: alloc::vec![],
+                sep12_receiver_types: alloc::vec![],
+                min_amount: None,
+                max_amount: None,
+                fee_fixed: None,
+                fee_percent: None,
+                fields: alloc::vec![RawSep31Field {
+                    name: "".to_string(),
+                    description: "some field".to_string(),
+                    optional: true,
+                    choices: alloc::vec![],
+                }],
+            }],
+        };
+        let err = get_sep31_info(raw).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn get_info_empty_asset_list_is_ok() {
+        let raw = RawSep31InfoResponse { assets: alloc::vec![] };
+        assert!(get_sep31_info(raw).unwrap().assets.is_empty());
     }
 }
