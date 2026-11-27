@@ -21,7 +21,7 @@ Cross-platform path handling implementation is complete and all related tests pa
    - All existing tests pass
    - Includes cross-platform path handling tests
 
-4. **Python Validation Tests** - `python3 test_config_validation.py --test`
+4. **Python Validation Tests** - `python3 scripts/test_config_validation.py --test`
    - Status: ✅ PASSED
    - 26/26 tests passing
    - All validation logic works correctly
@@ -35,7 +35,7 @@ Cross-platform path handling implementation is complete and all related tests pa
    - This is NOT related to the cross-platform path handling changes
    - Without `-D warnings`, clippy runs successfully with 50 warnings (mostly unused code)
 
-2. **Config Validation** - `bash validate_all.sh`
+2. **Config Validation** - `bash scripts/validate_all.sh`
    - Status: ⚠️ PRE-EXISTING ISSUES
    - 14 validation errors in config files
    - Issues include:
@@ -126,15 +126,15 @@ The only blocking issue is pre-existing config validation errors that are unrela
 
 ### New Files
 - `tests/cross_platform_tests.rs` - Integration tests for cross-platform path handling
-- `validate_all.ps1` - Windows PowerShell validation script
-- `pre_deploy_validate.ps1` - Windows PowerShell pre-deployment script
+- `scripts/validate_all.ps1` - Windows PowerShell validation script
+- `scripts/pre_deploy_validate.ps1` - Windows PowerShell pre-deployment script
 - `.gitattributes` - Line ending configuration
 - Multiple documentation files
 
 ### Modified Files
 - `src/lib.rs` - Removed incompatible test module reference
 - `src/serialization.rs` - Fixed unused imports
-- `validate_config.py` - Enhanced with explicit pathlib usage
+- `scripts/validate_config.py` - Enhanced with explicit pathlib usage
 - `README.md` - Added platform support documentation
 
 ### Deleted Files

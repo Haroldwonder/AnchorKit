@@ -186,7 +186,8 @@ rotate_credential() {
     echo "  Rotating credential for $name..."
     
     # Encrypt new credential
-    local encrypted_new=$(encrypt_credential "$new_credential")
+    local encrypted_new
+    encrypted_new=$(encrypt_credential "$new_credential")
     
     # Rotate in contract
     stellar contract invoke \

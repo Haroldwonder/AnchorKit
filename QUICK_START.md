@@ -45,7 +45,7 @@ Expected output:
 For strict schema validation (field lengths, patterns, enums):
 
 ```bash
-python validate_config.py
+python scripts/validate_config.py
 ```
 
 ## 4. Run environment diagnostics

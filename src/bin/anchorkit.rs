@@ -1661,7 +1661,7 @@ fn run_config_validate(path: &str) {
             .ok()
             .and_then(|e| e.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| std::path::PathBuf::from("."));
-        p.push("validate_config.py");
+        p.push("scripts/validate_config.py");
         if !p.exists() {
             // Fall back to the repo root (development layout: target/…/anchorkit)
             p = std::env::current_exe()
@@ -1671,7 +1671,7 @@ fn run_config_validate(path: &str) {
                     // target/debug/ and target/release/ layouts)
                     let mut dir = e.parent()?.to_path_buf();
                     for _ in 0..5 {
-                        let candidate = dir.join("validate_config.py");
+                        let candidate = dir.join("scripts/validate_config.py");
                         if candidate.exists() {
                             return Some(candidate);
                         }
@@ -1679,18 +1679,18 @@ fn run_config_validate(path: &str) {
                     }
                     None
                 })
-                .unwrap_or_else(|| std::path::PathBuf::from("validate_config.py"));
+                .unwrap_or_else(|| std::path::PathBuf::from("scripts/validate_config.py"));
         }
         p
     };
 
     if !script_path.exists() {
         eprintln!(
-            "❌ validate_config.py not found (looked in: {})",
+            "❌ scripts/validate_config.py not found (looked in: {})",
             script_path.display()
         );
-        eprintln!("   Make sure validate_config.py is present in the project root.");
-        std::process::exit(exit_code::GENERIC);
+        eprintln!("   Make sure scripts/validate_config.py is present in the project.");
+        std::process::exit(1);
     }
 
     // Require python3
