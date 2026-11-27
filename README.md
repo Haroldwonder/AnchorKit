@@ -138,7 +138,7 @@ AnchorKit now includes comprehensive session management and operation tracing to
 Use Soroban transactions to invoke contract methods. For example, with the CLI:
 
 ```bash
-soroban contract invoke \
+stellar contract invoke \
     --id <CONTRACT_ID> \
     --source <ADMIN_ACCOUNT> \
     --network testnet \
@@ -300,8 +300,12 @@ anchorkit attest --subject GUSER123... \
 
 #### 4. Monitor Health
 ```bash
+# Health is read live from the deployed contract; configure it first
+export ANCHORKIT_CONTRACT_ID=<CONTRACT_ID>
+export ANCHORKIT_RPC_URL=https://soroban-testnet.stellar.org   # optional on testnet/futurenet
+
 # Check all attestors
-anchorkit health
+anchorkit health --network testnet
 
 # Monitor specific attestor
 anchorkit health --attestor GANCHOR123... --watch --interval 30
@@ -496,3 +500,9 @@ For questions or issues:
 
 <!-- handsoff-issue-1426 -->
 - #1426: submit_attestation_batch has no maximum batch size
+
+<!-- handsoff-issue-1576 -->
+- #1576: Add an anchorkit revoke command
+
+<!-- handsoff-issue-1577 -->
+- #1577: Add an anchorkit pause / unpause command

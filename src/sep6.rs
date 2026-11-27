@@ -8,6 +8,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::domain_validator::validate_anchor_domain;
 use crate::errors::{Error, ErrorCode};
 use crate::retry::RetryConfig;
 use crate::domain_validator::validate_anchor_domain;
@@ -23,6 +24,7 @@ pub enum TransactionStatus {
     PendingAnchor,
     PendingTrust,
     PendingUser,
+    PendingUserTransferStart,
     Completed,
     Refunded,
     Expired,
@@ -45,7 +47,8 @@ impl TransactionStatus {
             "pending_external" => Self::PendingExternal,
             "pending_anchor" => Self::PendingAnchor,
             "pending_trust" => Self::PendingTrust,
-            "pending_user" | "pending_user_transfer_start" => Self::PendingUser,
+            "pending_user" => Self::PendingUser,
+            "pending_user_transfer_start" => Self::PendingUserTransferStart,
             "completed" => Self::Completed,
             "refunded" => Self::Refunded,
             "expired" => Self::Expired,
@@ -69,6 +72,7 @@ impl TransactionStatus {
         matches!(
             self,
             Self::PendingUser
+                | Self::PendingUserTransferStart
                 | Self::PendingCustomerInfoUpdate
                 | Self::PendingTransactionInfoUpdate
                 | Self::PendingUserTransferComplete
@@ -98,6 +102,7 @@ impl TransactionStatus {
             Self::PendingAnchor => "pending_anchor",
             Self::PendingTrust => "pending_trust",
             Self::PendingUser => "pending_user",
+            Self::PendingUserTransferStart => "pending_user_transfer_start",
             Self::Completed => "completed",
             Self::Refunded => "refunded",
             Self::Expired => "expired",
@@ -365,6 +370,25 @@ fn is_valid_asset_code(s: &str) -> bool {
     len >= 1 && len <= 12 && s.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
+/// Validate the optional SEP-6 `on_change_callback` URL.
+///
+/// SEP-6 requires the callback to be an HTTPS URL. Reusing the anchor-domain
+/// validator gives callback URLs the same protections as other anchor-supplied
+/// endpoints: HTTPS-only, no localhost/bare-IP hosts, no path traversal, and
+/// a maximum length. `None` is always valid because the parameter is optional.
+fn validate_on_change_callback(callback: Option<&str>) -> Result<(), Error> {
+    if let Some(url) = callback {
+        if validate_anchor_domain(url).is_err() {
+            return Err(Error::with_context(
+                ErrorCode::ValidationError,
+                "Invalid on_change_callback: must be a valid HTTPS URL",
+                url,
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Classifies whether an HTTP status code represents a retryable error.
 ///
 /// Returns `true` for transient errors (5xx server errors, timeouts, connection errors).
@@ -392,6 +416,9 @@ pub fn is_http_error_retryable(http_status: u32) -> bool {
 /// # Arguments
 /// - `fetch_fn`: A closure that fetches a raw transaction response. Called with the attempt number (0-based).
 /// - `retry_config`: Optional retry configuration. If `None`, uses `RetryConfig::default()`.
+/// - `jitter_seed`: Caller-supplied entropy for full-jitter backoff. Must vary per
+///   client/process (e.g. a random value sampled at startup) so retry delays are
+///   not synchronised across clients.
 /// - `sleep_fn`: A function to sleep between retries (useful for testing with mocks).
 ///
 /// # Behavior
@@ -408,22 +435,32 @@ pub fn is_http_error_retryable(http_status: u32) -> bool {
 /// let result = fetch_transaction_status_with_retry(
 ///     |_attempt| http_client.get("/transaction?id=123"),
 ///     None,
+///     process_random_seed,
 ///     |ms| std::thread::sleep(std::time::Duration::from_millis(ms)),
 /// );
 /// ```
 pub fn fetch_transaction_status_with_retry<F, S>(
     fetch_fn: F,
     retry_config: Option<RetryConfig>,
+    jitter_seed: u64,
     sleep_fn: S,
 ) -> Result<TransactionStatusResponse, Error>
 where
     F: FnMut(u32) -> Result<RawTransactionResponse, Error>,
     S: FnMut(u64),
 {
-    use crate::retry::retry_with_backoff;
+    use crate::retry::{is_retryable, retry_with_backoff};
 
     let config = retry_config.unwrap_or_default();
-    let raw_result = retry_with_backoff(&config, 0, fetch_fn, |_err| true, sleep_fn);
+    // Only transient failures (timeouts, endpoint failures, 5xx) are retried;
+    // validation errors, 4xx responses and not-found results fail immediately.
+    let raw_result = retry_with_backoff(
+        &config,
+        jitter_seed,
+        fetch_fn,
+        |err: &Error| is_retryable(err.code as u32),
+        sleep_fn,
+    );
 
     raw_result.and_then(|raw| fetch_transaction_status(raw))
 }
@@ -442,6 +479,7 @@ pub fn initiate_deposit(raw: RawDepositResponse, asset_code: &str) -> Result<Dep
             asset_code,
         ));
     }
+    validate_on_change_callback(raw.on_change_callback.as_deref())?;
     if raw.transaction_id.is_empty() || raw.how.is_empty() {
         return Err(Error::invalid_transaction_intent());
     }
@@ -494,6 +532,7 @@ pub fn initiate_withdrawal(raw: RawWithdrawalResponse, asset_code: &str) -> Resu
             asset_code,
         ));
     }
+    validate_on_change_callback(raw.on_change_callback.as_deref())?;
     if raw.transaction_id.is_empty() || raw.account_id.is_empty() {
         return Err(Error::invalid_transaction_intent());
     }
@@ -896,6 +935,289 @@ pub fn get_transactions(
         .collect())
 }
 
+// ── SEP-6 /info (#1518) ───────────────────────────────────────────────────────
+
+/// A single field descriptor from the SEP-6 `/info` `fields` block.
+///
+/// Anchors use these to declare which KYC / payment fields they require from
+/// a user before or during a transaction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep6Field {
+    /// Machine-readable field name (e.g. `"email_address"`, `"bank_account_number"`).
+    pub name: String,
+    /// Human-readable explanation shown to the user.
+    pub description: String,
+    /// Whether the anchor requires this field. `true` = mandatory.
+    pub optional: bool,
+    /// Allowed values for the field, when the anchor restricts to an enum set.
+    pub choices: Vec<String>,
+}
+
+/// Fields the anchor requires per operation type (deposit / withdraw).
+///
+/// Corresponds to the `fields` object inside a SEP-6 `/info` asset entry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep6OperationFields {
+    /// Fields required (or optional) for a deposit of this asset.
+    pub deposit: Vec<Sep6Field>,
+    /// Fields required (or optional) for a withdrawal of this asset.
+    pub withdraw: Vec<Sep6Field>,
+}
+
+/// Deposit / withdraw limits and fees for a single asset as reported by
+/// the anchor's `/info` endpoint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep6AssetInfo {
+    /// Whether the anchor accepts deposits for this asset.
+    pub deposit_enabled: bool,
+    /// Whether the anchor accepts withdrawals for this asset.
+    pub withdraw_enabled: bool,
+    /// Minimum deposit amount in asset units, if declared by the anchor.
+    pub deposit_min_amount: Option<u64>,
+    /// Maximum deposit amount in asset units, if declared by the anchor.
+    pub deposit_max_amount: Option<u64>,
+    /// Fixed deposit fee in asset units, if declared by the anchor.
+    pub deposit_fee_fixed: Option<u64>,
+    /// Deposit fee as a percentage, in basis points (e.g. `150` = 1.50%).
+    pub deposit_fee_percent: Option<u32>,
+    /// Minimum withdrawal amount in asset units, if declared by the anchor.
+    pub withdraw_min_amount: Option<u64>,
+    /// Maximum withdrawal amount in asset units, if declared by the anchor.
+    pub withdraw_max_amount: Option<u64>,
+    /// Fixed withdrawal fee in asset units, if declared by the anchor.
+    pub withdraw_fee_fixed: Option<u64>,
+    /// Withdrawal fee as a percentage, in basis points (e.g. `150` = 1.50%).
+    pub withdraw_fee_percent: Option<u32>,
+    /// Per-operation field declarations from the anchor's `fields` map.
+    pub fields: Sep6OperationFields,
+}
+
+/// Normalized, fully-typed response for the SEP-6 `GET /info` endpoint.
+///
+/// Build it from the raw anchor JSON by populating a [`RawSep6InfoResponse`]
+/// and passing it to [`fetch_sep6_info`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Sep6InfoResponse {
+    /// Map of asset code → asset info.  Keyed by the asset code string
+    /// (e.g. `"USDC"`, `"BTC"`, `"native"`).
+    pub assets: Vec<(String, Sep6AssetInfo)>,
+    /// Whether the anchor supports the `/fee` endpoint.
+    pub fee_supported: bool,
+    /// Whether the anchor supports transaction lookup by external `id`.
+    pub id_supported: bool,
+    /// Whether the anchor supports claimable balances as deposit destination.
+    pub claimable_balances_supported: bool,
+}
+
+// ── Raw input shapes (populated by callers after HTTP + JSON decoding) ────────
+
+/// Raw field descriptor from an anchor's SEP-6 `/info` `fields` block.
+///
+/// Callers populate this from the raw JSON; `description` may be absent for
+/// anchors which omit it, in which case it defaults to an empty string.
+#[derive(Clone, Debug, Default)]
+pub struct RawSep6Field {
+    pub description: String,
+    pub optional: bool,
+    /// Allowed values, if the anchor enumerates them.
+    pub choices: Vec<String>,
+}
+
+/// Raw deposit-operation block for a single asset from `/info`.
+#[derive(Clone, Debug, Default)]
+pub struct RawSep6DepositInfo {
+    pub enabled: bool,
+    pub min_amount: Option<u64>,
+    pub max_amount: Option<u64>,
+    pub fee_fixed: Option<u64>,
+    pub fee_percent: Option<u32>,
+    /// KYC / payment fields the anchor declares for deposits.
+    /// Key is the field name (e.g. `"email_address"`).
+    pub fields: Vec<(String, RawSep6Field)>,
+}
+
+/// Raw withdraw-operation block for a single asset from `/info`.
+#[derive(Clone, Debug, Default)]
+pub struct RawSep6WithdrawInfo {
+    pub enabled: bool,
+    pub min_amount: Option<u64>,
+    pub max_amount: Option<u64>,
+    pub fee_fixed: Option<u64>,
+    pub fee_percent: Option<u32>,
+    /// KYC / payment fields the anchor declares for withdrawals.
+    /// Key is the field name (e.g. `"dest"`).
+    pub fields: Vec<(String, RawSep6Field)>,
+}
+
+/// Raw entry for a single asset as returned by an anchor's SEP-6 `/info`.
+///
+/// An asset that only supports one direction (deposit or withdraw) will have
+/// the other set to `None`.
+#[derive(Clone, Debug)]
+pub struct RawSep6AssetEntry {
+    /// The asset code, e.g. `"USDC"`.
+    pub code: String,
+    /// Deposit operation info; `None` when the anchor omits the deposit block.
+    pub deposit: Option<RawSep6DepositInfo>,
+    /// Withdraw operation info; `None` when the anchor omits the withdraw block.
+    pub withdraw: Option<RawSep6WithdrawInfo>,
+}
+
+/// Raw SEP-6 `/info` response as populated by the caller after JSON parsing.
+///
+/// Unknown top-level keys are simply not represented here and are silently
+/// ignored, satisfying the "tolerant of unknown fields" acceptance criterion.
+#[derive(Clone, Debug, Default)]
+pub struct RawSep6InfoResponse {
+    /// Asset entries in the order they appear in the response.
+    pub assets: Vec<RawSep6AssetEntry>,
+    /// Corresponds to `fee_supported` at the top level.
+    pub fee_supported: bool,
+    /// Corresponds to `id_supported` at the top level.
+    pub id_supported: bool,
+    /// Corresponds to `features.account_creation`.
+    pub account_creation: bool,
+    /// Corresponds to `features.claimable_balances`.
+    pub claimable_balances: bool,
+}
+
+// ── Normalization ─────────────────────────────────────────────────────────────
+
+/// Normalize a single [`RawSep6Field`] with its name into a typed [`Sep6Field`].
+fn normalize_sep6_field(name: String, raw: RawSep6Field) -> Result<Sep6Field, Error> {
+    if name.is_empty() {
+        return Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "SEP-6 field name must not be empty",
+            "field.name",
+        ));
+    }
+    Ok(Sep6Field {
+        name,
+        description: raw.description,
+        optional: raw.optional,
+        choices: raw.choices,
+    })
+}
+
+/// Normalize a raw SEP-6 `/info` response into a fully typed [`Sep6InfoResponse`].
+///
+/// # Validation
+///
+/// Returns `Err(ErrorCode::ValidationError)` when:
+/// - Any asset code is empty.
+/// - Any field name within an asset's `fields` block is empty.
+///
+/// Unknown top-level keys present in the raw JSON are never represented in
+/// [`RawSep6InfoResponse`] and are therefore silently ignored, keeping the SDK
+/// tolerant of anchor-specific extensions (acceptance criterion: *tolerant of
+/// unknown fields*).
+///
+/// An asset that has no deposit *and* no withdraw block is accepted — some
+/// anchors list assets as placeholders before they go live.  Callers can
+/// inspect `deposit_enabled` / `withdraw_enabled` to filter them.
+pub fn fetch_sep6_info(raw: RawSep6InfoResponse) -> Result<Sep6InfoResponse, Error> {
+    let mut assets = Vec::new();
+
+    for entry in raw.assets {
+        if entry.code.is_empty() {
+            return Err(Error::with_context(
+                ErrorCode::ValidationError,
+                "SEP-6 /info asset code must not be empty",
+                "asset.code",
+            ));
+        }
+
+        let (
+            deposit_enabled,
+            deposit_min_amount,
+            deposit_max_amount,
+            deposit_fee_fixed,
+            deposit_fee_percent,
+            raw_deposit_fields,
+        ) = match entry.deposit {
+            Some(d) => (d.enabled, d.min_amount, d.max_amount, d.fee_fixed, d.fee_percent, d.fields),
+            None => (false, None, None, None, None, Vec::new()),
+        };
+
+        let (
+            withdraw_enabled,
+            withdraw_min_amount,
+            withdraw_max_amount,
+            withdraw_fee_fixed,
+            withdraw_fee_percent,
+            raw_withdraw_fields,
+        ) = match entry.withdraw {
+            Some(w) => (w.enabled, w.min_amount, w.max_amount, w.fee_fixed, w.fee_percent, w.fields),
+            None => (false, None, None, None, None, Vec::new()),
+        };
+
+        let mut deposit_fields = Vec::new();
+        for (name, field) in raw_deposit_fields {
+            deposit_fields.push(normalize_sep6_field(name, field)?);
+        }
+        let mut withdraw_fields = Vec::new();
+        for (name, field) in raw_withdraw_fields {
+            withdraw_fields.push(normalize_sep6_field(name, field)?);
+        }
+
+        assets.push((
+            entry.code,
+            Sep6AssetInfo {
+                deposit_enabled,
+                withdraw_enabled,
+                deposit_min_amount,
+                deposit_max_amount,
+                deposit_fee_fixed,
+                deposit_fee_percent,
+                withdraw_min_amount,
+                withdraw_max_amount,
+                withdraw_fee_fixed,
+                withdraw_fee_percent,
+                fields: Sep6OperationFields {
+                    deposit: deposit_fields,
+                    withdraw: withdraw_fields,
+                },
+            },
+        ));
+    }
+
+    Ok(Sep6InfoResponse {
+        assets,
+        fee_supported: raw.fee_supported,
+        id_supported: raw.id_supported,
+        claimable_balances_supported: raw.claimable_balances,
+    })
+}
+
+/// Map an HTTP status code from the SEP-6 `/info` endpoint to an SDK error.
+///
+/// | HTTP status | SDK error              |
+/// |-------------|------------------------|
+/// | 404         | `ServicesNotConfigured`|
+/// | 408         | `TransportTimeout`     |
+/// | 429         | `RateLimitExceeded`    |
+/// | 5xx         | `ServerError`          |
+/// | 2xx         | calls `response_fn()`  |
+/// | other       | `ValidationError`      |
+pub fn handle_sep6_info_http_status<T>(
+    http_status: u32,
+    response_fn: impl FnOnce() -> Result<T, Error>,
+) -> Result<T, Error> {
+    match http_status {
+        404 => Err(Error::from_code(ErrorCode::ServicesNotConfigured)),
+        408 => Err(Error::from_code(ErrorCode::TransportTimeout)),
+        429 => Err(Error::rate_limit_exceeded()),
+        500..=599 => Err(Error::from_code(ErrorCode::ServerError)),
+        200..=299 => response_fn(),
+        _ => Err(Error::with_context(
+            ErrorCode::ValidationError,
+            "HTTP request failed",
+            &alloc::format!("HTTP {}", http_status),
+        )),
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -912,9 +1234,9 @@ mod tests {
         for s in all {
             let st = TransactionStatus::from_str(s);
             assert!(!matches!(st, TransactionStatus::Unknown(_)), "{s}");
-            // `pending_user_transfer_start` is a legacy alias for `pending_user`.
-            let expected = if s == "pending_user_transfer_start" { "pending_user" } else { s };
-            assert_eq!(st.as_str(), expected);
+            // Round-trip must be lossless for every known status.
+            assert_eq!(st.as_str(), s);
+            assert_eq!(TransactionStatus::from_str(st.as_str()), st);
         }
         assert!(TransactionStatus::TooSmall.is_terminal());
         assert!(TransactionStatus::PendingCustomerInfoUpdate.requires_user_action());
@@ -1252,6 +1574,93 @@ mod tests {
         assert_eq!(resp.fee_percent, Some(50));
     }
 
+    // ── on_change_callback (issue #1519) ────────────────────────────────────
+
+    const VALID_CALLBACK: &str = "https://wallet.example.com/sep6/callback";
+
+    fn callback_error(err: &Error) {
+        assert_eq!(err.code, ErrorCode::ValidationError, "{err:?}");
+        assert!(err.message.contains("on_change_callback"), "{err:?}");
+    }
+
+    #[test]
+    fn test_deposit_on_change_callback_absent_is_accepted() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = None;
+        assert_eq!(
+            initiate_deposit(raw, "USDC").unwrap().on_change_callback,
+            None
+        );
+    }
+
+    #[test]
+    fn test_deposit_valid_on_change_callback_is_propagated() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = Some(VALID_CALLBACK.to_string());
+        let resp = initiate_deposit(raw, "USDC").unwrap();
+        assert_eq!(resp.on_change_callback.as_deref(), Some(VALID_CALLBACK));
+    }
+
+    #[test]
+    fn test_deposit_on_change_callback_with_path_and_query_is_accepted() {
+        let mut raw = raw_deposit();
+        let url = "HTTPS://wallet.example.com/hooks/sep6?tx=abc&v=1";
+        raw.on_change_callback = Some(url.to_string());
+        let resp = initiate_deposit(raw, "USDC").unwrap();
+        assert_eq!(resp.on_change_callback.as_deref(), Some(url));
+    }
+
+    #[test]
+    fn test_deposit_invalid_on_change_callbacks_are_rejected() {
+        for url in [
+            "http://wallet.example.com/callback",
+            "ftp://wallet.example.com/callback",
+            "not-a-url",
+            "",
+            "https://localhost/callback",
+            "https://127.0.0.1/callback",
+            "https://wallet.example.com/../callback",
+        ] {
+            let mut raw = raw_deposit();
+            raw.on_change_callback = Some(url.to_string());
+            callback_error(&initiate_deposit(raw, "USDC").unwrap_err());
+        }
+    }
+
+    #[test]
+    fn test_withdrawal_on_change_callback_absent_is_accepted() {
+        let mut raw = raw_withdrawal();
+        raw.on_change_callback = None;
+        assert_eq!(
+            initiate_withdrawal(raw, "USDC").unwrap().on_change_callback,
+            None
+        );
+    }
+
+    #[test]
+    fn test_withdrawal_valid_on_change_callback_is_propagated() {
+        let mut raw = raw_withdrawal();
+        raw.on_change_callback = Some(VALID_CALLBACK.to_string());
+        let resp = initiate_withdrawal(raw, "USDC").unwrap();
+        assert_eq!(resp.on_change_callback.as_deref(), Some(VALID_CALLBACK));
+    }
+
+    #[test]
+    fn test_withdrawal_invalid_on_change_callbacks_are_rejected() {
+        for url in [
+            "http://wallet.example.com/callback",
+            "ftp://wallet.example.com/callback",
+            "not-a-url",
+            "",
+            "https://localhost/callback",
+            "https://127.0.0.1/callback",
+        ] {
+            let mut raw = raw_withdrawal();
+            raw.on_change_callback = Some(url.to_string());
+            callback_error(&initiate_withdrawal(raw, "USDC").unwrap_err());
+        }
+    }
+
     // ── list_transactions ────────────────────────────────────────────────────
 
     const VALID_ACCOUNT: &str = "GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZX";
@@ -1400,6 +1809,7 @@ mod tests {
                 Ok(raw.clone())
             },
             None, // Use default retry config
+            0x5eed,
             |_| {
                 sleep_calls += 1;
             },
@@ -1429,6 +1839,7 @@ mod tests {
         let result = fetch_transaction_status_with_retry(
             |_attempt| Ok(raw.clone()),
             Some(custom_config),
+            42,
             |_| {
                 sleep_calls += 1;
             },
@@ -1451,7 +1862,7 @@ mod tests {
                 attempt_count += 1;
                 if attempt_count == 1 {
                     Err(Error::with_context(
-                        ErrorCode::ValidationError,
+                        ErrorCode::ServerError,
                         "Transient error (simulated 503)",
                         "HTTP 503",
                     ))
@@ -1460,6 +1871,7 @@ mod tests {
                 }
             },
             None,
+            7,
             |_| sleep_calls += 1,
         );
 
@@ -1483,12 +1895,55 @@ mod tests {
                 Ok(raw.clone())
             },
             None,
+            0,
             |_| {},
         );
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, ErrorCode::InvalidTransactionIntent);
         assert_eq!(attempt_count, 1); // Normalization errors don't retry
+    }
+
+    #[test]
+    fn test_fetch_transaction_status_with_retry_non_retryable_error_single_attempt() {
+        for code in [ErrorCode::ValidationError, ErrorCode::InvalidTransactionIntent] {
+            let mut attempts = 0;
+            let mut sleeps = 0;
+            let result = fetch_transaction_status_with_retry(
+                |_attempt| {
+                    attempts += 1;
+                    Err(Error::with_context(code, "client error", "HTTP 4xx"))
+                },
+                None,
+                123,
+                |_| sleeps += 1,
+            );
+            assert_eq!(result.unwrap_err().code, code);
+            assert_eq!(attempts, 1, "non-retryable errors must not be retried");
+            assert_eq!(sleeps, 0);
+        }
+    }
+
+    #[test]
+    fn test_fetch_transaction_status_with_retry_uses_caller_jitter_seed() {
+        let config = RetryConfig::new(2, 1_000, 10_000, 2);
+        let delay_for_seed = |seed: u64| {
+            let mut delays = Vec::new();
+            let _ = fetch_transaction_status_with_retry(
+                |_attempt| {
+                    Err(Error::with_context(ErrorCode::ServerError, "503", "HTTP 503"))
+                },
+                Some(config.clone()),
+                seed,
+                |ms| delays.push(ms),
+            );
+            delays
+        };
+        let a = delay_for_seed(1);
+        let b = delay_for_seed(2);
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 1);
+        assert_ne!(a, b, "different jitter seeds must yield different delays");
     }
 
     // ── withdraw_exchange tests ──────────────────────────────────────────────
