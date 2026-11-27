@@ -30,7 +30,7 @@ mod sep6_types_consolidation {
             ("pending_anchor", CanonicalTransactionStatus::PendingAnchor),
             ("pending_trust", CanonicalTransactionStatus::PendingTrust),
             ("pending_user", CanonicalTransactionStatus::PendingUser),
-            ("pending_user_transfer_start", CanonicalTransactionStatus::PendingUser),
+            ("pending_user_transfer_start", CanonicalTransactionStatus::PendingUserTransferStart),
             ("completed", CanonicalTransactionStatus::Completed),
             ("refunded", CanonicalTransactionStatus::Refunded),
             ("expired", CanonicalTransactionStatus::Expired),

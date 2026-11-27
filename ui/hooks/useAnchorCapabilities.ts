@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { isValidAttestor } from './strkey';
 
 // ── Service constants ─────────────────────────────────────────────────────────
 // Mirror of src/types.rs SERVICE_* constants kept in sync with the on-chain values.
@@ -92,16 +93,6 @@ function notify(key: string): void {
   // React 18 automatically batches state updates from promises, timeouts, and
   // event handlers, so explicit batching is no longer needed.
   subscribers.get(key)?.forEach(fn => fn());
-}
-
-/**
- * Validates a Stellar StrKey address.
- * Accepts G-addresses (Ed25519 public keys) and C-addresses (contract IDs):
- * both are 56 characters of Base32 (A-Z, 2-7).
- */
-function isValidAttestor(v: string | null | undefined): v is string {
-  if (!v || typeof v !== 'string') return false;
-  return v.length === 56 && /^[GC][A-Z2-7]{55}$/.test(v);
 }
 
 async function fetchAndCache(

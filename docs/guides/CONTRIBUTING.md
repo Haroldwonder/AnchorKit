@@ -45,9 +45,9 @@ AnchorKit is built using Rust and the Soroban SDK for Stellar smart contracts.
    source $HOME/.cargo/env
    ```
 
-2. **Install Soroban CLI**:
+2. **Install Stellar CLI**:
    ```bash
-   cargo install --locked soroban-cli
+   cargo install --locked stellar-cli
    ```
 
 3. **Add WASM target**:
@@ -58,7 +58,7 @@ AnchorKit is built using Rust and the Soroban SDK for Stellar smart contracts.
 4. **Verify installation**:
    ```bash
    rustc --version
-   soroban --version
+   stellar --version
    ```
 
 ### Node.js for UI Components

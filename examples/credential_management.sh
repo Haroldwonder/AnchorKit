@@ -78,7 +78,7 @@ echo "Step 3: Setting credential policies..."
 
 # KYC Provider: 30-day rotation, encryption required
 echo "  Setting policy for KYC provider (30-day rotation)..."
-soroban contract invoke \
+stellar contract invoke \
     --id "$CONTRACT_ID" \
     --source "$ADMIN_ACCOUNT" \
     --network "$NETWORK" \
@@ -90,7 +90,7 @@ soroban contract invoke \
 
 # Bank Integration: 7-day rotation, encryption required
 echo "  Setting policy for bank integration (7-day rotation)..."
-soroban contract invoke \
+stellar contract invoke \
     --id "$CONTRACT_ID" \
     --source "$ADMIN_ACCOUNT" \
     --network "$NETWORK" \
@@ -115,7 +115,7 @@ BANK_EXPIRY=$((NOW + 604800))   # 7 days
 
 # Store KYC credential
 echo "  Storing KYC provider credential..."
-soroban contract invoke \
+stellar contract invoke \
     --id "$CONTRACT_ID" \
     --source "$ADMIN_ACCOUNT" \
     --network "$NETWORK" \
@@ -128,7 +128,7 @@ soroban contract invoke \
 
 # Store bank credential
 echo "  Storing bank integration credential..."
-soroban contract invoke \
+stellar contract invoke \
     --id "$CONTRACT_ID" \
     --source "$ADMIN_ACCOUNT" \
     --network "$NETWORK" \
@@ -152,7 +152,7 @@ check_rotation() {
     local name="$2"
     
     echo "  Checking $name..."
-    NEEDS_ROTATION=$(soroban contract invoke \
+    NEEDS_ROTATION=$(stellar contract invoke \
         --id "$CONTRACT_ID" \
         --network "$NETWORK" \
         -- check_credential_rotation \
@@ -190,7 +190,7 @@ rotate_credential() {
     encrypted_new=$(encrypt_credential "$new_credential")
     
     # Rotate in contract
-    soroban contract invoke \
+    stellar contract invoke \
         --id "$CONTRACT_ID" \
         --source "$ADMIN_ACCOUNT" \
         --network "$NETWORK" \
@@ -220,7 +220,7 @@ verify_policy() {
     local name="$2"
     
     echo "  Verifying policy for $name..."
-    soroban contract invoke \
+    stellar contract invoke \
         --id "$CONTRACT_ID" \
         --network "$NETWORK" \
         -- get_credential_policy \

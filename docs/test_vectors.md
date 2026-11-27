@@ -159,3 +159,18 @@ Acceptance behaviour, covered by `src/attestation_validation_tests.rs`:
 Off-chain signers can obtain the digest from the contract's exported
 `attestation_signing_digest` helper in `src/contract.rs`, which is the
 reference implementation of the layout above.
+
+## Attestation signing digest
+
+All attestation submit paths (`submit_attestation`, `submit_with_request_id`,
+`submit_attestation_with_session`, `submit_attestation_batch`) verify the
+issuer's ed25519 signature over `attestation_signing_digest`, not over the raw
+payload hash:
+
+```
+sha256("anchorkit-attest-v1" || network_id || contract_xdr || issuer_xdr
+       || subject_xdr || timestamp_be8 || payload_hash)
+```
+
+Each `*_xdr` is the address's `ScAddress` XDR. Tests build signatures with
+`sep10_test_util::sign_attestation`, which uses the same digest.

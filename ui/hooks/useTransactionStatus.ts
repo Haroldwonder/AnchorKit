@@ -6,6 +6,7 @@ import {
   TransactionTransition,
   FetchStatusFn,
 } from './TransactionStateTracker';
+import { isDocumentHidden, subscribeToVisibility } from './visibility';
 
 export type { FetchStatusFn, TransactionTransition, TransactionSnapshot };
 
@@ -20,6 +21,12 @@ export interface UseTransactionStatusOptions {
   maxRetries?: number;
   /** Maximum backoff delay in milliseconds. Defaults to 60000 (1 minute). */
   maxBackoff?: number;
+  /**
+   * Pause polling while the browser tab is hidden and refresh immediately when
+   * it becomes visible again. Set to false to keep polling in the background.
+   * Defaults to true.
+   */
+  pauseWhenHidden?: boolean;
 }
 
 export interface UseTransactionStatusResult {
@@ -61,7 +68,8 @@ export function useTransactionStatus(
     interval = 5000, 
     enabled = true,
     maxRetries = Infinity,
-    maxBackoff = 60000
+    maxBackoff = 60000,
+    pauseWhenHidden = true,
   } = options;
 
   // Ref so that an inline fetchStatus function doesn't restart the polling loop
@@ -89,8 +97,22 @@ export function useTransactionStatus(
     let cancelled = false;
     let timerId: ReturnType<typeof setTimeout> | null = null;
     let consecutiveErrors = 0;
+    let inFlight = false;
+    // Set when a poll is due but deferred because the tab is hidden.
+    let pendingWhileHidden = false;
+
+    const schedule = (delay: number) => {
+      if (pauseWhenHidden && isDocumentHidden()) {
+        pendingWhileHidden = true;
+        return;
+      }
+      timerId = setTimeout(poll, delay);
+    };
 
     const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      timerId = null;
       try {
         const snap = await tracker.poll(txId);
         if (cancelled) return;
@@ -99,7 +121,7 @@ export function useTransactionStatus(
         setRetriesExhausted(false);
         consecutiveErrors = 0; // reset on success
         if (!snap.isTerminal) {
-          timerId = setTimeout(poll, interval);
+          schedule(interval);
         } else {
           setIsPolling(false);
         }
@@ -120,18 +142,38 @@ export function useTransactionStatus(
           interval * Math.pow(2, consecutiveErrors - 1),
           maxBackoff
         );
-        timerId = setTimeout(poll, backoffDelay);
+        schedule(backoffDelay);
+      } finally {
+        inFlight = false;
       }
     };
+
+    const unsubscribe = pauseWhenHidden
+      ? subscribeToVisibility((hidden) => {
+          if (cancelled) return;
+          if (hidden) {
+            if (timerId !== null) {
+              clearTimeout(timerId);
+              timerId = null;
+              pendingWhileHidden = true;
+            }
+          } else if (pendingWhileHidden) {
+            // Resume with an immediate refresh.
+            pendingWhileHidden = false;
+            poll();
+          }
+        })
+      : () => {};
 
     poll();
 
     return () => {
       cancelled = true;
       if (timerId !== null) clearTimeout(timerId);
+      unsubscribe();
       tracker.reset();
     };
-  }, [txId, enabled, interval, maxRetries, maxBackoff]);
+  }, [txId, enabled, interval, maxRetries, maxBackoff, pauseWhenHidden]);
 
   const isLoading = snapshot === null && error === null;
 

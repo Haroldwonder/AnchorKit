@@ -261,10 +261,69 @@ fn bench_route_transaction(c: &mut Criterion) {
     group.finish();
 }
 
+/// Routing cost when most anchors quote a *different* pair (#1511).
+///
+/// Before the `(base_asset, quote_asset)` index, routing loaded metadata and
+/// the latest quote of every anchor, so cost grew with `noise` even though only
+/// one anchor quotes USD/USDC. With the index, cost should stay ~flat in `noise`.
+fn bench_route_transaction_pair_index(c: &mut Criterion) {
+    let mut group = c.benchmark_group("route_transaction_pair_index");
+
+    for noise in [0usize, 10, 25] {
+        let env = make_env();
+        let client = setup_contract(&env);
+
+        for i in 0..=noise {
+            let anchor = Address::generate(&env);
+            let signing_key = SigningKey::generate(&mut OsRng);
+            register_attestor(&env, &client, &anchor, &signing_key);
+            let mut services = SorobanVec::new(&env);
+            services.push_back(1u32);
+            services.push_back(3u32);
+            client.configure_services(&anchor, &services);
+            client.set_anchor_metadata(
+                &anchor, &8000u32, &300u64, &7500u32, &9900u32, &1_000_000u64,
+                &None::<SorobanString>,
+            );
+            let base = if i == 0 { "USD" } else { "EUR" };
+            client.submit_quote(
+                &anchor,
+                &SorobanString::from_str(&env, base),
+                &SorobanString::from_str(&env, "USDC"),
+                &10_000u64, &20u32, &100u64, &100_000u64, &1_003_600u64,
+            );
+        }
+
+        let mut strategy = SorobanVec::new(&env);
+        strategy.push_back(Symbol::new(&env, "LowestFee"));
+        let options = RoutingOptions {
+            request: RoutingRequest {
+                base_asset: SorobanString::from_str(&env, "USD"),
+                quote_asset: SorobanString::from_str(&env, "USDC"),
+                amount: 5_000,
+                operation_type: 1,
+            },
+            strategy,
+            min_reputation: 0,
+            max_anchors: 0,
+            require_kyc: false,
+            jurisdiction: None,
+            fallback_chain: SorobanVec::new(&env),
+        };
+
+        group.bench_with_input(BenchmarkId::from_parameter(noise), &options, |b, opts| {
+            b.iter(|| client.route_transaction(opts));
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_submit_attestation,
     bench_get_anchor_health_score,
-    bench_route_transaction
+    bench_route_transaction,
+    bench_route_transaction_pair_index
 );
 criterion_main!(benches);
