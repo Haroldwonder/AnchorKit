@@ -22,6 +22,7 @@ pub enum TransactionStatus {
     PendingAnchor,
     PendingTrust,
     PendingUser,
+    PendingUserTransferStart,
     Completed,
     Refunded,
     Expired,
@@ -44,7 +45,8 @@ impl TransactionStatus {
             "pending_external" => Self::PendingExternal,
             "pending_anchor" => Self::PendingAnchor,
             "pending_trust" => Self::PendingTrust,
-            "pending_user" | "pending_user_transfer_start" => Self::PendingUser,
+            "pending_user" => Self::PendingUser,
+            "pending_user_transfer_start" => Self::PendingUserTransferStart,
             "completed" => Self::Completed,
             "refunded" => Self::Refunded,
             "expired" => Self::Expired,
@@ -68,6 +70,7 @@ impl TransactionStatus {
         matches!(
             self,
             Self::PendingUser
+                | Self::PendingUserTransferStart
                 | Self::PendingCustomerInfoUpdate
                 | Self::PendingTransactionInfoUpdate
                 | Self::PendingUserTransferComplete
@@ -97,6 +100,7 @@ impl TransactionStatus {
             Self::PendingAnchor => "pending_anchor",
             Self::PendingTrust => "pending_trust",
             Self::PendingUser => "pending_user",
+            Self::PendingUserTransferStart => "pending_user_transfer_start",
             Self::Completed => "completed",
             Self::Refunded => "refunded",
             Self::Expired => "expired",
@@ -379,6 +383,9 @@ pub fn is_http_error_retryable(http_status: u32) -> bool {
 /// # Arguments
 /// - `fetch_fn`: A closure that fetches a raw transaction response. Called with the attempt number (0-based).
 /// - `retry_config`: Optional retry configuration. If `None`, uses `RetryConfig::default()`.
+/// - `jitter_seed`: Caller-supplied entropy for full-jitter backoff. Must vary per
+///   client/process (e.g. a random value sampled at startup) so retry delays are
+///   not synchronised across clients.
 /// - `sleep_fn`: A function to sleep between retries (useful for testing with mocks).
 ///
 /// # Behavior
@@ -395,22 +402,32 @@ pub fn is_http_error_retryable(http_status: u32) -> bool {
 /// let result = fetch_transaction_status_with_retry(
 ///     |_attempt| http_client.get("/transaction?id=123"),
 ///     None,
+///     process_random_seed,
 ///     |ms| std::thread::sleep(std::time::Duration::from_millis(ms)),
 /// );
 /// ```
 pub fn fetch_transaction_status_with_retry<F, S>(
     fetch_fn: F,
     retry_config: Option<RetryConfig>,
+    jitter_seed: u64,
     sleep_fn: S,
 ) -> Result<TransactionStatusResponse, Error>
 where
     F: FnMut(u32) -> Result<RawTransactionResponse, Error>,
     S: FnMut(u64),
 {
-    use crate::retry::retry_with_backoff;
+    use crate::retry::{is_retryable, retry_with_backoff};
 
     let config = retry_config.unwrap_or_default();
-    let raw_result = retry_with_backoff(&config, 0, fetch_fn, |_err| true, sleep_fn);
+    // Only transient failures (timeouts, endpoint failures, 5xx) are retried;
+    // validation errors, 4xx responses and not-found results fail immediately.
+    let raw_result = retry_with_backoff(
+        &config,
+        jitter_seed,
+        fetch_fn,
+        |err: &Error| is_retryable(err.code as u32),
+        sleep_fn,
+    );
 
     raw_result.and_then(|raw| fetch_transaction_status(raw))
 }
@@ -882,9 +899,9 @@ mod tests {
         for s in all {
             let st = TransactionStatus::from_str(s);
             assert!(!matches!(st, TransactionStatus::Unknown(_)), "{s}");
-            // `pending_user_transfer_start` is a legacy alias for `pending_user`.
-            let expected = if s == "pending_user_transfer_start" { "pending_user" } else { s };
-            assert_eq!(st.as_str(), expected);
+            // Round-trip must be lossless for every known status.
+            assert_eq!(st.as_str(), s);
+            assert_eq!(TransactionStatus::from_str(st.as_str()), st);
         }
         assert!(TransactionStatus::TooSmall.is_terminal());
         assert!(TransactionStatus::PendingCustomerInfoUpdate.requires_user_action());
@@ -1368,6 +1385,7 @@ mod tests {
                 Ok(raw.clone())
             },
             None, // Use default retry config
+            0x5eed,
             |_| {
                 sleep_calls += 1;
             },
@@ -1397,6 +1415,7 @@ mod tests {
         let result = fetch_transaction_status_with_retry(
             |_attempt| Ok(raw.clone()),
             Some(custom_config),
+            42,
             |_| {
                 sleep_calls += 1;
             },
@@ -1419,7 +1438,7 @@ mod tests {
                 attempt_count += 1;
                 if attempt_count == 1 {
                     Err(Error::with_context(
-                        ErrorCode::ValidationError,
+                        ErrorCode::ServerError,
                         "Transient error (simulated 503)",
                         "HTTP 503",
                     ))
@@ -1428,6 +1447,7 @@ mod tests {
                 }
             },
             None,
+            7,
             |_| sleep_calls += 1,
         );
 
@@ -1451,12 +1471,55 @@ mod tests {
                 Ok(raw.clone())
             },
             None,
+            0,
             |_| {},
         );
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, ErrorCode::InvalidTransactionIntent);
         assert_eq!(attempt_count, 1); // Normalization errors don't retry
+    }
+
+    #[test]
+    fn test_fetch_transaction_status_with_retry_non_retryable_error_single_attempt() {
+        for code in [ErrorCode::ValidationError, ErrorCode::InvalidTransactionIntent] {
+            let mut attempts = 0;
+            let mut sleeps = 0;
+            let result = fetch_transaction_status_with_retry(
+                |_attempt| {
+                    attempts += 1;
+                    Err(Error::with_context(code, "client error", "HTTP 4xx"))
+                },
+                None,
+                123,
+                |_| sleeps += 1,
+            );
+            assert_eq!(result.unwrap_err().code, code);
+            assert_eq!(attempts, 1, "non-retryable errors must not be retried");
+            assert_eq!(sleeps, 0);
+        }
+    }
+
+    #[test]
+    fn test_fetch_transaction_status_with_retry_uses_caller_jitter_seed() {
+        let config = RetryConfig::new(2, 1_000, 10_000, 2);
+        let delay_for_seed = |seed: u64| {
+            let mut delays = Vec::new();
+            let _ = fetch_transaction_status_with_retry(
+                |_attempt| {
+                    Err(Error::with_context(ErrorCode::ServerError, "503", "HTTP 503"))
+                },
+                Some(config.clone()),
+                seed,
+                |ms| delays.push(ms),
+            );
+            delays
+        };
+        let a = delay_for_seed(1);
+        let b = delay_for_seed(2);
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 1);
+        assert_ne!(a, b, "different jitter seeds must yield different delays");
     }
 
     // ── withdraw_exchange tests ──────────────────────────────────────────────
