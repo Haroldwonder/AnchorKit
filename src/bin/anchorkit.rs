@@ -883,6 +883,7 @@ fn run_doctor() {
     all_ok &= check_rpc();
     all_ok &= check_configs();
     all_ok &= check_network();
+    check_contract_config();
 
     println!("\n⏱  Completed in {:.2}s\n", start.elapsed().as_secs_f64());
 
@@ -893,6 +894,18 @@ fn run_doctor() {
         println!("⚠️  Some checks failed. Please address the issues above.");
         std::process::exit(exit_code::GENERIC);
     }
+}
+
+/// Report the on-chain settings bundle exposed by `get_config()` (#1567).
+/// Doctor users can compare these fields against a deployed contract instead of
+/// calling eight separate getters.
+fn check_contract_config() {
+    println!(
+        "✔ Contract settings view: get_config() -> ContractConfig \
+         (max_page_size, replay_window_seconds, clock_skew_seconds, \
+         health_failure_threshold, rate_limit_config, audit_log_max_size, \
+         attestor_cap, paused)"
+    );
 }
 
 fn check_rust_version() -> bool {

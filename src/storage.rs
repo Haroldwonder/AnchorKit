@@ -16,6 +16,8 @@ pub enum StorageKey {
     /// Ed25519 attestation-signing keys for an issuer (persistent). Kept separate
     /// from `Sep10Key` so web-auth key rotation never affects attestation signing.
     AttestationKey(Address),
+    /// Active self-service attestation key rotation (old key + overlap expiry).
+    AttestationKeyRotation(Address),
     /// Whether an address is a registered attestor (persistent).
     Attestor(Address),
     /// Revocation marker for an attestor — present when the attestor has been
@@ -25,6 +27,8 @@ pub enum StorageKey {
     /// First attestation ID not covered by the attestor's latest revocation.
     /// Attestations with a lower ID remain revoked after re-registration.
     AttestorRevokedBefore(Address),
+    /// Admin suspension flag: freezes an attestor without revoking it (#1570).
+    AttestorSuspended(Address),
     /// HTTPS endpoint URL for an attestor (persistent).
     Endpoint(Address),
     /// Supported services record for an anchor (persistent).
