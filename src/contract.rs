@@ -60,7 +60,7 @@ use crate::events::{
     AuditLogEvent, AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated,
     QuoteCancelledEvent, QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent,
     // #1361 – new admin governance events
-    AnchorJurisdictionSet, AnchorMetadataSet, AttestorRateLimitSet, CapabilitiesCached,
+    AnchorJurisdictionSet, AnchorMetadataSet, ContractUpgraded, AttestorRateLimitSet, CapabilitiesCached,
     CredentialPolicySet, CredentialRotated, CredentialStored, HealthStatusUpdated,
     HealthThresholdSet, MetadataCached, RateLimitConfigUpdated, Sep10KeyAdded, Sep10KeyRemoved,
 };
@@ -116,8 +116,10 @@ const PERSISTENT_TTL: u32 = 1_555_200;
 const SPAN_TTL: u32 = 17_280;
 /// Instance-storage TTL: ~30 days at 5 s/ledger.
 const INSTANCE_TTL: u32 = 518_400;
-/// Default session lifetime in seconds (~24 hours), used until the admin
-/// configures one via `set_session_timeout_seconds`.
+
+/// Contract version reported before the first `upgrade` call.
+const INITIAL_CONTRACT_VERSION: u32 = 1;
+/// Session TTL in seconds (~24 hours).
 const SESSION_TTL: u64 = 86_400;
 /// Minimum configurable session lifetime (matches `sessions.session_timeout_seconds`).
 const MIN_SESSION_TIMEOUT_SECONDS: u64 = 60;
@@ -2507,6 +2509,49 @@ impl AnchorKitContract {
         );
     }
 
+    /// Replace the contract's code with a previously installed WASM (admin-only).
+    ///
+    /// `new_wasm_hash` must be the hash of a WASM already uploaded to the
+    /// network (e.g. via `stellar contract upload`). Contract storage, the
+    /// contract address and the admin are preserved; the new code takes effect
+    /// after this invocation completes. Each upgrade bumps the version returned
+    /// by [`Self::get_contract_version`] and emits an
+    /// `("admin", "upgraded")` event carrying the old and new version.
+    ///
+    /// Run [`Self::migrate`] afterwards if the new code requires a storage
+    /// migration. See `docs/guides/CONTRACT_UPGRADE.md` for the full procedure.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        Self::require_admin(&env);
+        let inst = env.storage().instance();
+        let old_version: u32 = inst
+            .get(&StorageKey::ContractVersion)
+            .unwrap_or(INITIAL_CONTRACT_VERSION);
+        let new_version = old_version
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::ValidationError));
+
+        env.deployer()
+            .update_current_contract_wasm(new_wasm_hash.clone());
+
+        inst.set(&StorageKey::ContractVersion, &new_version);
+        inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
+
+        let now = env.ledger().timestamp();
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("upgraded")),
+            ContractUpgraded { old_version, new_version, new_wasm_hash, timestamp: now },
+        );
+    }
+
+    /// Returns the current contract code version (starts at 1 and is
+    /// incremented by every successful [`Self::upgrade`]).
+    pub fn get_contract_version(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&StorageKey::ContractVersion)
+            .unwrap_or(INITIAL_CONTRACT_VERSION)
+    }
+
     // -----------------------------------------------------------------------
     // Health monitoring
     // -----------------------------------------------------------------------
@@ -2705,10 +2750,18 @@ impl AnchorKitContract {
 
     /// Set the regulatory jurisdiction for an anchor (admin-only).
     ///
-    /// `jurisdiction` should be an ISO 3166-1 alpha-3 code (e.g. `"USA"`, `"GBR"`).
+    /// `jurisdiction` must be an ISO 3166-1 alpha-3 code: exactly three ASCII
+    /// uppercase letters (e.g. `"USA"`, `"GBR"`). Anything else (`"usa"`, `"US"`,
+    /// `"United States"`) panics with `ValidationError`, since it would never
+    /// match routing filters that use the canonical code.
     /// Pass `None` to clear a previously assigned jurisdiction.
     pub fn set_anchor_jurisdiction(env: Env, anchor: Address, jurisdiction: Option<String>) {
         Self::require_admin(&env);
+        if let Some(j) = &jurisdiction {
+            if !Self::is_valid_jurisdiction_code(j) {
+                panic_with_error!(&env, ErrorCode::ValidationError);
+            }
+        }
         let key = StorageKey::AnchorJurisdiction(anchor.clone());
         match jurisdiction.clone() {
             Some(j) => {
@@ -3371,6 +3424,17 @@ impl AnchorKitContract {
         if len != 56 || (first != b'G' && first != b'C') {
             panic_with_error!(env, ErrorCode::ValidationError);
         }
+    }
+
+    /// Returns `true` if `code` is exactly three ASCII uppercase letters
+    /// (the ISO 3166-1 alpha-3 format).
+    fn is_valid_jurisdiction_code(code: &String) -> bool {
+        if code.len() != 3 {
+            return false;
+        }
+        let mut buf = [0u8; 3];
+        code.copy_into_slice(&mut buf);
+        buf.iter().all(|b| b.is_ascii_uppercase())
     }
 
     fn require_admin(env: &Env) {
