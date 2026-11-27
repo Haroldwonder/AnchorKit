@@ -82,6 +82,7 @@ use alloc::string::String;
 /// | 127  | QuoteNotFound               |
 /// | 128  | EndpointNotSet              |
 /// | 129  | AuditLogNotFound            |
+/// | 130  | AnchorNotFound              |
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -132,7 +133,7 @@ pub enum ErrorCode {
     QuoteNotFound = 127,
     EndpointNotSet = 128,
     AuditLogNotFound = 129,
-    AttestorSuspended = 130,
+    AnchorNotFound = 130,
 }
 
 impl ErrorCode {
@@ -184,7 +185,7 @@ impl ErrorCode {
             ErrorCode::QuoteNotFound => "Quote not found",
             ErrorCode::EndpointNotSet => "Attestor has no endpoint configured",
             ErrorCode::AuditLogNotFound => "Audit log entry not found",
-            ErrorCode::AttestorSuspended => "Attestor is suspended",
+            ErrorCode::AnchorNotFound => "Anchor not found in the routing list",
             ErrorCode::NotInitialized => "Contract is not initialized",
         }
     }

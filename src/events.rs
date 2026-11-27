@@ -299,3 +299,45 @@ pub struct AttestorRateLimitSet {
     pub attestor: Address,
     pub timestamp: u64,
 }
+
+/// Emitted by `reactivate_anchor` (#1564).
+#[contracttype]
+#[derive(Clone)]
+pub struct AnchorReactivated {
+    pub anchor: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted by `remove_anchor` (#1564/#1565).
+#[contracttype]
+#[derive(Clone)]
+pub struct AnchorRemoved {
+    pub anchor: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted by the admin config setters (#1566) so monitors can see the
+/// previous value alongside the new one.
+#[contracttype]
+#[derive(Clone)]
+pub struct MaxPageSizeUpdated {
+    pub old: u32,
+    pub new: u32,
+    pub admin: Address,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ReplayWindowUpdated {
+    pub old: u64,
+    pub new: u64,
+    pub admin: Address,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ClockSkewUpdated {
+    pub old: u64,
+    pub new: u64,
+    pub admin: Address,
+}

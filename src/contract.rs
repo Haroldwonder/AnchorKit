@@ -10,7 +10,7 @@ use crate::sep10_jwt;
 use crate::storage::{
     StorageKey,
     key_admin, key_counter, key_session_counter, key_quote_counter,
-    key_audit_counter, key_anchor_list, key_health_threshold, key_replay_window,
+    key_audit_counter, key_anchor_list, key_clock_skew, key_health_threshold, key_replay_window,
     key_audit_log_offset, key_total_count,
 };
 
@@ -19,8 +19,8 @@ use crate::storage::{
 // ---------------------------------------------------------------------------
 
 pub use crate::types::{
-    AnchorMetadata, AnchorServices, AssetInfo, Attestation, AuditLog, CapabilitiesCache,
-    CachedToml, ContractConfig, ContractHealth, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
+    AnchorMetadata, AnchorServices, AssetInfo, Attestation, AttestationPage, AuditLog, CapabilitiesCache,
+    CachedToml, CredentialPolicy, FiatCurrency, HealthStatus, MetadataCache, OperationContext, Quote, RequestId,
     RoutingOptions, RoutingRequest, Session, StellarToml, StoredCredential, TracingSpan,
     SERVICE_DEPOSITS, SERVICE_WITHDRAWALS, SERVICE_QUOTES, SERVICE_KYC, SERVICE_EXCHANGE_QUOTES, ServiceType,
 };
@@ -56,14 +56,14 @@ const MIN_TEMP_TTL: u32 = 15; // min_temp_entry_ttl - 1
 const LEDGER_PERIOD_SECS: u64 = 5; // approximate seconds per ledger
 
 use crate::events::{
-    AdminTransferCancelled, AdminTransferred, AnchorDeactivated, AttestationRevoked, AttestEvent,
-    AuditLogEvent, AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated,
-    QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent, AttestorSuspended,
-    AttestorUnsuspended,
+    AdminTransferCancelled, AdminTransferred, AnchorDeactivated, AnchorReactivated, AnchorRemoved,
+    AttestationRevoked, AttestEvent, AuditLogEvent, AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated,
+    QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent,
     // #1361 – new admin governance events
     AnchorJurisdictionSet, AnchorMetadataSet, ContractUpgraded, AttestorRateLimitSet, CapabilitiesCached,
     CredentialPolicySet, CredentialRotated, CredentialStored, HealthStatusUpdated,
-    HealthThresholdSet, MetadataCached, RateLimitConfigUpdated, Sep10KeyAdded, Sep10KeyRemoved,
+    HealthThresholdSet, MaxPageSizeUpdated, MetadataCached, RateLimitConfigUpdated,
+    ReplayWindowUpdated, Sep10KeyAdded, Sep10KeyRemoved, ClockSkewUpdated,
 };
 
 // ---------------------------------------------------------------------------
@@ -347,11 +347,13 @@ impl AnchorKitContract {
         if max_page_size == 0 || max_page_size > MAX_PAGE_SIZE {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
+        let old = Self::get_max_page_size(env.clone());
+        let admin = Self::get_admin(env.clone());
         env.storage().instance().set(&StorageKey::MaxPageSize, &max_page_size);
         env.storage().instance().extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
         env.events().publish(
             (symbol_short!("pagesize"), symbol_short!("updated")),
-            max_page_size,
+            MaxPageSizeUpdated { old, new: max_page_size, admin },
         );
     }
 
@@ -363,12 +365,16 @@ impl AnchorKitContract {
         if seconds > MAX_REPLAY_WINDOW_SECONDS {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
+        let old = env.storage().instance()
+            .get::<_, u64>(&key_replay_window(&env))
+            .unwrap_or(300u64);
+        let admin = Self::get_admin(env.clone());
         let inst = env.storage().instance();
         inst.set(&key_replay_window(&env), &seconds);
         inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
         env.events().publish(
             (symbol_short!("replay"), symbol_short!("updated")),
-            seconds,
+            ReplayWindowUpdated { old, new: seconds, admin },
         );
     }
 
@@ -380,12 +386,16 @@ impl AnchorKitContract {
         if seconds > MAX_CLOCK_SKEW_SECONDS {
             panic_with_error!(&env, ErrorCode::ValidationError);
         }
+        let old = env.storage().instance()
+            .get::<_, u64>(&key_clock_skew(&env))
+            .unwrap_or(60u64);
+        let admin = Self::get_admin(env.clone());
         let inst = env.storage().instance();
         inst.set(&key_clock_skew(&env), &seconds);
         inst.extend_ttl(INSTANCE_TTL, INSTANCE_TTL);
         env.events().publish(
             (symbol_short!("clockskew"), symbol_short!("updated")),
-            seconds,
+            ClockSkewUpdated { old, new: seconds, admin },
         );
     }
 
@@ -1607,6 +1617,57 @@ impl AnchorKitContract {
         }
 
         results
+    }
+
+    /// List a subject's attestations with a cursor suitable for continued
+    /// paging (#1563). Revoked and expired attestations are skipped without
+    /// consuming a result slot; `next_cursor` always advances past the last
+    /// index examined so callers can resume where this page stopped.
+    pub fn get_attestations_by_subject(
+        env: Env,
+        subject: Address,
+        offset: u64,
+        limit: u32,
+    ) -> AttestationPage {
+        let max_page_size = Self::get_max_page_size(env.clone());
+        let actual_limit = core::cmp::min(limit, max_page_size);
+        let total_count: u64 = env.storage().persistent()
+            .get::<_, u64>(&StorageKey::SubjectCount(subject.clone()))
+            .unwrap_or(0);
+        let mut results = Vec::new(&env);
+        let mut cursor = offset;
+
+        if actual_limit > 0 {
+            while cursor < total_count && (results.len() as u32) < actual_limit {
+                let index_key = StorageKey::SubjectAttestation(subject.clone(), cursor);
+                cursor += 1;
+                let Some(id) = env.storage().persistent().get::<_, u64>(&index_key) else {
+                    continue;
+                };
+                let Some(mut attestation) = env.storage().persistent()
+                    .get::<_, Attestation>(&StorageKey::Attest(id)) else {
+                    continue;
+                };
+                if env.storage().persistent().has(&StorageKey::AttestationRevoked(id)) {
+                    continue;
+                }
+                if let Some(expires_at) = attestation.expires_at {
+                    if env.ledger().timestamp() > expires_at {
+                        continue;
+                    }
+                }
+                if Self::is_attestation_issuer_revoked(&env, &attestation) {
+                    attestation.issuer_revoked = true;
+                }
+                results.push_back(attestation);
+            }
+        }
+
+        AttestationPage {
+            attestations: results,
+            next_cursor: cursor,
+            has_more: cursor < total_count,
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -2924,6 +2985,10 @@ impl AnchorKitContract {
         metadata.is_active = true;
         env.storage().persistent().set(&meta_key, &metadata);
         env.storage().persistent().extend_ttl(&meta_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("areactiv")),
+            AnchorReactivated { anchor, timestamp: env.ledger().timestamp() },
+        );
     }
 
     /// Remove an anchor from the routing candidate list without deleting its
@@ -2936,6 +3001,9 @@ impl AnchorKitContract {
             .persistent()
             .get(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
+        if !list.contains(&anchor) {
+            panic_with_error!(&env, ErrorCode::AnchorNotFound);
+        }
         let mut filtered = Vec::new(&env);
         for candidate in list.iter() {
             if candidate != anchor {
@@ -2944,6 +3012,10 @@ impl AnchorKitContract {
         }
         env.storage().persistent().set(&list_key, &filtered);
         env.storage().persistent().extend_ttl(&list_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        env.events().publish(
+            (symbol_short!("admin"), symbol_short!("aremove")),
+            AnchorRemoved { anchor, timestamp: env.ledger().timestamp() },
+        );
     }
 
     pub fn get_routing_anchors(env: Env) -> Vec<Address> {
