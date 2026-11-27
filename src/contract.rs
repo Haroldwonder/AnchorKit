@@ -138,6 +138,11 @@ pub const MAX_CLOCK_SKEW_SECONDS: u64 = 300;
 /// Defaults to one day; larger windows accept arbitrarily old timestamps (#1430).
 pub const MAX_REPLAY_WINDOW_SECONDS: u64 = 86_400;
 
+/// Maximum number of attestation IDs accepted by a single `revoke_attestations`
+/// call (#1512). Bounding the batch keeps storage reads, writes and emitted
+/// events within a reasonable host budget.
+pub const MAX_REVOKE_BATCH_SIZE: u32 = 100;
+
 fn pending_admin_key(env: &Env) -> soroban_sdk::Vec<soroban_sdk::Symbol> {
     soroban_sdk::vec![env, symbol_short!("PADMIN")]
 }
@@ -888,27 +893,57 @@ impl AnchorKitContract {
         Self::revoke_attestor_core(&env, attestor);
     }
 
-    /// Revoke a single attestation by its ID. Only the issuing attestor may
-    /// revoke their own attestation.
-    pub fn revoke_attestation(env: Env, attestor: Address, attestation_id: u64) {
-        Self::require_not_paused(&env);
-        attestor.require_auth();
+    /// Core revocation logic shared by `revoke_attestation` and
+    /// `revoke_attestations` so both paths perform the same checks and emit
+    /// the same event for each revoked ID.
+    ///
+    /// Preconditions (callers must enforce before calling):
+    /// - contract is not paused
+    /// - `attestor.require_auth()` has been called
+    fn revoke_attestation_core(env: &Env, attestor: &Address, attestation_id: u64) {
         let attest_key = StorageKey::Attest(attestation_id);
         let attestation: Attestation = env
             .storage()
             .persistent()
             .get(&attest_key)
-            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
-        if attestation.issuer != attestor {
-            panic_with_error!(&env, ErrorCode::UnauthorizedAttestor);
+            .unwrap_or_else(|| panic_with_error!(env, ErrorCode::AttestationNotFound));
+        if attestation.issuer != *attestor {
+            panic_with_error!(env, ErrorCode::UnauthorizedAttestor);
         }
         let revoked_key = StorageKey::AttestationRevoked(attestation_id);
         env.storage().persistent().set(&revoked_key, &true);
         env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
         env.events().publish(
             (symbol_short!("attest"), symbol_short!("revoked"), attestation_id),
-            attestor,
+            attestor.clone(),
         );
+    }
+
+    /// Revoke a single attestation by its ID. Only the issuing attestor may
+    /// revoke their own attestation.
+    pub fn revoke_attestation(env: Env, attestor: Address, attestation_id: u64) {
+        Self::require_not_paused(&env);
+        attestor.require_auth();
+        Self::revoke_attestation_core(&env, &attestor, attestation_id);
+    }
+
+    /// Revoke multiple attestations in a single call (#1512).
+    ///
+    /// Each ID is checked and revoked exactly as `revoke_attestation` does:
+    /// the attestation must exist and must have been issued by `attestor`, and
+    /// one `"attest"/"revoked"` event is emitted per ID. At most
+    /// `MAX_REVOKE_BATCH_SIZE` IDs are accepted. On any failure the whole call
+    /// panics, so no ID in the batch is revoked.
+    pub fn revoke_attestations(env: Env, attestor: Address, ids: Vec<u64>) {
+        Self::require_not_paused(&env);
+        attestor.require_auth();
+        if ids.len() > MAX_REVOKE_BATCH_SIZE {
+            panic_with_error!(&env, ErrorCode::ValidationError);
+        }
+        for i in 0..ids.len() {
+            let id = ids.get(i).unwrap();
+            Self::revoke_attestation_core(&env, &attestor, id);
+        }
     }
 
     pub fn is_attestor(env: Env, attestor: Address) -> bool {
