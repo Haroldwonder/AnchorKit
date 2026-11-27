@@ -132,6 +132,7 @@ pub enum ErrorCode {
     QuoteNotFound = 127,
     EndpointNotSet = 128,
     AuditLogNotFound = 129,
+    QuoteCancelled = 130,
 }
 
 impl ErrorCode {
@@ -183,6 +184,7 @@ impl ErrorCode {
             ErrorCode::QuoteNotFound => "Quote not found",
             ErrorCode::EndpointNotSet => "Attestor has no endpoint configured",
             ErrorCode::AuditLogNotFound => "Audit log entry not found",
+            ErrorCode::QuoteCancelled => "Quote has been cancelled",
             ErrorCode::NotInitialized => "Contract is not initialized",
         }
     }

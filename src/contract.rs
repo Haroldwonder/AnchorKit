@@ -58,7 +58,7 @@ const LEDGER_PERIOD_SECS: u64 = 5; // approximate seconds per ledger
 use crate::events::{
     AdminTransferCancelled, AdminTransferred, AnchorDeactivated, AttestationRevoked, AttestEvent,
     AuditLogEvent, AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated,
-    QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent,
+    QuoteCancelledEvent, QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent,
     // #1361 – new admin governance events
     AnchorJurisdictionSet, AnchorMetadataSet, AttestorRateLimitSet, CapabilitiesCached,
     CredentialPolicySet, CredentialRotated, CredentialStored, HealthStatusUpdated,
@@ -1263,6 +1263,8 @@ impl AnchorKitContract {
         env.storage().persistent().set(&q_key, &quote);
         env.storage().persistent().extend_ttl(&q_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
+        Self::index_new_quote(&env, &anchor, &quote);
+
         let lq_key = StorageKey::LatestQuote(anchor.clone());
         env.storage().persistent().set(&lq_key, &next);
         env.storage().persistent().extend_ttl(&lq_key, PERSISTENT_TTL, PERSISTENT_TTL);
@@ -1490,6 +1492,8 @@ impl AnchorKitContract {
         env.storage().persistent().set(&q_key, &quote);
         env.storage().persistent().extend_ttl(&q_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
+        Self::index_new_quote(&env, &anchor, &quote);
+
         let lq_key = StorageKey::LatestQuote(anchor.clone());
         env.storage().persistent().set(&lq_key, &next);
         env.storage().persistent().extend_ttl(&lq_key, PERSISTENT_TTL, PERSISTENT_TTL);
@@ -1508,6 +1512,11 @@ impl AnchorKitContract {
         let quote: Quote = env.storage().persistent().get(&q_key)
             .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::QuoteNotFound));
 
+        // Reject cancelled quotes (#1508).
+        if env.storage().persistent().has(&StorageKey::QuoteCancelled(anchor.clone(), quote_id)) {
+            panic_with_error!(&env, ErrorCode::QuoteCancelled);
+        }
+
         // Reject expired quotes — ErrorCode::StaleQuote (#1349).
         if env.ledger().timestamp() > quote.valid_until {
             panic_with_error!(&env, ErrorCode::StaleQuote);
@@ -1519,6 +1528,157 @@ impl AnchorKitContract {
         );
 
         quote
+    }
+
+    /// Cancel an outstanding quote before it expires (anchor auth, #1508).
+    ///
+    /// Cancelled quotes are rejected by `receive_quote` and skipped by routing.
+    pub fn cancel_quote(env: Env, anchor: Address, quote_id: u64) {
+        anchor.require_auth();
+        let q_key = StorageKey::Quote(anchor.clone(), quote_id);
+        let quote: Quote = env.storage().persistent().get(&q_key)
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::QuoteNotFound));
+        let c_key = StorageKey::QuoteCancelled(anchor.clone(), quote_id);
+        if env.storage().persistent().has(&c_key) {
+            panic_with_error!(&env, ErrorCode::QuoteCancelled);
+        }
+        env.storage().persistent().set(&c_key, &true);
+        env.storage().persistent().extend_ttl(&c_key, PERSISTENT_TTL, PERSISTENT_TTL);
+
+        // Drop from the per-anchor index (#1510).
+        let idx_key = StorageKey::AnchorQuotes(anchor.clone());
+        if let Some(ids) = env.storage().persistent().get::<_, Vec<u64>>(&idx_key) {
+            let mut kept: Vec<u64> = Vec::new(&env);
+            for id in ids.iter() {
+                if id != quote_id {
+                    kept.push_back(id);
+                }
+            }
+            env.storage().persistent().set(&idx_key, &kept);
+            env.storage().persistent().extend_ttl(&idx_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        }
+
+        // Routing only considers the latest quote, so cancelling it removes the
+        // anchor from the pair index (#1511).
+        let latest: Option<u64> = env.storage().persistent().get(&StorageKey::LatestQuote(anchor.clone()));
+        if latest == Some(quote_id) {
+            Self::remove_from_pair_index(&env, &quote.base_asset, &quote.quote_asset, &anchor);
+        }
+
+        env.events().publish(
+            (symbol_short!("quote"), symbol_short!("cancel"), quote_id),
+            QuoteCancelledEvent { quote_id, anchor, timestamp: env.ledger().timestamp() },
+        );
+    }
+
+    /// Returns the anchor's most recently submitted quote, if any (#1509).
+    pub fn get_latest_quote(env: Env, anchor: Address) -> Option<Quote> {
+        let quote_id: u64 = env.storage().persistent().get(&StorageKey::LatestQuote(anchor.clone()))?;
+        env.storage().persistent().get(&StorageKey::Quote(anchor, quote_id))
+    }
+
+    /// Paginated list of an anchor's active (unexpired, uncancelled) quotes (#1510).
+    ///
+    /// `limit` is clamped to `MaxPageSize`.
+    pub fn list_quotes(env: Env, anchor: Address, offset: u32, limit: u32) -> Vec<Quote> {
+        let max = Self::get_max_page_size(env.clone());
+        let limit = limit.min(max);
+        let mut out: Vec<Quote> = Vec::new(&env);
+        if limit == 0 {
+            return out;
+        }
+        let now = env.ledger().timestamp();
+        let ids: Vec<u64> = env.storage().persistent()
+            .get(&StorageKey::AnchorQuotes(anchor.clone()))
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut skipped: u32 = 0;
+        for id in ids.iter() {
+            if env.storage().persistent().has(&StorageKey::QuoteCancelled(anchor.clone(), id)) {
+                continue;
+            }
+            let quote: Quote = match env.storage().persistent().get(&StorageKey::Quote(anchor.clone(), id)) {
+                Some(q) => q,
+                None => continue,
+            };
+            if quote.valid_until <= now {
+                continue;
+            }
+            if skipped < offset {
+                skipped += 1;
+                continue;
+            }
+            out.push_back(quote);
+            if out.len() >= limit {
+                break;
+            }
+        }
+        out
+    }
+
+    /// Update the per-anchor and per-pair indexes for a newly submitted quote.
+    /// Must be called before `LatestQuote` is overwritten.
+    fn index_new_quote(env: &Env, anchor: &Address, quote: &Quote) {
+        let now = env.ledger().timestamp();
+
+        // Per-anchor index: prune expired/cancelled entries, then append (#1510).
+        let idx_key = StorageKey::AnchorQuotes(anchor.clone());
+        let ids: Vec<u64> = env.storage().persistent().get(&idx_key).unwrap_or_else(|| Vec::new(env));
+        let mut kept: Vec<u64> = Vec::new(env);
+        for id in ids.iter() {
+            if env.storage().persistent().has(&StorageKey::QuoteCancelled(anchor.clone(), id)) {
+                continue;
+            }
+            match env.storage().persistent().get::<_, Quote>(&StorageKey::Quote(anchor.clone(), id)) {
+                Some(q) if q.valid_until > now => kept.push_back(id),
+                _ => {}
+            }
+        }
+        kept.push_back(quote.quote_id);
+        env.storage().persistent().set(&idx_key, &kept);
+        env.storage().persistent().extend_ttl(&idx_key, PERSISTENT_TTL, PERSISTENT_TTL);
+
+        // Pair index (#1511): move the anchor from its previous latest quote's
+        // pair to this quote's pair.
+        if let Some(prev_id) = env.storage().persistent().get::<_, u64>(&StorageKey::LatestQuote(anchor.clone())) {
+            if let Some(prev) = env.storage().persistent().get::<_, Quote>(&StorageKey::Quote(anchor.clone(), prev_id)) {
+                if prev.base_asset != quote.base_asset || prev.quote_asset != quote.quote_asset {
+                    Self::remove_from_pair_index(env, &prev.base_asset, &prev.quote_asset, anchor);
+                }
+            }
+        }
+        let pair_key = StorageKey::PairAnchors(quote.base_asset.clone(), quote.quote_asset.clone());
+        let mut pair: Vec<Address> = env.storage().persistent().get(&pair_key).unwrap_or_else(|| Vec::new(env));
+        if !pair.contains(anchor) {
+            pair.push_back(anchor.clone());
+            env.storage().persistent().set(&pair_key, &pair);
+        }
+        env.storage().persistent().extend_ttl(&pair_key, PERSISTENT_TTL, PERSISTENT_TTL);
+    }
+
+    fn remove_from_pair_index(env: &Env, base_asset: &String, quote_asset: &String, anchor: &Address) {
+        let pair_key = StorageKey::PairAnchors(base_asset.clone(), quote_asset.clone());
+        let pair: Vec<Address> = match env.storage().persistent().get(&pair_key) {
+            Some(p) => p,
+            None => return,
+        };
+        if !pair.contains(anchor) {
+            return;
+        }
+        let mut kept: Vec<Address> = Vec::new(env);
+        for a in pair.iter() {
+            if &a != anchor {
+                kept.push_back(a);
+            }
+        }
+        env.storage().persistent().set(&pair_key, &kept);
+        env.storage().persistent().extend_ttl(&pair_key, PERSISTENT_TTL, PERSISTENT_TTL);
+    }
+
+    /// Anchors whose latest quote covers the given asset pair (#1511).
+    pub fn get_pair_anchors(env: Env, base_asset: String, quote_asset: String) -> Vec<Address> {
+        env.storage().persistent()
+            .get(&StorageKey::PairAnchors(base_asset, quote_asset))
+            .unwrap_or_else(|| Vec::new(&env))
     }
 
     // -----------------------------------------------------------------------
@@ -2551,10 +2711,20 @@ impl AnchorKitContract {
             .get::<_, Vec<Address>>(&list_key)
             .unwrap_or_else(|| Vec::new(&env));
 
-        // Collect every eligible anchor so the strategy sees the whole pool,
-        // not just the first registrants.
+        // Only anchors whose latest quote covers the requested pair are loaded
+        // (#1511); `anchors` is still consulted so `remove_anchor` is honoured.
+        let pair_anchors: Vec<Address> = env.storage().persistent()
+            .get(&StorageKey::PairAnchors(
+                options.request.base_asset.clone(),
+                options.request.quote_asset.clone(),
+            ))
+            .unwrap_or_else(|| Vec::new(&env));
+
         let mut candidates: Vec<Quote> = Vec::new(&env);
-        for anchor in anchors.iter() {
+        for anchor in pair_anchors.iter() {
+            if !anchors.contains(&anchor) {
+                continue;
+            }
             if let Some(quote) = Self::eligible_routing_quote(
                 env, options, &anchor, now, options.min_reputation, emit_events,
             ) {
@@ -2861,9 +3031,15 @@ impl AnchorKitContract {
         let quote_id: u64 = env.storage().persistent().get(&StorageKey::LatestQuote(anchor.clone()))?;
         let quote: Quote = env.storage().persistent().get(&StorageKey::Quote(anchor.clone(), quote_id))?;
 
+        if env.storage().persistent().has(&StorageKey::QuoteCancelled(anchor.clone(), quote_id)) {
+            return None;
+        }
+
         if quote.valid_until <= now {
             if emit_events {
                 Self::emit_quote_expired_once(env, anchor, quote_id, quote.valid_until);
+                // Prune the expired latest quote from the pair index (#1511).
+                Self::remove_from_pair_index(env, &quote.base_asset, &quote.quote_asset, anchor);
             }
             return None;
         }
