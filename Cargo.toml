@@ -25,7 +25,7 @@ proptest-tests = []
 testnet-integration = []
 
 [dependencies]
-soroban-sdk = "26.1.0"
+soroban-sdk = "30.0.0"
 sha2 = "0.11"
 hex = "0.4"
 ed25519-dalek = { version = "2", default-features = false }
@@ -34,7 +34,7 @@ serde_json = { version = "1.0", optional = true }
 toml = { version = "1.1", optional = true }
 regex = { version = "1.10", optional = true }
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
-soroban-client = { version = "0.6.0", optional = true }
+soroban-client = { version = "0.7.1", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "time"], optional = true }
 base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 
@@ -42,7 +42,7 @@ base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 clap = { version = "4.5", features = ["derive"] }
 
 [dev-dependencies]
-soroban-sdk = { version = "26.1.0", features = ["testutils"] }
+soroban-sdk = { version = "30.0.0", features = ["testutils"] }
 base64 = "0.22"
 ed25519-dalek = "2"
 rand = "0.8"
