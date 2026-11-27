@@ -3,6 +3,7 @@ name = "anchorkit-fuzz"
 version = "0.0.1"
 edition = "2021"
 publish = false
+rust-version = "1.91.0"
 
 [package.metadata]
 cargo-fuzz = true

@@ -78,6 +78,14 @@ struct SessionExpired {
 
 #[contracttype]
 #[derive(Clone)]
+struct SessionClosed {
+    session_id: u64,
+    closed_by: Address,
+    closed_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
 struct AdminTransferProposed {
     current_admin: Address,
     new_admin: Address,
@@ -1173,7 +1181,14 @@ impl AnchorKitContract {
             }
             Self::check_timestamp(&env, input.timestamp);
             // Verify each item's signature, mirroring submit_attestation (#871).
-            Self::verify_attestation_signature(&env, &issuer, &input.payload_hash, &input.signature);
+            Self::verify_attestation_signature(
+                &env,
+                &issuer,
+                &input.subject,
+                input.timestamp,
+                &input.payload_hash,
+                &input.signature,
+            );
 
             let used_key = StorageKey::Used(input.payload_hash.clone());
             if env.storage().persistent().has(&used_key) {
@@ -1470,6 +1485,47 @@ impl AnchorKitContract {
         );
 
         session_id
+    }
+
+    /// Explicitly close a session before its natural expiry (#1428).
+    ///
+    /// `caller` must be the session initiator or the contract admin and must
+    /// authorize the call. Sets `expires_at = now`, so every later
+    /// session-linked operation fails with `ErrorCode::SessionExpired`, and
+    /// emits a `("session", "closed", session_id)` event.
+    ///
+    /// # Panics
+    /// * `SessionNotFound` if the session does not exist.
+    /// * `UnauthorizedSession` if `caller` is neither the initiator nor the admin.
+    /// * `SessionExpired` if the session is already expired or closed.
+    pub fn close_session(env: Env, session_id: u64, caller: Address) {
+        caller.require_auth();
+        let sess_key = StorageKey::Session(session_id);
+        let mut session: Session = env
+            .storage()
+            .persistent()
+            .get::<_, Session>(&sess_key)
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::SessionNotFound));
+
+        let admin: Option<Address> = env.storage().instance().get(&key_admin(&env));
+        let is_admin = admin.map(|a| a == caller).unwrap_or(false);
+        if caller != session.initiator && !is_admin {
+            panic_with_error!(&env, ErrorCode::UnauthorizedSession);
+        }
+
+        let now = env.ledger().timestamp();
+        if now >= session.expires_at {
+            panic_with_error!(&env, ErrorCode::SessionExpired);
+        }
+
+        session.expires_at = now;
+        env.storage().persistent().set(&sess_key, &session);
+        env.storage().persistent().extend_ttl(&sess_key, SESSION_LEDGER_TTL, SESSION_LEDGER_TTL);
+
+        env.events().publish(
+            (symbol_short!("session"), symbol_short!("closed"), session_id),
+            SessionClosed { session_id, closed_by: caller, closed_at: now },
+        );
     }
 
     // get_session, get_audit_log, get_session_operation_count defined later in the session-aware section.
@@ -3559,10 +3615,17 @@ impl AnchorKitContract {
     fn verify_attestation_signature(
         env: &Env,
         issuer: &Address,
+        subject: &Address,
+        timestamp: u64,
         payload_hash: &Bytes,
         signature: &Bytes,
     ) {
         use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+        // The signed message binds contract, network, issuer, subject and
+        // timestamp as well as the payload hash (see `attestation_signing_digest`).
+        let digest = attestation_signing_digest(env, issuer, subject, timestamp, payload_hash);
+        let digest_bytes = Bytes::from_array(env, &digest);
 
         // Retrieve the list of registered attestation keys for the issuer.
         let keys: Vec<Bytes> = env
@@ -3584,7 +3647,7 @@ impl AnchorKitContract {
             key_bytes.copy_from_slice(&raw[64..]);
             env.crypto().ed25519_verify(
                 &BytesN::from_array(env, &key_bytes),
-                payload_hash,
+                &digest_bytes,
                 &BytesN::from_array(env, &sig_bytes),
             );
             return;
@@ -3597,9 +3660,7 @@ impl AnchorKitContract {
         signature.copy_into_slice(&mut sig_arr);
         let dalek_sig = Signature::from_bytes(&sig_arr);
 
-        let mut msg = alloc::vec::Vec::with_capacity(payload_hash.len() as usize);
-        msg.resize(payload_hash.len() as usize, 0u8);
-        payload_hash.copy_into_slice(&mut msg);
+        let msg = digest;
 
         // Try each registered key until one successfully verifies the signature.
         // This allows key rotation: an issuer can have up to MAX_VERIFYING_KEYS active keys,
