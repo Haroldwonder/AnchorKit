@@ -8,6 +8,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::domain_validator::validate_anchor_domain;
 use crate::errors::{Error, ErrorCode};
 use crate::retry::RetryConfig;
 
@@ -140,6 +141,9 @@ pub struct DepositResponse {
     /// Whether the anchor supports claimable balances as the deposit destination.
     /// Sourced from the `CLAIMABLE_BALANCE_SUPPORTED` flag in stellar.toml.
     pub claimable_balance_supported: bool,
+    /// Optional HTTPS URL the anchor will POST transaction status changes to.
+    /// See `docs/features/SEP6_ON_CHANGE_CALLBACK.md`.
+    pub on_change_callback: Option<String>,
 }
 
 /// Normalized response for a withdrawal initiation.
@@ -165,6 +169,9 @@ pub struct WithdrawalResponse {
     pub fee_percent: Option<u32>,
     /// Current status of the transaction.
     pub status: TransactionStatus,
+    /// Optional HTTPS URL the anchor will POST transaction status changes to.
+    /// See `docs/features/SEP6_ON_CHANGE_CALLBACK.md`.
+    pub on_change_callback: Option<String>,
 }
 
 /// Normalized transaction status response.
@@ -229,6 +236,9 @@ pub struct RawDepositResponse {
     /// Whether the anchor supports claimable balances as the deposit destination.
     /// Sourced from the `CLAIMABLE_BALANCE_SUPPORTED` flag in stellar.toml.
     pub claimable_balance_supported: bool,
+    /// Optional HTTPS callback URL supplied to the anchor's `/deposit` request.
+    /// When present it must be a valid HTTPS URL (see SEP-6).
+    pub on_change_callback: Option<String>,
 }
 
 /// Raw fields from an anchor's `/withdraw` response.
@@ -243,6 +253,9 @@ pub struct RawWithdrawalResponse {
     pub fee_fixed: Option<u64>,
     pub fee_percent: Option<u32>,
     pub status: Option<String>,
+    /// Optional HTTPS callback URL supplied to the anchor's `/withdraw` request.
+    /// When present it must be a valid HTTPS URL (see SEP-6).
+    pub on_change_callback: Option<String>,
 }
 
 /// Raw fields from an anchor's `/withdraw-exchange` response.
@@ -356,6 +369,25 @@ fn is_valid_asset_code(s: &str) -> bool {
     len >= 1 && len <= 12 && s.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
+/// Validate the optional SEP-6 `on_change_callback` URL.
+///
+/// SEP-6 requires the callback to be an HTTPS URL. Reusing the anchor-domain
+/// validator gives callback URLs the same protections as other anchor-supplied
+/// endpoints: HTTPS-only, no localhost/bare-IP hosts, no path traversal, and
+/// a maximum length. `None` is always valid because the parameter is optional.
+fn validate_on_change_callback(callback: Option<&str>) -> Result<(), Error> {
+    if let Some(url) = callback {
+        if validate_anchor_domain(url).is_err() {
+            return Err(Error::with_context(
+                ErrorCode::ValidationError,
+                "Invalid on_change_callback: must be a valid HTTPS URL",
+                url,
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Classifies whether an HTTP status code represents a retryable error.
 ///
 /// Returns `true` for transient errors (5xx server errors, timeouts, connection errors).
@@ -446,6 +478,7 @@ pub fn initiate_deposit(raw: RawDepositResponse, asset_code: &str) -> Result<Dep
             asset_code,
         ));
     }
+    validate_on_change_callback(raw.on_change_callback.as_deref())?;
     if raw.transaction_id.is_empty() || raw.how.is_empty() {
         return Err(Error::invalid_transaction_intent());
     }
@@ -473,6 +506,7 @@ pub fn initiate_deposit(raw: RawDepositResponse, asset_code: &str) -> Result<Dep
             .map(TransactionStatus::from_str)
             .unwrap_or(TransactionStatus::Pending),
         claimable_balance_supported: raw.claimable_balance_supported,
+        on_change_callback: raw.on_change_callback,
     })
 }
 
@@ -490,6 +524,7 @@ pub fn initiate_withdrawal(raw: RawWithdrawalResponse, asset_code: &str) -> Resu
             asset_code,
         ));
     }
+    validate_on_change_callback(raw.on_change_callback.as_deref())?;
     if raw.transaction_id.is_empty() || raw.account_id.is_empty() {
         return Err(Error::invalid_transaction_intent());
     }
@@ -516,6 +551,7 @@ pub fn initiate_withdrawal(raw: RawWithdrawalResponse, asset_code: &str) -> Resu
             .as_deref()
             .map(TransactionStatus::from_str)
             .unwrap_or(TransactionStatus::Pending),
+        on_change_callback: raw.on_change_callback,
     })
 }
 
@@ -575,6 +611,8 @@ pub fn withdraw_exchange(
             .as_deref()
             .map(TransactionStatus::from_str)
             .unwrap_or(TransactionStatus::Pending),
+        // The cross-asset endpoint does not carry a callback field.
+        on_change_callback: None,
     })
 }
 
@@ -1206,6 +1244,7 @@ mod tests {
             status: Some("pending_external".to_string()),
             depositor_account: None,
             claimable_balance_supported: false,
+            on_change_callback: None,
         }
     }
 
@@ -1221,6 +1260,7 @@ mod tests {
             fee_fixed: Some(2),
             fee_percent: None,
             status: Some("pending_user".to_string()),
+            on_change_callback: None,
         }
     }
 
@@ -1518,6 +1558,93 @@ mod tests {
         raw.fee_percent = Some(50);
         let resp = initiate_withdrawal(raw, "USDC").unwrap();
         assert_eq!(resp.fee_percent, Some(50));
+    }
+
+    // ── on_change_callback (issue #1519) ────────────────────────────────────
+
+    const VALID_CALLBACK: &str = "https://wallet.example.com/sep6/callback";
+
+    fn callback_error(err: &Error) {
+        assert_eq!(err.code, ErrorCode::ValidationError, "{err:?}");
+        assert!(err.message.contains("on_change_callback"), "{err:?}");
+    }
+
+    #[test]
+    fn test_deposit_on_change_callback_absent_is_accepted() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = None;
+        assert_eq!(
+            initiate_deposit(raw, "USDC").unwrap().on_change_callback,
+            None
+        );
+    }
+
+    #[test]
+    fn test_deposit_valid_on_change_callback_is_propagated() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = Some(VALID_CALLBACK.to_string());
+        let resp = initiate_deposit(raw, "USDC").unwrap();
+        assert_eq!(resp.on_change_callback.as_deref(), Some(VALID_CALLBACK));
+    }
+
+    #[test]
+    fn test_deposit_on_change_callback_with_path_and_query_is_accepted() {
+        let mut raw = raw_deposit();
+        let url = "HTTPS://wallet.example.com/hooks/sep6?tx=abc&v=1";
+        raw.on_change_callback = Some(url.to_string());
+        let resp = initiate_deposit(raw, "USDC").unwrap();
+        assert_eq!(resp.on_change_callback.as_deref(), Some(url));
+    }
+
+    #[test]
+    fn test_deposit_invalid_on_change_callbacks_are_rejected() {
+        for url in [
+            "http://wallet.example.com/callback",
+            "ftp://wallet.example.com/callback",
+            "not-a-url",
+            "",
+            "https://localhost/callback",
+            "https://127.0.0.1/callback",
+            "https://wallet.example.com/../callback",
+        ] {
+            let mut raw = raw_deposit();
+            raw.on_change_callback = Some(url.to_string());
+            callback_error(&initiate_deposit(raw, "USDC").unwrap_err());
+        }
+    }
+
+    #[test]
+    fn test_withdrawal_on_change_callback_absent_is_accepted() {
+        let mut raw = raw_withdrawal();
+        raw.on_change_callback = None;
+        assert_eq!(
+            initiate_withdrawal(raw, "USDC").unwrap().on_change_callback,
+            None
+        );
+    }
+
+    #[test]
+    fn test_withdrawal_valid_on_change_callback_is_propagated() {
+        let mut raw = raw_withdrawal();
+        raw.on_change_callback = Some(VALID_CALLBACK.to_string());
+        let resp = initiate_withdrawal(raw, "USDC").unwrap();
+        assert_eq!(resp.on_change_callback.as_deref(), Some(VALID_CALLBACK));
+    }
+
+    #[test]
+    fn test_withdrawal_invalid_on_change_callbacks_are_rejected() {
+        for url in [
+            "http://wallet.example.com/callback",
+            "ftp://wallet.example.com/callback",
+            "not-a-url",
+            "",
+            "https://localhost/callback",
+            "https://127.0.0.1/callback",
+        ] {
+            let mut raw = raw_withdrawal();
+            raw.on_change_callback = Some(url.to_string());
+            callback_error(&initiate_withdrawal(raw, "USDC").unwrap_err());
+        }
     }
 
     // ── list_transactions ────────────────────────────────────────────────────
