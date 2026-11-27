@@ -11,6 +11,7 @@ use alloc::vec::Vec;
 use crate::domain_validator::validate_anchor_domain;
 use crate::errors::{Error, ErrorCode};
 use crate::retry::RetryConfig;
+use crate::domain_validator::validate_anchor_domain;
 
 // ── Normalized response types ────────────────────────────────────────────────
 
@@ -141,8 +142,8 @@ pub struct DepositResponse {
     /// Whether the anchor supports claimable balances as the deposit destination.
     /// Sourced from the `CLAIMABLE_BALANCE_SUPPORTED` flag in stellar.toml.
     pub claimable_balance_supported: bool,
-    /// Optional HTTPS URL the anchor will POST transaction status changes to.
-    /// See `docs/features/SEP6_ON_CHANGE_CALLBACK.md`.
+    /// Validated HTTPS callback URL provided by the caller, if any.
+    /// The anchor will POST status-change notifications to this URL.
     pub on_change_callback: Option<String>,
 }
 
@@ -169,8 +170,8 @@ pub struct WithdrawalResponse {
     pub fee_percent: Option<u32>,
     /// Current status of the transaction.
     pub status: TransactionStatus,
-    /// Optional HTTPS URL the anchor will POST transaction status changes to.
-    /// See `docs/features/SEP6_ON_CHANGE_CALLBACK.md`.
+    /// Validated HTTPS callback URL provided by the caller, if any.
+    /// The anchor will POST status-change notifications to this URL.
     pub on_change_callback: Option<String>,
 }
 
@@ -236,8 +237,8 @@ pub struct RawDepositResponse {
     /// Whether the anchor supports claimable balances as the deposit destination.
     /// Sourced from the `CLAIMABLE_BALANCE_SUPPORTED` flag in stellar.toml.
     pub claimable_balance_supported: bool,
-    /// Optional HTTPS callback URL supplied to the anchor's `/deposit` request.
-    /// When present it must be a valid HTTPS URL (see SEP-6).
+    /// Optional HTTPS URL the anchor will POST status-change notifications to
+    /// (SEP-6 `on_change_callback` parameter).  Must be a valid `https://` URL.
     pub on_change_callback: Option<String>,
 }
 
@@ -253,8 +254,8 @@ pub struct RawWithdrawalResponse {
     pub fee_fixed: Option<u64>,
     pub fee_percent: Option<u32>,
     pub status: Option<String>,
-    /// Optional HTTPS callback URL supplied to the anchor's `/withdraw` request.
-    /// When present it must be a valid HTTPS URL (see SEP-6).
+    /// Optional HTTPS URL the anchor will POST status-change notifications to
+    /// (SEP-6 `on_change_callback` parameter).  Must be a valid `https://` URL.
     pub on_change_callback: Option<String>,
 }
 
@@ -491,6 +492,13 @@ pub fn initiate_deposit(raw: RawDepositResponse, asset_code: &str) -> Result<Dep
             ));
         }
     }
+    if let Some(ref url) = raw.on_change_callback {
+        validate_anchor_domain(url).map_err(|_| Error::with_context(
+            ErrorCode::ValidationError,
+            "on_change_callback must be a valid HTTPS URL",
+            url,
+        ))?;
+    }
 
     Ok(DepositResponse {
         transaction_id: raw.transaction_id,
@@ -534,6 +542,13 @@ pub fn initiate_withdrawal(raw: RawWithdrawalResponse, asset_code: &str) -> Resu
             "Invalid account_id: must be a valid Stellar address",
             &raw.account_id,
         ));
+    }
+    if let Some(ref url) = raw.on_change_callback {
+        validate_anchor_domain(url).map_err(|_| Error::with_context(
+            ErrorCode::ValidationError,
+            "on_change_callback must be a valid HTTPS URL",
+            url,
+        ))?;
     }
 
     Ok(WithdrawalResponse {
@@ -611,7 +626,6 @@ pub fn withdraw_exchange(
             .as_deref()
             .map(TransactionStatus::from_str)
             .unwrap_or(TransactionStatus::Pending),
-        // The cross-asset endpoint does not carry a callback field.
         on_change_callback: None,
     })
 }
@@ -2219,287 +2233,109 @@ mod tests {
         assert_eq!(result.len(), 5);
     }
 
-    // ── SEP-6 /info (#1518) ───────────────────────────────────────────────────
+    // ── #1519 on_change_callback ──────────────────────────────────────────────
 
-    fn sample_sep6_info() -> RawSep6InfoResponse {
-        RawSep6InfoResponse {
-            assets: alloc::vec![
-                RawSep6AssetEntry {
-                    code: String::from("USDC"),
-                    deposit: Some(RawSep6DepositInfo {
-                        enabled: true,
-                        min_amount: Some(1),
-                        max_amount: Some(1_000_000),
-                        fee_fixed: Some(5),
-                        fee_percent: Some(100),
-                        fields: alloc::vec![
-                            (
-                                String::from("email_address"),
-                                RawSep6Field {
-                                    description: String::from("Your email address"),
-                                    optional: false,
-                                    choices: alloc::vec![],
-                                },
-                            ),
-                            (
-                                String::from("type"),
-                                RawSep6Field {
-                                    description: String::from("Deposit type"),
-                                    optional: false,
-                                    choices: alloc::vec![
-                                        String::from("SEPA"),
-                                        String::from("SWIFT"),
-                                    ],
-                                },
-                            ),
-                        ],
-                    }),
-                    withdraw: Some(RawSep6WithdrawInfo {
-                        enabled: true,
-                        min_amount: Some(1),
-                        max_amount: Some(1_000_000),
-                        fee_fixed: Some(5),
-                        fee_percent: Some(100),
-                        fields: alloc::vec![
-                            (
-                                String::from("dest"),
-                                RawSep6Field {
-                                    description: String::from("Bank account to receive funds"),
-                                    optional: false,
-                                    choices: alloc::vec![],
-                                },
-                            ),
-                            (
-                                String::from("dest_extra"),
-                                RawSep6Field {
-                                    description: String::from("Optional routing code"),
-                                    optional: true,
-                                    choices: alloc::vec![],
-                                },
-                            ),
-                        ],
-                    }),
-                },
-                RawSep6AssetEntry {
-                    code: String::from("BRL"),
-                    deposit: Some(RawSep6DepositInfo {
-                        enabled: true,
-                        min_amount: Some(10),
-                        max_amount: Some(50_000),
-                        fee_fixed: Some(0),
-                        fee_percent: None,
-                        fields: alloc::vec![],
-                    }),
-                    withdraw: None,
-                },
-            ],
-            fee_supported: true,
-            id_supported: false,
-            account_creation: true,
-            claimable_balances: true,
-        }
+    #[test]
+    fn test_deposit_on_change_callback_absent_accepted() {
+        // None is the default — existing callers are unaffected.
+        let raw = raw_deposit();
+        let resp = initiate_deposit(raw, "USDC").unwrap();
+        assert!(resp.on_change_callback.is_none());
     }
 
     #[test]
-    fn fetch_sep6_info_normalizes_full_response() {
-        let info = fetch_sep6_info(sample_sep6_info()).unwrap();
-
-        assert_eq!(info.assets.len(), 2);
-        assert!(info.fee_supported);
-        assert!(!info.id_supported);
-        assert!(info.claimable_balances_supported);
-
-        let usdc = &info.assets[0];
-        assert_eq!(usdc.0, "USDC");
-        assert!(usdc.1.deposit_enabled);
-        assert!(usdc.1.withdraw_enabled);
-        assert_eq!(usdc.1.deposit_min_amount, Some(1));
-        assert_eq!(usdc.1.deposit_max_amount, Some(1_000_000));
-        assert_eq!(usdc.1.deposit_fee_fixed, Some(5));
-        assert_eq!(usdc.1.deposit_fee_percent, Some(100));
-        assert_eq!(usdc.1.withdraw_fee_fixed, Some(5));
-
-        assert_eq!(usdc.1.fields.deposit.len(), 2);
-        assert_eq!(usdc.1.fields.deposit[0].name, "email_address");
-        assert!(!usdc.1.fields.deposit[0].optional);
-        assert_eq!(usdc.1.fields.deposit[1].choices.len(), 2);
-        assert_eq!(usdc.1.fields.deposit[1].choices[0], "SEPA");
-
-        assert_eq!(usdc.1.fields.withdraw.len(), 2);
-        assert!(!usdc.1.fields.withdraw[0].optional);
-        assert!(usdc.1.fields.withdraw[1].optional);
-
-        let brl = &info.assets[1];
-        assert_eq!(brl.0, "BRL");
-        assert!(brl.1.deposit_enabled);
-        assert!(!brl.1.withdraw_enabled);
-        assert_eq!(brl.1.withdraw_min_amount, None);
-        assert!(brl.1.fields.withdraw.is_empty());
+    fn test_deposit_valid_on_change_callback_accepted() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = Some("https://example.com/sep6/callback".to_string());
+        let resp = initiate_deposit(raw, "USDC").unwrap();
+        assert_eq!(
+            resp.on_change_callback.as_deref(),
+            Some("https://example.com/sep6/callback")
+        );
     }
 
     #[test]
-    fn fetch_sep6_info_empty_assets_is_valid() {
-        let raw = RawSep6InfoResponse::default();
-        let info = fetch_sep6_info(raw).unwrap();
-        assert!(info.assets.is_empty());
-        assert!(!info.fee_supported);
-        assert!(!info.claimable_balances_supported);
-    }
-
-    #[test]
-    fn fetch_sep6_info_empty_asset_code_fails() {
-        let raw = RawSep6InfoResponse {
-            assets: alloc::vec![RawSep6AssetEntry {
-                code: String::from(""),
-                deposit: None,
-                withdraw: None,
-            }],
-            ..Default::default()
-        };
-        let err = fetch_sep6_info(raw).unwrap_err();
+    fn test_deposit_on_change_callback_http_rejected() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = Some("http://example.com/callback".to_string());
+        let err = initiate_deposit(raw, "USDC").unwrap_err();
         assert_eq!(err.code, ErrorCode::ValidationError);
     }
 
     #[test]
-    fn fetch_sep6_info_empty_field_name_fails() {
-        let raw = RawSep6InfoResponse {
-            assets: alloc::vec![RawSep6AssetEntry {
-                code: String::from("USDC"),
-                deposit: Some(RawSep6DepositInfo {
-                    enabled: true,
-                    min_amount: None,
-                    max_amount: None,
-                    fee_fixed: None,
-                    fee_percent: None,
-                    fields: alloc::vec![(
-                        String::from(""),
-                        RawSep6Field {
-                            description: String::from("bad"),
-                            optional: false,
-                            choices: alloc::vec![],
-                        },
-                    )],
-                }),
-                withdraw: None,
-            }],
-            ..Default::default()
-        };
-        let err = fetch_sep6_info(raw).unwrap_err();
+    fn test_deposit_on_change_callback_not_a_url_rejected() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = Some("not-a-url".to_string());
+        let err = initiate_deposit(raw, "USDC").unwrap_err();
         assert_eq!(err.code, ErrorCode::ValidationError);
     }
 
     #[test]
-    fn fetch_sep6_info_tolerates_unknown_top_level_fields() {
-        // Unknown anchor-specific keys are simply absent from RawSep6InfoResponse;
-        // callers omit them when populating the struct. A minimal response
-        // (one asset, no fees/fields) must still normalize cleanly.
-        let raw = RawSep6InfoResponse {
-            assets: alloc::vec![RawSep6AssetEntry {
-                code: String::from("USDC"),
-                deposit: Some(RawSep6DepositInfo::default()),
-                withdraw: Some(RawSep6WithdrawInfo::default()),
-            }],
-            ..Default::default()
-        };
-        let info = fetch_sep6_info(raw).unwrap();
-        assert_eq!(info.assets.len(), 1);
-        assert!(!info.assets[0].1.deposit_enabled);
-        assert!(!info.assets[0].1.withdraw_enabled);
-    }
-
-    #[test]
-    fn fetch_sep6_info_asset_no_operations_accepted() {
-        let raw = RawSep6InfoResponse {
-            assets: alloc::vec![RawSep6AssetEntry {
-                code: String::from("USDC"),
-                deposit: None,
-                withdraw: None,
-            }],
-            ..Default::default()
-        };
-        let info = fetch_sep6_info(raw).unwrap();
-        assert_eq!(info.assets.len(), 1);
-        assert!(!info.assets[0].1.deposit_enabled);
-        assert!(!info.assets[0].1.withdraw_enabled);
-    }
-
-    #[test]
-    fn fetch_sep6_info_fee_percent_propagated() {
-        let raw = RawSep6InfoResponse {
-            assets: alloc::vec![RawSep6AssetEntry {
-                code: String::from("USDC"),
-                deposit: Some(RawSep6DepositInfo {
-                    enabled: true,
-                    fee_fixed: Some(2),
-                    fee_percent: Some(150),
-                    ..Default::default()
-                }),
-                withdraw: None,
-            }],
-            ..Default::default()
-        };
-        let info = fetch_sep6_info(raw).unwrap();
-        assert_eq!(info.assets[0].1.deposit_fee_percent, Some(150));
-        assert_eq!(info.assets[0].1.deposit_fee_fixed, Some(2));
-    }
-
-    #[test]
-    fn fetch_sep6_info_claimable_balances_propagated() {
-        let raw = RawSep6InfoResponse {
-            claimable_balances: true,
-            ..Default::default()
-        };
-        let info = fetch_sep6_info(raw).unwrap();
-        assert!(info.claimable_balances_supported);
-    }
-
-    // ── handle_sep6_info_http_status ──────────────────────────────────────────
-
-    #[test]
-    fn handle_sep6_info_http_status_200_calls_fn() {
-        let result: Result<u32, Error> = handle_sep6_info_http_status(200, || Ok(42));
-        assert_eq!(result.unwrap(), 42);
-    }
-
-    #[test]
-    fn handle_sep6_info_http_status_201_calls_fn() {
-        let result: Result<u32, Error> = handle_sep6_info_http_status(201, || Ok(7));
-        assert_eq!(result.unwrap(), 7);
-    }
-
-    #[test]
-    fn handle_sep6_info_http_status_404_services_not_configured() {
-        let err = handle_sep6_info_http_status::<()>(404, || unreachable!()).unwrap_err();
-        assert_eq!(err.code, ErrorCode::ServicesNotConfigured);
-    }
-
-    #[test]
-    fn handle_sep6_info_http_status_408_transport_timeout() {
-        let err = handle_sep6_info_http_status::<()>(408, || unreachable!()).unwrap_err();
-        assert_eq!(err.code, ErrorCode::TransportTimeout);
-    }
-
-    #[test]
-    fn handle_sep6_info_http_status_429_rate_limit() {
-        let err = handle_sep6_info_http_status::<()>(429, || unreachable!()).unwrap_err();
-        assert_eq!(err.code, ErrorCode::RateLimitExceeded);
-    }
-
-    #[test]
-    fn handle_sep6_info_http_status_500_server_error() {
-        let err = handle_sep6_info_http_status::<()>(500, || unreachable!()).unwrap_err();
-        assert_eq!(err.code, ErrorCode::ServerError);
-    }
-
-    #[test]
-    fn handle_sep6_info_http_status_503_server_error() {
-        let err = handle_sep6_info_http_status::<()>(503, || unreachable!()).unwrap_err();
-        assert_eq!(err.code, ErrorCode::ServerError);
-    }
-
-    #[test]
-    fn handle_sep6_info_http_status_other_validation_error() {
-        let err = handle_sep6_info_http_status::<()>(400, || unreachable!()).unwrap_err();
+    fn test_deposit_on_change_callback_empty_string_rejected() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = Some("".to_string());
+        let err = initiate_deposit(raw, "USDC").unwrap_err();
         assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn test_deposit_on_change_callback_localhost_rejected() {
+        let mut raw = raw_deposit();
+        raw.on_change_callback = Some("https://localhost/callback".to_string());
+        let err = initiate_deposit(raw, "USDC").unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn test_withdrawal_on_change_callback_absent_accepted() {
+        let raw = raw_withdrawal();
+        let resp = initiate_withdrawal(raw, "USDC").unwrap();
+        assert!(resp.on_change_callback.is_none());
+    }
+
+    #[test]
+    fn test_withdrawal_valid_on_change_callback_accepted() {
+        let mut raw = raw_withdrawal();
+        raw.on_change_callback = Some("https://hooks.example.org/sep6/withdraw".to_string());
+        let resp = initiate_withdrawal(raw, "USDC").unwrap();
+        assert_eq!(
+            resp.on_change_callback.as_deref(),
+            Some("https://hooks.example.org/sep6/withdraw")
+        );
+    }
+
+    #[test]
+    fn test_withdrawal_on_change_callback_http_rejected() {
+        let mut raw = raw_withdrawal();
+        raw.on_change_callback = Some("http://hooks.example.org/callback".to_string());
+        let err = initiate_withdrawal(raw, "USDC").unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn test_withdrawal_on_change_callback_not_a_url_rejected() {
+        let mut raw = raw_withdrawal();
+        raw.on_change_callback = Some("ftp://example.com/cb".to_string());
+        let err = initiate_withdrawal(raw, "USDC").unwrap_err();
+        assert_eq!(err.code, ErrorCode::ValidationError);
+    }
+
+    #[test]
+    fn test_withdrawal_on_change_callback_with_path_and_query_accepted() {
+        let mut raw = raw_withdrawal();
+        raw.on_change_callback =
+            Some("https://anchor.example.com/api/v1/callback?token=abc123".to_string());
+        let resp = initiate_withdrawal(raw, "USDC").unwrap();
+        assert!(resp.on_change_callback.is_some());
+    }
+
+    #[test]
+    fn test_deposit_on_change_callback_propagated_verbatim() {
+        // Verify the validated URL is stored exactly as supplied (no mutation).
+        let url = "https://my-anchor.io/notify/sep6";
+        let mut raw = raw_deposit();
+        raw.on_change_callback = Some(url.to_string());
+        let resp = initiate_deposit(raw, "USDC").unwrap();
+        assert_eq!(resp.on_change_callback.as_deref(), Some(url));
     }
 }

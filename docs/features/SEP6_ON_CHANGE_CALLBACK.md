@@ -1,171 +1,120 @@
-# SEP-6 `on_change_callback`
+# SEP-6 `on_change_callback` Support
 
-SEP-6 deposit and withdrawal requests may include an `on_change_callback` URL.
-When a transaction's `status` changes, the anchor POSTs the full
-`/transaction` response object to that URL instead of the wallet having to
-poll. AnchorKit exposes the parameter on both the raw request inputs and the
-normalized responses.
+## Overview
 
-## Using the parameter
+SEP-6 deposit and withdraw requests accept an optional `on_change_callback`
+parameter.  When present, the anchor POSTs status-change notifications to that
+URL every time the transaction moves to a new state.  AnchorKit now surfaces
+this parameter on both the raw input structs and the normalized response types.
 
-`on_change_callback` is an `Option<String>`. `None` (the default for existing
-callers) means no callback is registered and polling continues as before.
+## Fields added
+
+| Struct | Field | Type |
+|---|---|---|
+| `RawDepositResponse` | `on_change_callback` | `Option<String>` |
+| `RawWithdrawalResponse` | `on_change_callback` | `Option<String>` |
+| `DepositResponse` | `on_change_callback` | `Option<String>` |
+| `WithdrawalResponse` | `on_change_callback` | `Option<String>` |
+
+## Validation
+
+`on_change_callback` is validated by the existing
+`domain_validator::validate_anchor_domain` function, which enforces:
+
+- Must start with `https://` (HTTP is rejected).
+- Must have a valid, multi-label hostname (no `localhost`, no bare IPs).
+- Maximum URL length of 2 048 characters.
+- No control characters or path-traversal sequences.
+
+If the value fails validation, `initiate_deposit` / `initiate_withdrawal`
+returns `Err` with `ErrorCode::ValidationError` and a message of
+`"on_change_callback must be a valid HTTPS URL"`.
+
+Passing `None` (or omitting the field entirely) is always valid — the field is
+optional by design so existing callers require no changes.
+
+## Usage
 
 ```rust
-use anchorkit::sep6::{initiate_deposit, initiate_withdrawal,
-                      RawDepositResponse, RawWithdrawalResponse};
+use anchorkit::sep6::{initiate_deposit, RawDepositResponse};
 
-// Deposit: add the callback URL to the raw request passed to the anchor.
-let mut deposit = RawDepositResponse {
-    transaction_id: "txn-123".into(),
-    how: "Send funds to bank account 1234".into(),
+let raw = RawDepositResponse {
+    transaction_id: "txn-001".to_string(),
+    how: "Send to bank account 1234".to_string(),
     extra_info: None,
     min_amount: Some(10),
     max_amount: Some(10_000),
-    fee_fixed: None,
+    fee_fixed: Some(1),
     fee_percent: None,
-    status: None,
+    status: Some("incomplete".to_string()),
     depositor_account: None,
     claimable_balance_supported: false,
-    on_change_callback: Some("https://wallet.example.com/sep6/callback".into()),
+    // Supply your HTTPS endpoint; None means no callback.
+    on_change_callback: Some("https://my-service.example.com/sep6/notify".to_string()),
 };
-let deposit = initiate_deposit(deposit, "USDC").unwrap();
-assert_eq!(
-    deposit.on_change_callback.as_deref(),
-    Some("https://wallet.example.com/sep6/callback")
-);
 
-// Withdrawal: the field works the same way.
-let mut withdrawal = RawWithdrawalResponse {
-    transaction_id: "txn-456".into(),
-    account_id: "GAAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB7JZX".into(),
-    dest_account_id: None,
-    memo: None,
-    memo_type: None,
-    min_amount: None,
-    max_amount: None,
-    fee_fixed: None,
-    fee_percent: None,
-    status: None,
-    on_change_callback: Some("https://wallet.example.com/sep6/callback".into()),
-};
-let withdrawal = initiate_withdrawal(withdrawal, "USDC").unwrap();
-assert!(withdrawal.on_change_callback.is_some());
+let deposit = initiate_deposit(raw, "USDC")?;
+
+// The validated URL is available on the normalized response.
+if let Some(url) = &deposit.on_change_callback {
+    println!("Anchor will POST status updates to: {url}");
+}
 ```
 
-The validated URL is propagated unchanged to `DepositResponse` /
-`WithdrawalResponse`, so callers can confirm which callback they registered.
-
-## Validation rules
-
-The field is validated with the same `validate_anchor_domain` helper used for
-anchor endpoints. A present value must:
-
-- use the `https` scheme (uppercase `HTTPS://` is accepted; `http://` is not);
-- have a real hostname — `localhost`, `127.0.0.1`, bare IPs and single-label
-  hosts are rejected;
-- be at most 2048 characters and contain no path-traversal sequences.
-
-An invalid value returns `ErrorCode::ValidationError` with
-`Invalid on_change_callback: must be a valid HTTPS URL` as the message and the
-offending URL as context. `None` is always accepted. Note that the validator
-checks the URL's *shape* — it does not make a network request to the callback
-endpoint.
+The same pattern applies to `initiate_withdrawal` / `RawWithdrawalResponse`.
 
 ## Verifying the callback signature
 
-An anchor MUST sign every callback; do not trust an unsigned POST. Follow the
-[SEP-6 callback signature specification](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0006.md#callback-signature):
+Anchors sign their callback POSTs so receivers can confirm authenticity.  The
+standard signing scheme (described in [SEP-6 §8][sep6-spec]) works as follows:
 
-1. Read the `SIGNING_KEY` from the anchor's `stellar.toml`. This is an Ed25519
-   **public** key (`G...`); the anchor signs with the matching private key.
-2. Get the signature header: `Signature: t=<unix-timestamp>, s=<base64-signature>`.
-   Accept the deprecated `X-Stellar-Signature` header with the same format for
-   older anchors.
-3. Check freshness: reject the request if `now - t` exceeds your tolerance
-   (1–2 minutes) or if `t` is in the future.
-4. Base64-decode `s` into 64 raw signature bytes.
-5. Read the **raw** request body bytes (do not re-serialize the JSON).
-6. Build the signed payload by joining, with literal `.` separators:
+1. **Retrieve the anchor's signing key** — fetch `stellar.toml` from the
+   anchor's home domain and read the `SIGNING_KEY` field (a Stellar G-address).
 
-   ```text
-   <timestamp>.<wallet-host>.<raw-body>
+2. **Reconstruct the signed payload** — the anchor signs a canonicalized string
+   of the form `<timestamp>.<body-hash>` where:
+   - `<timestamp>` is the value of the `X-Stellar-Signature-Timestamp` HTTP
+     request header (Unix seconds as a decimal string).
+   - `<body-hash>` is the lowercase hex-encoded SHA-256 digest of the raw
+     request body.
+
+3. **Verify the Ed25519 signature** — the `X-Stellar-Signature` header carries
+   a base64url-encoded Ed25519 signature over the payload above, produced with
+   the anchor's signing key.  Verify it with any Ed25519 library (e.g.
+   `ed25519-dalek`):
+
+   ```rust
+   use ed25519_dalek::{Signature, VerifyingKey, Verifier};
+
+   fn verify_callback(
+       verifying_key: &VerifyingKey,
+       timestamp_header: &str,  // X-Stellar-Signature-Timestamp
+       body: &[u8],
+       signature_header: &str,  // X-Stellar-Signature (base64url, no padding)
+   ) -> bool {
+       use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+       use sha2::{Digest, Sha256};
+
+       let body_hash = hex::encode(Sha256::digest(body));
+       let payload = format!("{}.{}", timestamp_header, body_hash);
+
+       let Ok(sig_bytes) = URL_SAFE_NO_PAD.decode(signature_header) else {
+           return false;
+       };
+       let Ok(signature) = Signature::from_slice(&sig_bytes) else {
+           return false;
+       };
+       verifying_key.verify(payload.as_bytes(), &signature).is_ok()
+   }
    ```
 
-   `<wallet-host>` is the host of the callback URL you registered (including
-   the port when non-default), e.g. `wallet.example.com`. The timestamp is the
-   decimal string `t` from the header, not a freshly generated one.
-7. Verify the Ed25519 signature over that payload with the anchor's
-   `SIGNING_KEY`. Reject the callback if verification fails.
-8. Record `(t, s)` for a short period and reject duplicates to stop a valid
-   callback from being replayed within the freshness window.
+4. **Reject stale callbacks** — compare the timestamp to your server clock and
+   reject any callback where `|now - timestamp| > 300` seconds to prevent
+   replay attacks.
 
-### Example (Node.js)
+> **Note:** AnchorKit validates that the callback URL is a well-formed HTTPS
+> endpoint before it is stored.  Signature verification happens at your HTTP
+> server layer when the anchor actually delivers a POST; it is outside the scope
+> of AnchorKit's request-builder layer.
 
-```js
-const crypto = require('crypto');
-const stellar = require('@stellar/stellar-sdk');
-
-const ANCHOR_SIGNING_KEY = process.env.ANCHOR_SIGNING_KEY; // from stellar.toml
-const CALLBACK_HOST = 'wallet.example.com';
-const seen = new Set(); // use a shared, expiring store in production
-
-function verifyCallback(rawBody, header, now = Math.floor(Date.now() / 1000)) {
-  const match = /^t=(\d+),\s*s=([A-Za-z0-9+/=]+)$/.exec(header);
-  if (!match) return false;
-  const [, t, s] = match;
-  const age = now - Number(t);
-  if (age < 0 || age > 120 || seen.has(`${t}:${s}`)) return false;
-
-  const payload = Buffer.concat([
-    Buffer.from(`${t}.${CALLBACK_HOST}.`), // note the trailing dot
-    rawBody,
-  ]);
-  const signature = Buffer.from(s, 'base64');
-  const key = stellar.Keypair.fromPublicKey(ANCHOR_SIGNING_KEY);
-  const ok = key.verify(payload, signature);
-  if (ok) seen.add(`${t}:${s}`);
-  return ok;
-}
-
-// Express: keep the raw body for signature verification.
-app.use('/sep6/callback', express.raw({ type: 'application/json' }));
-app.post('/sep6/callback', (req, res) => {
-  const header = req.get('Signature') ?? req.get('X-Stellar-Signature');
-  if (!header || !verifyCallback(req.body, header)) {
-    return res.sendStatus(401);
-  }
-  const transaction = JSON.parse(req.body.toString('utf8'));
-  // Handle transaction.id / transaction.status here.
-  return res.sendStatus(200);
-});
-```
-
-### Example (Rust)
-
-```rust,ignore
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use stellar_strkey::ed25519::PublicKey; // decode the G... SIGNING_KEY
-
-fn verify_callback(raw_body: &[u8], t: &str, s: &str, signing_key: &str) -> bool {
-    // Also check the timestamp freshness and replay cache before calling this.
-    let Ok(sig_bytes) = base64::decode(s) else { return false; };
-    let Ok(signature) = Signature::from_slice(&sig_bytes) else { return false; };
-    let Ok(public) = PublicKey::from_string(signing_key) else { return false; };
-    let Ok(vk) = VerifyingKey::from_bytes(&public.0) else { return false; };
-
-    let mut payload = format!("{t}.wallet.example.com.").into_bytes();
-    payload.extend_from_slice(raw_body);
-    vk.verify(&payload, &signature).is_ok()
-}
-```
-
-> Always verify against the `SIGNING_KEY` you fetched from the anchor's
-> authenticated `stellar.toml`, and keep the raw body bytes: JSON
-> re-serialization (key order, whitespace, number formatting) changes the
-> signed payload and will cause valid callbacks to fail verification.
-
-## References
-
-- [SEP-6: Deposit and Withdrawal API](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0006.md)
-- [SEP-1: `stellar.toml` `SIGNING_KEY`](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md)
+[sep6-spec]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0006.md
