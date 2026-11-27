@@ -2,6 +2,8 @@
 
 This document explains how the core AnchorKit components interact, including the typical data flow for a deposit operation.
 
+> New to the terminology? See the [Glossary](./GLOSSARY.md). Design rationale lives in [Architecture Decision Records](./adr/README.md).
+
 ## Component Interaction
 
 AnchorKit is designed as a layered integration stack. A typical deposit request passes through the following components:
