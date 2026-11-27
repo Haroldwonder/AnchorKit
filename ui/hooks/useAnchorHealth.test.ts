@@ -3,8 +3,10 @@ import { useAnchorHealth, isValidAttestor, GetHealthScoreFn } from './useAnchorH
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
-const ATTESTOR = 'G' + 'A'.repeat(55);
-const CONTRACT = 'C' + 'A'.repeat(55);
+// Checksum-valid StrKey fixtures.
+const ATTESTOR = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+const CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+const OTHER_ATTESTOR = 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H';
 const INTERVAL = 5_000;
 
 function makeGetHealthScore(score = 85): jest.MockedFunction<GetHealthScoreFn> {
@@ -48,6 +50,25 @@ describe('isValidAttestor', () => {
 
   test('rejects address with invalid base32 characters', () => {
     expect(isValidAttestor('G' + '0'.repeat(55))).toBe(false); // '0' invalid in base32
+  });
+
+  test('rejects a G-address with a valid format but invalid checksum', () => {
+    // Matches /^[GC][A-Z2-7]{55}$/ but fails the StrKey CRC16 checksum.
+    expect(isValidAttestor('G' + 'A'.repeat(55))).toBe(false);
+  });
+
+  test('rejects a G-address with a single-character typo', () => {
+    const typo = ATTESTOR.slice(0, -1) + 'G';
+    expect(isValidAttestor(typo)).toBe(false);
+  });
+
+  test('rejects a C-address with a valid format but invalid checksum', () => {
+    expect(isValidAttestor('C' + 'A'.repeat(55))).toBe(false);
+  });
+
+  test('rejects a G-prefixed string carrying a contract version byte', () => {
+    // Swapping the prefix changes the version byte, so the checksum no longer matches.
+    expect(isValidAttestor('G' + CONTRACT.slice(1))).toBe(false);
   });
 });
 
@@ -355,7 +376,7 @@ describe('useAnchorHealth — error handling', () => {
     await act(async () => { await Promise.resolve(); });
     expect(result.current.error).toBe('Bad attestor');
 
-    const OTHER = 'G' + 'B'.repeat(55);
+    const OTHER = OTHER_ATTESTOR;
     rerender({ a: OTHER });
     expect(result.current.error).toBeNull();
     expect(result.current.score).toBeNull();
@@ -454,7 +475,7 @@ describe('useAnchorHealth — attestor changes', () => {
     await act(async () => { await Promise.resolve(); });
     expect(result.current.score).toBe(70);
 
-    const OTHER = 'G' + 'B'.repeat(55);
+    const OTHER = OTHER_ATTESTOR;
     rerender({ a: OTHER });
 
     expect(result.current.score).toBeNull();
@@ -463,7 +484,7 @@ describe('useAnchorHealth — attestor changes', () => {
 
   test('new attestor is used in subsequent polls', async () => {
     const mockFn = makeGetHealthScore(80);
-    const OTHER = 'G' + 'B'.repeat(55);
+    const OTHER = OTHER_ATTESTOR;
 
     const { rerender } = renderHook(
       ({ a }: { a: string }) => useAnchorHealth(a, INTERVAL, mockFn),

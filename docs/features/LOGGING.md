@@ -12,7 +12,7 @@ There is no host-side logging framework inside the contract. The contract is `#!
 |---|---|---|
 | Tracing spans | `TracingSpan` in temporary storage | `get_tracing_span(request_id_bytes)` |
 | Audit log | `AuditLog` in persistent storage | `get_audit_log`, `get_audit_log_range`, `get_audit_log_offset` |
-| Events | `env.events().publish(...)` | Off-chain indexer / `soroban events` |
+| Events | `env.events().publish(...)` | Off-chain indexer / `stellar events` |
 
 ### Request correlation with `RequestId`
 
@@ -147,13 +147,13 @@ There are no `("log", "entry")`, `("http", "request")`, or `("http", "response")
 
 ```bash
 # Stream audit events from a local network
-soroban events --start-ledger 1000 --filter "audit"
+stellar events --start-ledger 1000 --filter "audit"
 
 # All attestation events
-soroban events --start-ledger 1000 --filter "attest"
+stellar events --start-ledger 1000 --filter "attest"
 
 # Route events to jq for indexing
-soroban events --start-ledger 1000 --filter "audit" | \
+stellar events --start-ledger 1000 --filter "audit" | \
   jq -c 'select(.type == "contract")'
 ```
 
