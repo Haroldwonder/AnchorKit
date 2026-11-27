@@ -9,7 +9,7 @@ This guide walks through setting up AnchorKit on Windows 10 or Windows 11, inclu
 1. [Prerequisites](#prerequisites)
 2. [Install Rust](#install-rust)
 3. [Add the WASM Target](#add-the-wasm-target)
-4. [Install Soroban CLI](#install-soroban-cli)
+4. [Install Stellar CLI](#install-stellar-cli)
 5. [Install Stellar CLI (alternative)](#install-stellar-cli-alternative)
 6. [Clone and Build AnchorKit](#clone-and-build-anchorkit)
 7. [Run the Tests](#run-the-tests)
@@ -70,18 +70,18 @@ rustup target list --installed
 
 ---
 
-## Install Soroban CLI
+## Install Stellar CLI
 
-The Soroban CLI lets you build, deploy, and invoke contracts locally and on testnet.
+The Stellar CLI (the successor to the deprecated Soroban CLI) lets you build, deploy, and invoke contracts locally and on testnet.
 
 ```powershell
-cargo install --locked soroban-cli --features opt
+cargo install --locked stellar-cli --features opt
 ```
 
 After installation, confirm it is on your PATH:
 
 ```powershell
-soroban --version
+stellar --version
 ```
 
 If the command is not found, add the Cargo bin directory to your `PATH`:
@@ -92,21 +92,7 @@ $env:PATH += ";$env:USERPROFILE\.cargo\bin"
 notepad $PROFILE
 ```
 
----
-
-## Install Stellar CLI (alternative)
-
-The Stellar CLI is the successor to the Soroban CLI and supports the same contract commands:
-
-```powershell
-cargo install --locked stellar-cli --features opt
-```
-
-```powershell
-stellar --version
-```
-
-Both CLIs work with AnchorKit. This guide uses `soroban` in examples; substitute `stellar` if preferred.
+> The `soroban` CLI has been renamed to `stellar`; new installs no longer ship a `soroban` binary. All examples use `stellar`.
 
 ---
 

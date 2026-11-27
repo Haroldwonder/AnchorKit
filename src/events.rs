@@ -10,6 +10,14 @@ pub struct SessionCreatedEvent {
 
 #[contracttype]
 #[derive(Clone)]
+pub struct QuoteCancelledEvent {
+    pub quote_id: u64,
+    pub anchor: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct QuoteSubmitEvent {
     pub quote_id: u64,
     pub anchor: Address,

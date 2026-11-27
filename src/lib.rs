@@ -9,6 +9,7 @@ mod events;
 mod rate_limiter;
 mod response_validator;
 mod retry;
+pub mod sep31;
 pub mod sep10_jwt;
 pub mod sdk_config;
 mod storage;
@@ -21,6 +22,12 @@ pub mod sep31;
 pub use errors::{AnchorKitError, ErrorCode};
 
 pub use errors::Error;
+pub use sep31::{
+    callback_signature_header, MockSep31Transport, RawSep31CreationResponse,
+    RawSep31InfoResponse, RawSep31Transaction, Sep31AssetInfo, Sep31Auth, Sep31Callback,
+    Sep31Client, Sep31CreatedTransaction, Sep31CustomerReference, Sep31Info, Sep31Request,
+    Sep31Response, Sep31Status, Sep31Transaction, Sep31TransactionRequest, Sep31Transport,
+};
 pub use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitState, RateLimitStatus};
 pub use response_validator::{
     validate_anchor_info_response, validate_deposit_response, validate_quote_response,
@@ -33,9 +40,24 @@ pub use domain_validator::validate_anchor_domain;
 pub use sep6::{
     fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
     deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
+    fetch_sep6_info, handle_sep6_info_http_status,
     RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
+    RawSep6InfoResponse, RawSep6AssetEntry, RawSep6DepositInfo, RawSep6WithdrawInfo, RawSep6Field,
+    Sep6InfoResponse, Sep6AssetInfo, Sep6Field, Sep6OperationFields,
+};
+pub use sep38::{
+    get_sep38_info, get_sep38_prices, get_sep38_price, post_sep38_quote,
+    sep38_quote_to_contract_quote, handle_sep38_http_status,
+    RawSep38InfoResponse, RawSep38Asset, RawDeliveryMethod,
+    RawSep38PricesResponse, RawSep38Price,
+    RawSep38PriceResponse, RawSep38Fee, RawFeeDetail,
+    RawSep38QuoteResponse,
+    Sep38InfoResponse, Sep38Asset, Sep38DeliveryMethod,
+    Sep38PricesResponse, Sep38Price,
+    Sep38PriceResponse, Sep38Fee, Sep38FeeDetail,
+    Sep38QuoteResponse,
 };
 pub use sep31::{
     get_sep31_info, initiate_sep31_transaction, get_sep31_transaction,
@@ -50,7 +72,10 @@ pub use sep31::{
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::Session;
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
-pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
+pub use contract::{
+    get_admin, get_attestation_count, get_endpoint, set_endpoint, AnchorKitContract,
+    MAX_REVOKE_BATCH_SIZE,
+};
 pub use events::EndpointUpdated;
 pub use transaction_state_tracker::{
     StateTransition, TransactionState, TransactionStateRecord, TransactionStateTracker,
@@ -90,6 +115,8 @@ mod sep10_contract_tests;
 
 #[cfg(test)]
 mod routing_tests;
+#[cfg(test)]
+mod quote_lifecycle_tests;
 
 #[cfg(test)]
 mod routing_score_tests;
@@ -130,11 +157,18 @@ mod replay_window_tests;
 #[cfg(test)]
 mod attestor_cap_batch_tests;
 
+// Issue #1512 — batch revocation parity with the single-attestation path.
+#[cfg(test)]
+mod batch_revoke_tests;
+
 #[cfg(test)]
 mod anchor_health_score_tests;
 
 #[cfg(test)]
 mod issue_1355_1362_1364_tests;
+
+#[cfg(test)]
+mod close_session_tests;
 
 #[cfg(test)]
 mod compute_payload_hash_tests;

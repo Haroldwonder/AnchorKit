@@ -513,6 +513,199 @@ pub fn list_sessions_rpc(limit: u64) -> Result<Vec<SessionData>, String> {
     })
 }
 
+/// Health record decoded from the contract's `HealthStatus` storage entry.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HealthData {
+    pub anchor: String,
+    pub latency_ms: u64,
+    pub failure_count: u32,
+    pub availability_percent: u32,
+}
+
+/// Maximum number of ledger keys requested in one `getLedgerEntries` call.
+const LEDGER_ENTRY_BATCH: usize = 100;
+
+/// Expected network passphrase for a CLI network name.
+fn network_passphrase(network: &str) -> Option<&'static str> {
+    match network {
+        "testnet" => Some("Test SDF Network ; September 2015"),
+        "mainnet" => Some("Public Global Stellar Network ; September 2015"),
+        "futurenet" => Some("Test SDF Future Network ; October 2022"),
+        _ => None,
+    }
+}
+
+/// Resolve the RPC URL for a network: an explicit `SOROBAN_RPC_URL` /
+/// `ANCHORKIT_RPC_URL` wins, otherwise the public endpoint for the network.
+/// Mainnet has no public default, so it must be configured explicitly.
+pub fn get_rpc_url_for_network(network: &str) -> Result<String, String> {
+    if let Ok(url) = env::var(RPC_URL_VAR).or_else(|_| env::var(RPC_URL_ALT)) {
+        return Ok(url);
+    }
+    match network {
+        "testnet" => Ok("https://soroban-testnet.stellar.org".to_string()),
+        "futurenet" => Ok("https://rpc-futurenet.stellar.org".to_string()),
+        "mainnet" => Err(format!(
+            "No default RPC endpoint for mainnet; set {RPC_URL_VAR} or {RPC_URL_ALT}"
+        )),
+        other => Err(format!("Unknown network '{other}'")),
+    }
+}
+
+/// Validate that health queries are configured for `network`, returning
+/// `(contract_id, rpc_url)`.
+pub fn health_config(network: &str) -> Result<(String, String), String> {
+    let contract_id = get_contract_id()?;
+    let rpc_url = get_rpc_url_for_network(network)?;
+    Ok((contract_id, rpc_url))
+}
+
+fn health_from_value(value: ScVal) -> Result<HealthData, String> {
+    let entries = match value {
+        ScVal::Map(Some(entries)) => entries,
+        _ => return Err("Contract returned an invalid health record".to_string()),
+    };
+    let field = |name: &str| -> Result<&ScVal, String> {
+        entries
+            .iter()
+            .find(|entry| matches!(&entry.key, ScVal::Symbol(sym) if sym.to_utf8_string_lossy() == name))
+            .map(|entry| &entry.val)
+            .ok_or_else(|| format!("Contract returned a health record without `{name}`"))
+    };
+    let as_u32 = |name: &str| match field(name)? {
+        ScVal::U32(value) => Ok(*value),
+        _ => Err(format!("Contract returned an invalid health `{name}`")),
+    };
+    let latency_ms = match field("latency_ms")? {
+        ScVal::U64(value) => *value,
+        _ => return Err("Contract returned an invalid health `latency_ms`".to_string()),
+    };
+    let anchor = Address::from_sc_val(field("anchor")?)
+        .map_err(|e| format!("Contract returned an invalid health anchor: {e}"))?
+        .to_string();
+
+    Ok(HealthData {
+        anchor,
+        latency_ms,
+        failure_count: as_u32("failure_count")?,
+        availability_percent: as_u32("availability_percent")?,
+    })
+}
+
+fn health_key(contract_id: &str, anchor: &str) -> Result<LedgerKey, String> {
+    let anchor_val = Address::new(anchor)
+        .map_err(|e| format!("Invalid attestor address {anchor}: {e}"))?
+        .to_sc_val()
+        .map_err(|e| e.to_string())?;
+    let values = VecM::try_from(vec![scval_symbol("Health")?, anchor_val])
+        .map_err(|e| format!("Invalid storage key: {e}"))?;
+    contract_data_key(
+        contract_id,
+        ScVal::Vec(Some(values)),
+        ContractDataDurability::Persistent,
+    )
+}
+
+/// Read on-chain health status (the data behind `get_health_status`) for one
+/// attestor, or for every registered attestor when `attestor` is `None`.
+pub fn get_health_rpc(attestor: Option<&str>, network: &str) -> Result<Vec<HealthData>, String> {
+    if let Some(addr) = attestor {
+        if !is_valid_stellar_address(addr) {
+            return Err(format!("Invalid attestor address: {addr}"));
+        }
+    }
+    let (contract_id, rpc_url) = health_config(network)?;
+    let attestor = attestor.map(str::to_string);
+    let expected_passphrase = network_passphrase(network);
+    let network = network.to_string();
+
+    run_rpc(async move {
+        let rpc = Server::new(&rpc_url, Options::default()).map_err(|e| e.to_string())?;
+
+        // Make sure the RPC endpoint actually serves the requested network.
+        if let Some(expected) = expected_passphrase {
+            let info = rpc
+                .get_network()
+                .await
+                .map_err(|e| format!("Could not reach RPC endpoint {rpc_url}: {e}"))?;
+            if let Some(actual) = info.passphrase {
+                if actual != expected {
+                    return Err(format!(
+                        "RPC endpoint {rpc_url} serves '{actual}', not the {network} network"
+                    ));
+                }
+            }
+        }
+
+        let single = attestor.clone();
+        let anchors: Vec<String> = match attestor {
+            Some(addr) => vec![addr],
+            None => {
+                let list_key = contract_data_key(
+                    &contract_id,
+                    storage_key("ATTLST", None)?,
+                    ContractDataDurability::Persistent,
+                )?;
+                let entries = rpc
+                    .get_ledger_entries(vec![list_key])
+                    .await
+                    .map_err(|e| format!("Could not fetch the attestor list: {e}"))?
+                    .entries
+                    .unwrap_or_default();
+                match entries.first() {
+                    None => Vec::new(),
+                    Some(entry) => match contract_data_value(entry)? {
+                        ScVal::Vec(Some(values)) => values
+                            .iter()
+                            .map(|v| {
+                                Address::from_sc_val(v)
+                                    .map(|a| a.to_string())
+                                    .map_err(|e| format!("Contract returned an invalid attestor: {e}"))
+                            })
+                            .collect::<Result<_, _>>()?,
+                        ScVal::Vec(None) => Vec::new(),
+                        other => {
+                            return Err(format!(
+                                "Contract returned an invalid attestor list: {other:?}"
+                            ))
+                        }
+                    },
+                }
+            }
+        };
+
+        let mut records = Vec::with_capacity(anchors.len());
+        for chunk in anchors.chunks(LEDGER_ENTRY_BATCH) {
+            let keys = chunk
+                .iter()
+                .map(|anchor| health_key(&contract_id, anchor))
+                .collect::<Result<Vec<_>, _>>()?;
+            let entries = rpc
+                .get_ledger_entries(keys)
+                .await
+                .map_err(|e| format!("Could not fetch health status: {e}"))?
+                .entries
+                .unwrap_or_default();
+            let mut by_anchor = std::collections::HashMap::new();
+            for entry in &entries {
+                let health = health_from_value(contract_data_value(entry)?)?;
+                by_anchor.insert(health.anchor.clone(), health);
+            }
+            // Preserve the on-chain attestor order.
+            for anchor in chunk {
+                if let Some(health) = by_anchor.remove(anchor) {
+                    records.push(health);
+                }
+            }
+        }
+
+        if let (Some(addr), true) = (single, records.is_empty()) {
+            return Err(format!("No health status recorded for attestor {addr}"));
+        }
+        Ok(records)
+    })
+}
+
 /// Check if address is valid Stellar format.
 fn is_valid_stellar_address(addr: &str) -> bool {
     let Some(rest) = addr.strip_prefix('G') else {
