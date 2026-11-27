@@ -184,6 +184,7 @@ If you prefer the Stellar JavaScript SDK, use its contract invocation API instea
 - **[docs/guides/CONTRIBUTING.md](./docs/guides/CONTRIBUTING.md)** - Contribution guidelines
 - **[docs/guides/ERROR_IMPLEMENTATION_GUIDE.md](./docs/guides/ERROR_IMPLEMENTATION_GUIDE.md)** - Error handling implementation guide
 - **[docs/guides/RETRY_QUICK_REFERENCE.md](./docs/guides/RETRY_QUICK_REFERENCE.md)** - Retry quick reference
+- **[Artifact provenance and verification](./docs/guides/RELEASE_PROVENANCE.md)** - Verify release WASM, CLI, and npm package artifacts
 
 ### Full Index
 See **[docs/README.md](./docs/README.md)** for the complete documentation index.

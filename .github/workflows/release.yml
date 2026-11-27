@@ -1,0 +1,52 @@
+name: Release artifacts
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-attest:
+    name: Build and attest release artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build contract WASM
+        run: cargo build --release --target wasm32-unknown-unknown --lib --no-default-features --features wasm
+
+      - name: Build CLI
+        run: cargo build --release --bin anchorkit
+
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p dist
+          cp target/wasm32-unknown-unknown/release/anchorkit.wasm dist/anchorkit.wasm
+          cp target/release/anchorkit dist/anchorkit-linux-x86_64
+          cd dist
+          sha256sum anchorkit.wasm anchorkit-linux-x86_64 > SHA256SUMS
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/anchorkit.wasm
+            dist/anchorkit-linux-x86_64
+            dist/SHA256SUMS
+
+      - name: Upload release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/anchorkit.wasm dist/anchorkit-linux-x86_64 dist/SHA256SUMS --clobber
