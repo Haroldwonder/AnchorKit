@@ -95,6 +95,7 @@ export type {
   UseSep10AuthResult,
   GetHealthScoreFn,
   UseAnchorHealthResult,
+  UseAnchorHealthOptions,
   UseTransactionStatusOptions,
   UseTransactionStatusResult,
   FetchStatusFn,
