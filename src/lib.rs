@@ -33,9 +33,12 @@ pub use domain_validator::validate_anchor_domain;
 pub use sep6::{
     fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
     deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
+    fetch_sep6_info, handle_sep6_info_http_status,
     RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
+    RawSep6InfoResponse, RawSep6AssetEntry, RawSep6DepositInfo, RawSep6WithdrawInfo, RawSep6Field,
+    Sep6InfoResponse, Sep6AssetInfo, Sep6Field, Sep6OperationFields,
 };
 pub use sep38::{
     get_sep38_info, get_sep38_prices, get_sep38_price, post_sep38_quote,
