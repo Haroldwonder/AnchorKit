@@ -1,52 +1,110 @@
-name: Release artifacts
+name: Release provenance
 
 on:
   release:
     types: [published]
 
 permissions:
-  contents: read
+  contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build-and-attest:
     name: Build and attest release artifacts
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      attestations: write
-      id-token: write
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Build contract WASM
-        run: cargo build --release --target wasm32-unknown-unknown --lib --no-default-features --features wasm
+      - name: Build Soroban contract WASM
+        run: cargo build --release --target wasm32-unknown-unknown
 
-      - name: Build CLI
-        run: cargo build --release --bin anchorkit
-
-      - name: Prepare release artifacts
+      - name: Stage contract artifact
         run: |
           mkdir -p dist
-          cp target/wasm32-unknown-unknown/release/anchorkit.wasm dist/anchorkit.wasm
-          cp target/release/anchorkit dist/anchorkit-linux-x86_64
-          cd dist
-          sha256sum anchorkit.wasm anchorkit-linux-x86_64 > SHA256SUMS
+          cp "target/wasm32-unknown-unknown/release/anchorkit.wasm" dist/
 
-      - name: Attest release artifacts
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: |
-            dist/anchorkit.wasm
-            dist/anchorkit-linux-x86_64
-            dist/SHA256SUMS
+      - name: Build and stage CLI artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+
+          mapfile -t cli_binaries < <(
+            cargo metadata --no-deps --format-version 1 |
+              jq -r '.packages[].targets[] | select(.kind | index("bin")) | .name'
+          )
+
+          if [[ "${#cli_binaries[@]}" -gt 0 ]]; then
+            cargo build --release --bins
+            for binary in "${cli_binaries[@]}"; do
+              cp "target/release/${binary}" "dist/anchorkit-cli-${binary}-linux-amd64"
+            done
+          fi
+
+          # Preserve binaries supplied by a separate CLI packaging directory.
+          if [[ -d cli/dist ]]; then
+            cp cli/dist/* dist/
+          fi
 
       - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*.wasm
+
+      - name: Attest CLI build provenance
+        if: ${{ hashFiles('dist/anchorkit-cli*') != '' }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/anchorkit-cli*
+
+      - name: Upload artifacts to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" dist/anchorkit.wasm dist/anchorkit-linux-x86_64 dist/SHA256SUMS --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/* --repo "${{ github.repository }}" --clobber
+
+  publish-ui:
+    name: Publish UI package with provenance
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('ui/package.json') != '' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Publish UI package
+        working-directory: ui
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
