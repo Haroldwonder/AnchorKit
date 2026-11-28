@@ -119,7 +119,7 @@ mod tests {
 2. **Mock server for HTTP testing**:
 ```bash
 # Start the mock anchor server
-python3 mock-server.py
+python3 scripts/mock-server.py
 
 # Test against mock server
 export ANCHOR_URL=http://localhost:8080
@@ -209,7 +209,7 @@ const config = {
 
 ## Configuration Form
 
-An HTML form is provided in `sdk_config_form.html` for easy configuration generation. The form includes:
+An HTML form is provided in `tools/sdk_config_form.html` for easy configuration generation. The form includes:
 
 - Network selection (Testnet/Mainnet)
 - Anchor domain input with validation
@@ -219,7 +219,7 @@ An HTML form is provided in `sdk_config_form.html` for easy configuration genera
 
 ### Using the Form
 
-1. Open `sdk_config_form.html` in a web browser
+1. Open `tools/sdk_config_form.html` in a web browser
 2. Select your network (Testnet or Mainnet)
 3. Enter the anchor domain
 4. Set the timeout (default: 30 seconds)
@@ -334,8 +334,8 @@ Currently, mock testing uses Soroban SDK utilities:
 cargo test
 
 # Tests use env.mock_all_auths() for authentication mocking
-# Use mock-server.py for HTTP endpoint testing
-python3 mock-server.py &
+# Use scripts/mock-server.py for HTTP endpoint testing
+python3 scripts/mock-server.py &
 cargo test -- --test-threads=1
 ```
 

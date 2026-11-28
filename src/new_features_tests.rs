@@ -114,6 +114,52 @@ mod new_features_tests {
     }
 
     // -----------------------------------------------------------------------
+    // get_subject_attestation_count
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn subject_attestation_count_tracks_store_and_revoke() {
+        let env = make_env();
+        setup_ledger(&env);
+        let (client, _, attestor, signing_key) = setup_contract(&env);
+        let subject = Address::generate(&env);
+        let other_subject = Address::generate(&env);
+
+        assert_eq!(client.get_subject_attestation_count(&subject), 0);
+
+        let p1 = payload(&env, 0x21);
+        let id1 = client.submit_attestation(
+            &attestor,
+            &subject,
+            &1700000000u64,
+            &p1,
+            &sign_attestation(&env, &signing_key, &client.address, &attestor, &subject, 1700000000u64, &p1),
+        );
+        assert_eq!(client.get_subject_attestation_count(&subject), 1);
+        assert_eq!(client.get_subject_attestation_count(&other_subject), 0);
+
+        let p2 = payload(&env, 0x22);
+        let id2 = client.submit_attestation(
+            &attestor,
+            &subject,
+            &1700000000u64,
+            &p2,
+            &sign_attestation(&env, &signing_key, &client.address, &attestor, &subject, 1700000000u64, &p2),
+        );
+        assert_eq!(client.get_subject_attestation_count(&subject), 2);
+
+        client.revoke_attestation(&attestor, &id1);
+        assert_eq!(client.get_subject_attestation_count(&subject), 1);
+
+        // Repeated revocation must not decrement twice.
+        client.revoke_attestation(&attestor, &id1);
+        assert_eq!(client.get_subject_attestation_count(&subject), 1);
+
+        client.revoke_attestation(&attestor, &id2);
+        assert_eq!(client.get_subject_attestation_count(&subject), 0);
+    }
+
+    // -----------------------------------------------------------------------
     // revoke_attestation
     // -----------------------------------------------------------------------
 

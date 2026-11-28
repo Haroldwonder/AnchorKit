@@ -5,7 +5,7 @@ fn main() {
     // Always watch the build script itself and top-level schema/validator
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=config_schema.json");
-    println!("cargo:rerun-if-changed=validate_config_strict.py");
+    println!("cargo:rerun-if-changed=scripts/validate_config_strict.py");
     println!("cargo:rerun-if-changed=src/config.rs");
     println!("cargo:rerun-if-changed=src/validation.rs");
     println!("cargo:rerun-if-changed=Cargo.lock");
@@ -32,7 +32,7 @@ fn main() {
 }
 
 fn validate_configs_at_build() {
-    let validator = Path::new("validate_config_strict.py");
+    let validator = Path::new("scripts/validate_config_strict.py");
     let schema = Path::new("config_schema.json");
     let configs_dir = Path::new("configs");
 

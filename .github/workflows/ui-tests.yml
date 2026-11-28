@@ -6,8 +6,59 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        react-version: [18, 19]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Install React ${{ matrix.react-version }} for peer dependency testing
+        run: npm install --no-save react@^${{ matrix.react-version }}.0.0 react-dom@^${{ matrix.react-version }}.0.0 @types/react@^${{ matrix.react-version }}.x
+        working-directory: ui
+
+      - name: Run lint
+        run: npm run lint --silent
+        working-directory: ui
+
+      - name: Type-check
+        run: npm run type-check --silent
+        working-directory: ui
+
+      - name: Build
+        run: npm run build --silent
+        working-directory: ui
+
+      - name: Check bundle size budget
+        run: npm run size-limit
+        working-directory: ui
+
+      - name: Run tests
+        run: npm test -- --ci
+        working-directory: ui
+
+  e2e:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,18 +73,58 @@ jobs:
       - name: Install dependencies
         run: npm ci
         working-directory: ui
-      - name: Run lint
-        run: npm run lint --silent
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
         working-directory: ui
 
-      - name: Type-check
-        run: npm run type-check --silent
+      - name: Build Storybook
+        run: npm run build-storybook --silent
         working-directory: ui
 
-      - name: Build
-        run: npm run build --silent
+      - name: Run Playwright end-to-end tests
+        run: npx playwright test
         working-directory: ui
 
-      - name: Run tests
-        run: npm test -- --ci
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: ui/playwright-report
+          retention-days: 7
+
+  bindings-drift:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --features opt
+
+      - name: Install UI dependencies
+        run: npm ci
         working-directory: ui
+
+      - name: Regenerate contract bindings
+        run: ./scripts/generate-bindings.sh
+
+      - name: Fail if committed bindings are out of date
+        run: |
+          if ! git diff --quiet -- ui/src/contracts; then
+            echo "::error::Committed contract bindings are out of date. Run ./scripts/generate-bindings.sh and commit the result."
+            git diff -- ui/src/contracts
+            exit 1
+          fi

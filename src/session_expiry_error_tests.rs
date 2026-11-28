@@ -117,6 +117,39 @@ mod session_expiry_error_tests {
     }
 
     // -----------------------------------------------------------------------
+    // Configurable session timeout (#1427)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_configured_session_timeout_is_honoured() {
+        let env = make_env();
+        setup_ledger(&env, 1_000);
+        let client = setup_contract(&env);
+        assert_eq!(client.get_session_timeout_seconds(), 86_400);
+
+        client.set_session_timeout_seconds(&3_600);
+        assert_eq!(client.get_session_timeout_seconds(), 3_600);
+
+        let initiator = Address::generate(&env);
+        let session_id = client.create_session(&initiator);
+        let session = client.get_session(&session_id);
+        assert_eq!(session.expires_at, 1_000 + 3_600);
+    }
+
+    #[test]
+    fn test_session_timeout_out_of_bounds_rejected() {
+        let env = make_env();
+        setup_ledger(&env, 1_000);
+        let client = setup_contract(&env);
+        for bad in [0u64, 59, 86_401] {
+            let err = client.try_set_session_timeout_seconds(&bad).unwrap_err().unwrap();
+            assert_eq!(err, soroban_sdk::Error::from_contract_error(ErrorCode::ValidationError as u32));
+        }
+        client.set_session_timeout_seconds(&60);
+        client.set_session_timeout_seconds(&86_400);
+    }
+
+    // -----------------------------------------------------------------------
     // Case 3: Valid session → executes cleanly
     // -----------------------------------------------------------------------
 

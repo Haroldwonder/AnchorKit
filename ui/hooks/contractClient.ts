@@ -6,6 +6,10 @@
  * @stellar/stellar-sdk (or a hosted serverless proxy).  The signatures are
  * stable so callers and hooks can import the types without importing the SDK.
  *
+ * Types are derived from the generated bindings in `ui/src/contracts/anchorkit`
+ * (see `scripts/generate-bindings.sh`) so they cannot drift from the Rust
+ * contract.
+ *
  * Stellar ledger context
  * ─────────────────────
  * Stellar targets a ~5-second ledger close time.  The rate-limit window is
@@ -14,6 +18,12 @@
  * that callers can project wall-clock deadlines without a separate RPC round-
  * trip.
  */
+
+import type {
+  AnchorkitClient,
+  RateLimitConfig,
+  RateLimitState,
+} from '../src/contracts/anchorkit';
 
 /** Raw values returned directly from the Soroban contract. */
 export interface RateLimitStatusRaw {
@@ -46,6 +56,9 @@ export class ContractError extends Error {
   }
 }
 
+/** Error code thrown when no rate-limit client has been configured. */
+export const NOT_CONFIGURED = 'NOT_CONFIGURED';
+
 /** Client function type for fetching rate-limit status. */
 export type RateLimitStatusFetcher = (attestor: string) => Promise<RateLimitStatusRaw>;
 
@@ -53,17 +66,48 @@ let activeClient: RateLimitStatusFetcher | null = null;
 
 /**
  * Configure the client function used by `getRateLimitStatus`.
- * Pass `null` or call `resetRateLimitClient()` to restore the default working client.
+ * Pass `null` or call `resetRateLimitClient()` to remove the client; calls
+ * then fail with a `NOT_CONFIGURED` `ContractError`.
  */
 export function setRateLimitClient(client: RateLimitStatusFetcher | null): void {
   activeClient = client;
 }
 
 /**
- * Reset the client function to default behavior.
+ * Remove any configured client. Subsequent `getRateLimitStatus` calls throw
+ * `ContractError('Rate-limit client not configured', 'NOT_CONFIGURED')`.
  */
 export function resetRateLimitClient(): void {
   activeClient = null;
+}
+
+/**
+ * Build a `RateLimitStatusFetcher` backed by the generated contract client.
+ *
+ * Combines the generated `get_state` and `get_effective_config` view calls
+ * into a single typed response, keeping the UI types aligned with the Rust
+ * contract via the generated bindings.
+ */
+export function createRateLimitStatusFetcher(
+  client: AnchorkitClient,
+  currentLedger: number,
+  ledgerTimestamp: number,
+): RateLimitStatusFetcher {
+  return async (attestor: string): Promise<RateLimitStatusRaw> => {
+    const [state, config]: [RateLimitState, RateLimitConfig] = await Promise.all([
+      client.get_state(attestor),
+      client.get_effective_config(attestor),
+    ]);
+
+    return {
+      submissionCount: state.submission_count,
+      maxSubmissions: config.max_submissions,
+      windowStartLedger: state.window_start_ledger,
+      windowLength: config.window_length,
+      currentLedger,
+      ledgerTimestamp,
+    };
+  };
 }
 
 /**
@@ -72,11 +116,12 @@ export function resetRateLimitClient(): void {
  * Combines `RateLimiter::get_state` and `RateLimiter::get_effective_config`
  * from the Rust contract into a single typed response.
  *
- * If a custom client is registered via `setRateLimitClient`, it delegates to it.
- * Otherwise, returns working default rate-limit data matching the contract's
- * default configuration (10 submissions allowed per 100 ledgers, unthrottled).
+ * Delegates to the client registered via `setRateLimitClient`. No data is
+ * invented when no client is configured: reporting a made-up "unthrottled"
+ * quota would make every attestor look like it has full capacity.
  *
- * @throws {ContractError} when `attestor` is empty or invalid.
+ * @throws {ContractError} with code `INVALID_ATTESTOR` when `attestor` is empty.
+ * @throws {ContractError} with code `NOT_CONFIGURED` when no client is set.
  */
 export async function getRateLimitStatus(
   attestor: string,
@@ -85,19 +130,14 @@ export async function getRateLimitStatus(
     throw new ContractError('Attestor address is required', 'INVALID_ATTESTOR');
   }
 
-  if (activeClient) {
-    return activeClient(attestor);
+  if (!activeClient) {
+    throw new ContractError('Rate-limit client not configured', NOT_CONFIGURED);
   }
 
-  const nowSec = Math.floor(Date.now() / 1_000);
-  const currentLedger = Math.floor(nowSec / 5);
+  return activeClient(attestor);
+}
 
-  return {
-    submissionCount: 0,
-    maxSubmissions: 10,
-    windowStartLedger: currentLedger,
-    windowLength: 100,
-    currentLedger,
-    ledgerTimestamp: nowSec,
-  };
+/** `true` when `err` signals that no rate-limit client is configured. */
+export function isNotConfiguredError(err: unknown): boolean {
+  return err instanceof ContractError && err.code === NOT_CONFIGURED;
 }

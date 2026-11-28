@@ -6,3 +6,5 @@
 // Backend consumers should import the loader directly from './config'.
 export { loadConfig } from './config';
 export type { Config } from './config';
+export { verifyAnchorCallback, decodeSigningKey, CallbackError } from './webhook';
+export type { CallbackErrorCode } from './webhook';
