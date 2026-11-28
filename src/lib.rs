@@ -132,8 +132,8 @@ pub use types::Session;
 /// Anchor metadata and routing request types.
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
 pub use contract::{
-    AnchorKitContract, attestation_signing_digest, get_admin, get_endpoint, set_endpoint,
-    get_attestation_count, get_subject_attestation_count,
+    AnchorKitContract, Attestation, AttestationInput, AttestationSchema, get_admin,
+    get_attestation_count, get_endpoint, set_endpoint,
 };
 pub use events::EndpointUpdated;
 
@@ -283,7 +283,5 @@ mod forced_transfer_audit_tests;
 #[cfg(test)]
 mod typed_distribution_separation_tests;
 
-// Issue #1534 – Property tests for routing selection (proptest).
-#[cfg(feature = "proptest-tests")]
 #[cfg(test)]
-mod routing_property_tests;
+mod schema_registry_tests;

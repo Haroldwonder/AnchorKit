@@ -144,6 +144,7 @@ All contract state is managed via the `StorageKey` enum defined in `src/storage.
 | `SubjectAttestation(Address, u64)` | Persistent | `u64` | Per-subject attestation index entry; maps subject + index → attestation ID for efficient retrieval |
 | `AttestationRevoked(u64)` | Persistent | `bool` | Revocation marker for an individual attestation; marks a specific attestation as revoked |
 | `Used(Bytes)` | Persistent | `bool` | Replay-protection flag; marks a payload hash as consumed to prevent duplicate submissions |
+| `AttestationSchema(Symbol)` | Persistent | `AttestationSchema` | Admin-managed payload schema registry entry: `schema_id -> (name, version, uri)` (#1514) |
 
 #### Session Management
 | Variant | Storage | Type | Description |

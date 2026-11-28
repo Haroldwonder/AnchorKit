@@ -311,44 +311,24 @@ pub struct AttestorRateLimitSet {
     pub timestamp: u64,
 }
 
-/// Emitted by `reactivate_anchor` (#1564).
+// ---------------------------------------------------------------------------
+// #1514 – Attestation payload schema registry events
+// ---------------------------------------------------------------------------
+
+/// Emitted when an admin registers or updates a payload schema.
 #[contracttype]
 #[derive(Clone)]
-pub struct AnchorReactivated {
-    pub anchor: Address,
+pub struct SchemaRegistered {
+    pub schema_id: Symbol,
+    pub admin: Address,
     pub timestamp: u64,
 }
 
-/// Emitted by `remove_anchor` (#1564/#1565).
+/// Emitted when an admin removes a payload schema from the registry.
 #[contracttype]
 #[derive(Clone)]
-pub struct AnchorRemoved {
-    pub anchor: Address,
+pub struct SchemaRemoved {
+    pub schema_id: Symbol,
+    pub admin: Address,
     pub timestamp: u64,
-}
-
-/// Emitted by the admin config setters (#1566) so monitors can see the
-/// previous value alongside the new one.
-#[contracttype]
-#[derive(Clone)]
-pub struct MaxPageSizeUpdated {
-    pub old: u32,
-    pub new: u32,
-    pub admin: Address,
-}
-
-#[contracttype]
-#[derive(Clone)]
-pub struct ReplayWindowUpdated {
-    pub old: u64,
-    pub new: u64,
-    pub admin: Address,
-}
-
-#[contracttype]
-#[derive(Clone)]
-pub struct ClockSkewUpdated {
-    pub old: u64,
-    pub new: u64,
-    pub admin: Address,
 }

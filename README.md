@@ -312,6 +312,11 @@ anchorkit attest --subject GUSER123... --payload-hash abc123...
 anchorkit attest --subject GUSER123... \
   --payload-hash abc123... \
   --session session-001
+
+# Attach a payload schema ID registered by the contract admin
+anchorkit attest --subject GUSER123... \
+  --payload-hash abc123... \
+  --schema-id kyc_result_v1
 ```
 
 #### 4. Monitor Health

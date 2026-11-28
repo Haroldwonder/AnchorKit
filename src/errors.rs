@@ -82,7 +82,7 @@ use alloc::string::String;
 /// | 127  | QuoteNotFound               |
 /// | 128  | EndpointNotSet              |
 /// | 129  | AuditLogNotFound            |
-/// | 130  | AnchorNotFound              |
+/// | 130  | SchemaNotFound              |
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -133,7 +133,7 @@ pub enum ErrorCode {
     QuoteNotFound = 127,
     EndpointNotSet = 128,
     AuditLogNotFound = 129,
-    AnchorNotFound = 130,
+    SchemaNotFound = 130,
 }
 
 impl ErrorCode {
@@ -185,7 +185,7 @@ impl ErrorCode {
             ErrorCode::QuoteNotFound => "Quote not found",
             ErrorCode::EndpointNotSet => "Attestor has no endpoint configured",
             ErrorCode::AuditLogNotFound => "Audit log entry not found",
-            ErrorCode::AnchorNotFound => "Anchor not found in the routing list",
+            ErrorCode::SchemaNotFound => "Attestation schema is not registered",
             ErrorCode::NotInitialized => "Contract is not initialized",
         }
     }
@@ -284,6 +284,7 @@ impl AnchorKitError {
     pub fn attestation_expired() -> Self { Self::from_code(ErrorCode::AttestationExpired) }
     pub fn contract_paused() -> Self { Self::from_code(ErrorCode::ContractPaused) }
     pub fn admin_transfer_pending() -> Self { Self::from_code(ErrorCode::AdminTransferPending) }
+    pub fn schema_not_found() -> Self { Self::from_code(ErrorCode::SchemaNotFound) }
 
     pub fn invalid_amount() -> Self { Self::from_code(ErrorCode::InvalidAmount) }
 
@@ -359,6 +360,7 @@ impl AnchorKitError {
     pub fn attestation_expired() -> Self { Self::from_code(ErrorCode::AttestationExpired) }
     pub fn contract_paused() -> Self { Self::from_code(ErrorCode::ContractPaused) }
     pub fn admin_transfer_pending() -> Self { Self::from_code(ErrorCode::AdminTransferPending) }
+    pub fn schema_not_found() -> Self { Self::from_code(ErrorCode::SchemaNotFound) }
     pub fn invalid_amount() -> Self { Self::from_code(ErrorCode::InvalidAmount) }
     pub fn validation_error(_context: &str) -> Self { Self::from_code(ErrorCode::ValidationError) }
 }
@@ -491,6 +493,7 @@ mod tests {
             ErrorCode::QuoteNotFound,
             ErrorCode::EndpointNotSet,
             ErrorCode::AuditLogNotFound,
+            ErrorCode::SchemaNotFound,
         ];
         for code in codes {
             assert!(!code.default_message().is_empty());

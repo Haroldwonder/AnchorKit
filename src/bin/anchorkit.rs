@@ -135,6 +135,9 @@ enum Commands {
         /// Session ID for tracking
         #[arg(long)]
         session: Option<String>,
+        /// Optional registered payload schema ID (e.g. kyc_result_v1)
+        #[arg(long)]
+        schema_id: Option<String>,
         /// Target network (testnet, mainnet, futurenet).
         /// Defaults to the ANCHORKIT_NETWORK env var, then "testnet".
         #[arg(long, value_parser = validate_network_arg)]
@@ -330,8 +333,14 @@ fn main() {
         Commands::Register { address, services, endpoint, output } => {
             run_register(&address, services.as_deref(), endpoint.as_deref(), &output)
         }
-        Commands::Attest { subject, payload_hash, session, network } => {
-            run_attest(&subject, &payload_hash, session.as_deref(), network.as_deref())
+        Commands::Attest { subject, payload_hash, session, schema_id, network } => {
+            run_attest(
+                &subject,
+                &payload_hash,
+                session.as_deref(),
+                schema_id.as_deref(),
+                network.as_deref(),
+            )
         }
         Commands::Query { transaction_id, output, network } => run_query(&transaction_id, &output, network.as_deref()),
         Commands::Quote { base, quote, amount, strategy, all_candidates, output, network } => {
@@ -454,12 +463,21 @@ fn run_init(admin: &str, network_flag: Option<&str>) {
 
 // ── attest ──────────────────────────────────────────────────────────────────
 
-fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>, network_flag: Option<&str>) {
+fn run_attest(
+    subject: &str,
+    payload_hash: &str,
+    session: Option<&str>,
+    schema_id: Option<&str>,
+    network_flag: Option<&str>,
+) {
     println!("📝 Submitting attestation...");
     println!("  Subject: {}", subject);
     println!("  Payload Hash: {}", payload_hash);
     if let Some(s) = session {
         println!("  Session: {}", s);
+    }
+    if let Some(schema) = schema_id {
+        println!("  Schema ID: {}", schema);
     }
 
     // Resolve effective network: CLI flag → ANCHORKIT_NETWORK env → "testnet".
@@ -477,6 +495,18 @@ fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>, network_
         std::process::exit(exit_code::USAGE);
     }
 
+    if let Some(schema) = schema_id {
+        let valid = !schema.is_empty()
+            && schema.len() <= 32
+            && schema
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !valid {
+            eprintln!("❌ Invalid schema ID (expected 1-32 letters, digits, or underscores)");
+            std::process::exit(1);
+        }
+    }
+
     println!("📋 Attestation steps:");
     println!("  Use stellar CLI to submit:");
     println!("  stellar contract invoke \\");
@@ -484,11 +514,23 @@ fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>, network_
     println!("    --source <ATTESTOR_ACCOUNT> \\");
     println!("    --network {} \\", network);
     println!("    -- \\");
-    if let Some(s) = session {
-        println!("    submit_attestation_with_session \\");
-        println!("    --session {} \\", s);
-    } else {
-        println!("    submit_attestation \\");
+    match (session, schema_id) {
+        (Some(s), Some(schema)) => {
+            println!("    submit_session_with_schema \\");
+            println!("    --session {} \\", s);
+            println!("    --schema-id {} \\", schema);
+        }
+        (Some(s), None) => {
+            println!("    submit_attestation_with_session \\");
+            println!("    --session {} \\", s);
+        }
+        (None, Some(schema)) => {
+            println!("    submit_attestation_with_schema \\");
+            println!("    --schema-id {} \\", schema);
+        }
+        (None, None) => {
+            println!("    submit_attestation \\");
+        }
     }
     println!("    --subject {} \\", subject);
     println!("    --payload-hash {}", payload_hash);
