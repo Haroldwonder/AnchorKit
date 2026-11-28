@@ -222,3 +222,8 @@ mod forced_transfer_audit_tests;
 // Issue #956 – Rent vs capital claim separation regression.
 #[cfg(test)]
 mod typed_distribution_separation_tests;
+
+// Issue #1534 – Property tests for routing selection (proptest).
+#[cfg(feature = "proptest-tests")]
+#[cfg(test)]
+mod routing_property_tests;

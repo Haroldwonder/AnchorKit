@@ -4,183 +4,7 @@ use clap::{Parser, Subcommand};
 use std::process::Command;
 use std::time::Instant;
 use regex::Regex;
-use std::io::IsTerminal;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-// ── exit codes ──────────────────────────────────────────────────────────────
-
-/// Process exit codes used by the CLI so scripts can tell failure classes
-/// apart. Keep in sync with `EXIT_CODES_HELP` and the README.
-mod exit_code {
-    /// Generic / unexpected failure (build or test failure, I/O error, ...).
-    pub const GENERIC: i32 = 1;
-    /// Invalid usage or failed validation (bad flag value, malformed address,
-    /// config file that fails validation). Clap also uses 2 for parse errors.
-    pub const USAGE: i32 = 2;
-    /// Required configuration is missing (contract ID, signing key, config path).
-    pub const CONFIG: i32 = 3;
-    /// Network or RPC failure (endpoint unreachable, request rejected, timeout).
-    pub const NETWORK: i32 = 4;
-    /// The contract returned an error or the requested record does not exist.
-    pub const CONTRACT: i32 = 5;
-}
-
-const EXIT_CODES_HELP: &str = "\
-Exit codes:
-  0  Success
-  1  Generic failure (build/test failure, I/O error)
-  2  Usage or validation error (invalid arguments, invalid config file)
-  3  Configuration missing (e.g. ANCHORKIT_CONTRACT_ID, STELLAR_SECRET_KEY)
-  4  Network or RPC failure
-  5  Contract error or record not found
-
-Output:
-  Emoji and box-drawing decorations are replaced with plain ASCII when
-  --plain/--no-emoji is passed, NO_COLOR is set, or the stream is not a TTY.";
-
-/// Classify an error message coming from the Soroban RPC helpers into one of
-/// the documented exit codes.
-fn exit_code_for_rpc_error(msg: &str) -> i32 {
-    let m = msg.to_ascii_lowercase();
-    if m.contains(" not set")
-        || m.contains("invalid secret key")
-        || m.contains("invalid contract address")
-    {
-        exit_code::CONFIG
-    } else if m.contains("invalid stellar account address")
-        || m.contains("must match the account")
-        || m.contains("exceeds the maximum")
-    {
-        exit_code::USAGE
-    } else if m.contains("contract returned")
-        || m.contains("not found")
-        || m.contains("failed on-chain")
-        || m.contains("simulation failed")
-        || m.contains("unexpected value")
-        || m.contains("without a return value")
-    {
-        exit_code::CONTRACT
-    } else {
-        exit_code::NETWORK
-    }
-}
-
-/// Returns `true` when no contract ID is configured in the environment.
-fn contract_id_missing() -> bool {
-    std::env::var("ANCHORKIT_CONTRACT_ID")
-        .or_else(|_| std::env::var("SOROBAN_CONTRACT_ID"))
-        .map(|v| v.is_empty())
-        .unwrap_or(true)
-}
-
-// ── plain output (NO_COLOR / non-TTY / --plain) ─────────────────────────────
-
-/// Set by `--plain` / `--no-emoji`.
-static FORCE_PLAIN: AtomicBool = AtomicBool::new(false);
-
-/// Whether output written to stdout (`to_stdout`) or stderr should be plain.
-///
-/// Plain output is used when `--plain`/`--no-emoji` was passed, when the
-/// `NO_COLOR` environment variable is set to a non-empty value
-/// (https://no-color.org), or when the target stream is not a terminal.
-fn plain_output(to_stdout: bool) -> bool {
-    if FORCE_PLAIN.load(Ordering::Relaxed) {
-        return true;
-    }
-    if std::env::var_os("NO_COLOR").map_or(false, |v| !v.is_empty()) {
-        return true;
-    }
-    if to_stdout {
-        !std::io::stdout().is_terminal()
-    } else {
-        !std::io::stderr().is_terminal()
-    }
-}
-
-/// Emoji and pictographic symbols that are dropped entirely in plain mode.
-fn is_decorative_char(c: char) -> bool {
-    matches!(
-        c as u32,
-        0x1F000..=0x1FAFF // emoji & pictographs (🔍 🏥 💡 📋 ...)
-            | 0x2600..=0x27BF // misc symbols & dingbats
-            | 0x2300..=0x23FF // misc technical (⏱)
-            | 0x25A0..=0x25FF // geometric shapes (◈)
-            | 0xFE0F          // emoji variation selector
-            | 0x200D          // zero-width joiner
-    )
-}
-
-/// Replace status glyphs with ASCII labels, box-drawing characters with ASCII
-/// equivalents, and strip any remaining emoji.
-fn to_plain_text(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        let replacement = match c {
-            '✅' | '✔' => Some("[OK]"),
-            '❌' => Some("[ERROR]"),
-            '✖' | '✗' => Some("[FAIL]"),
-            '⚠' => Some("[WARN]"),
-            'ℹ' => Some("[INFO]"),
-            '•' => Some("-"),
-            '→' => Some("->"),
-            '─' => Some("-"),
-            '│' => Some("|"),
-            '┌' | '├' | '└' => Some("+"),
-            _ => None,
-        };
-        if let Some(r) = replacement {
-            out.push_str(r);
-        } else if is_decorative_char(c) {
-            // Drop the glyph together with the single space that follows it,
-            // so "🔍 Running" becomes "Running".
-            if chars.peek() == Some(&' ') {
-                chars.next();
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-/// Apply plain-mode filtering to a formatted message if required.
-fn render_output(s: String, to_stdout: bool) -> String {
-    if plain_output(to_stdout) {
-        to_plain_text(&s)
-    } else {
-        s
-    }
-}
-
-// The macros below shadow std's printing macros for this binary (including the
-// `soroban_rpc` module declared after them), so every message honours
-// NO_COLOR, non-TTY streams and `--plain` without touching each call site.
-macro_rules! println {
-    () => { std::println!() };
-    ($($arg:tt)*) => {
-        std::println!("{}", crate::render_output(format!($($arg)*), true))
-    };
-}
-
-macro_rules! eprintln {
-    () => { std::eprintln!() };
-    ($($arg:tt)*) => {
-        std::eprintln!("{}", crate::render_output(format!($($arg)*), false))
-    };
-}
-
-macro_rules! print {
-    ($($arg:tt)*) => {
-        std::print!("{}", crate::render_output(format!($($arg)*), true))
-    };
-}
-
-macro_rules! eprint {
-    ($($arg:tt)*) => {
-        std::eprint!("{}", crate::render_output(format!($($arg)*), false))
-    };
-}
+use tracing_subscriber::{fmt, EnvFilter};
 
 mod soroban_rpc;
 use soroban_rpc::*;
@@ -213,6 +37,29 @@ fn resolve_network(flag: Option<&str>) -> String {
         .unwrap_or_else(|_| "testnet".to_string())
 }
 
+/// Resolve the effective log level from the `--log-level` flag, the
+/// `ANCHORKIT_LOG_LEVEL` env var, `RUST_LOG`, or the "info" default.
+fn resolve_log_level(flag: Option<&str>) -> String {
+    if let Some(l) = flag {
+        return l.to_string();
+    }
+    std::env::var("ANCHORKIT_LOG_LEVEL")
+        .or_else(|_| std::env::var("RUST_LOG"))
+        .unwrap_or_else(|_| "info".to_string())
+}
+
+/// Resolve the effective log format from the `--log-format` flag or the
+/// `ANCHORKIT_LOG_FORMAT` env var, defaulting to "text".
+fn resolve_log_format(flag: Option<&str>) -> String {
+    match flag {
+        Some(f) if matches!(f, "text" | "json") => f.to_string(),
+        _ => match std::env::var("ANCHORKIT_LOG_FORMAT").as_deref() {
+            Some("json") => "json".to_string(),
+            _ => "text".to_string(),
+        },
+    }
+}
+
 #[derive(Parser)]
 #[command(
     name = "anchorkit",
@@ -220,10 +67,12 @@ fn resolve_network(flag: Option<&str>) -> String {
     after_help = EXIT_CODES_HELP
 )]
 struct Cli {
-    /// Disable emoji and decorations (also enabled by NO_COLOR or a non-TTY stream)
-    #[arg(long, global = true, visible_alias = "no-emoji")]
-    plain: bool,
-
+    /// Log output format: text or json
+    #[arg(long, value_name = "FORMAT", value_parser = clap::value_parser!(String))]
+    log_format: Option<String>,
+    /// Log level: trace, debug, info, warn, error (also RUST_LOG)
+    #[arg(long, value_name = "LEVEL", value_parser = clap::value_parser!(String))]
+    log_level: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -431,9 +280,23 @@ enum SessionAction {
 
 fn main() {
     let cli = Cli::parse();
-    if cli.plain {
-        FORCE_PLAIN.store(true, Ordering::Relaxed);
+
+    // ── structured logging (issue #1532) ────────────────────────────────────
+    let log_format = resolve_log_format(cli.log_format.as_deref());
+    let log_level = resolve_log_level(cli.log_level.as_deref());
+    let env_filter = EnvFilter::try_new(&log_level).unwrap_or_else(|_| EnvFilter::new("info"));
+    if log_format == "json" {
+        fmt::json()
+            .with_env_filter(env_filter)
+            .with_target(false)
+            .init();
+    } else {
+        fmt()
+            .with_env_filter(env_filter)
+            .init();
     }
+    // ────────────────────────────────────────────────────────────────────────
+
     match cli.command {
         Commands::Build { release } => run_build(release),
         Commands::Deploy { network } => run_deploy(&network),
