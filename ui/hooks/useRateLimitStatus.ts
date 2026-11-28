@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getRateLimitStatus as defaultGetStatus,
+  isNotConfiguredError,
   type RateLimitStatusRaw,
 } from './contractClient';
 
@@ -36,6 +37,12 @@ export interface UseRateLimitStatusResult {
   loading: boolean;
   /** The last fetch error, or `null` on success / before the first fetch. */
   error: Error | null;
+  /**
+   * `true` when no rate-limit client is configured (the fetch failed with a
+   * `NOT_CONFIGURED` `ContractError`). `status` stays `null` in this state so
+   * the UI can render "not connected" instead of an invented full quota.
+   */
+  isNotConnected: boolean;
   /**
    * Bust the cache for the current attestor and re-fetch immediately.
    * Useful for post-submission refreshes.
@@ -143,10 +150,15 @@ function computeStatus(raw: RateLimitStatusRaw): RateLimitStatus {
  * - Re-fetches automatically when `attestor` changes.
  * - Discards stale responses when a newer request arrives (race-safe).
  * - Exposes `refresh()` to manually bust the cache and force a new fetch.
+ * - Sets `isNotConnected: true` (with `status: null`) when no rate-limit
+ *   client is configured, instead of reporting an invented quota.
  *
  * @example
  * ```tsx
- * const { status, loading, error, refresh } = useRateLimitStatus(attestorAddress);
+ * const { status, loading, error, isNotConnected, refresh } = useRateLimitStatus(attestorAddress);
+ * if (isNotConnected) {
+ *   return <p>Rate-limit data unavailable — not connected</p>;
+ * }
  * if (status?.isThrottled) {
  *   return <p>Rate limited — resets at {status.windowResetsAt.toLocaleTimeString()}</p>;
  * }
@@ -159,6 +171,7 @@ export function useRateLimitStatus(
   const [status, setStatus] = useState<RateLimitStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [isNotConnected, setIsNotConnected] = useState(false);
 
   // Monotonic counter used to discard responses from superseded requests.
   const requestIdRef = useRef(0);
@@ -172,6 +185,7 @@ export function useRateLimitStatus(
     if (!attestor || attestor.trim() === '') {
       setStatus(null);
       setError(null);
+      setIsNotConnected(false);
       setLoading(false);
       return;
     }
@@ -181,6 +195,7 @@ export function useRateLimitStatus(
     if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
       setStatus(cached.status);
       setError(null);
+      setIsNotConnected(false);
       return;
     }
 
@@ -194,9 +209,11 @@ export function useRateLimitStatus(
       const computed = computeStatus(raw);
       cache.set(attestor, { status: computed, fetchedAt: Date.now() });
       setStatus(computed);
+      setIsNotConnected(false);
     } catch (err) {
       if (id !== requestIdRef.current) return;
       setError(err instanceof Error ? err : new Error(String(err)));
+      setIsNotConnected(isNotConfiguredError(err));
       setStatus(null);
     } finally {
       if (id === requestIdRef.current) {
@@ -216,5 +233,5 @@ export function useRateLimitStatus(
     fetchStatus();
   }, [attestor, fetchStatus]);
 
-  return { status, isLoading: loading, loading, error, refresh };
+  return { status, isLoading: loading, loading, error, isNotConnected, refresh };
 }

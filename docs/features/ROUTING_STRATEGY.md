@@ -4,6 +4,57 @@
 that can fulfil a transaction. The selection algorithm is controlled by the
 `strategy` field of `RoutingOptions`.
 
+## Decision Flowchart
+
+The diagram below follows `route_transaction` from the candidate list through
+each filter, the configured strategy, the fallback chain, and emitted events.
+`route_transaction_dry_run` uses the same selection path with event emission
+disabled, and returns only the selected anchor.
+
+```mermaid
+flowchart TD
+    A["route_transaction(options)"] --> B{"Strategy symbol valid?"}
+    B -- "No" --> BE["panic: InvalidStrategy"]
+    B -- "Yes" --> C["Candidate list: registered anchors"]
+
+    C --> D{"Active anchor metadata?"}
+    D -- "No" --> SKIP["Skip anchor"]
+    D -- "Yes" --> E{"Reputation >= min_reputation?"}
+    E -- "No" --> SKIP
+    E -- "Yes" --> F{"Jurisdiction match?"}
+    F -- "No" --> SKIP
+    F -- "Yes" --> G{"KYC required and service present?"}
+    G -- "No" --> SKIP
+    G -- "Yes" --> H{"Latest quote exists?"}
+    H -- "No" --> SKIP
+    H -- "Yes" --> I{"Quote unexpired?"}
+    I -- "No" --> EV1["QuoteExpiredEvent (quote, expired)"]
+    I -- "Yes" --> J{"Amount within quote min/max?"}
+    J -- "No" --> SKIP
+    J -- "Yes" --> K["Add to candidate list"]
+
+    EV1 --> SKIP
+    SKIP --> L{"More anchors?"}
+    K --> L
+    L -- "Yes" --> D
+    L -- "No" --> M{"Candidates found?"}
+
+    M -- "No" --> N["Fallback chain (ordered)"]
+    N --> O{"Fallback anchor valid<br/>active, reputation, jurisdiction,<br/>KYC, quote, expiry, amount?"}
+    O -- "No" --> P{"More fallback anchors?"}
+    P -- "Yes" --> N
+    P -- "No" --> Q["panic: NoQuotesAvailable"]
+    O -- "Yes" --> R["Select first valid fallback"]
+
+    M -- "Yes" --> S["Apply strategy"]
+    R --> S
+    S --> T["LowestFee / FastestSettlement /<br/>HighestReputation / Balanced /<br/>Weighted (max_anchors pool)"]
+    T --> U["Publish RoutingDecisionEvent (routing)"]
+    U --> V["Return selected Quote"]
+
+    W["route_transaction_dry_run: same filters, no events, returns Address"]
+```
+
 ## Valid Strategy Symbols
 
 Pass exactly one of the following symbols as the first (and only) element of

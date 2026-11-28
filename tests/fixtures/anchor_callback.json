@@ -1,0 +1,6 @@
+{
+  "signing_key": "GCARGMU3VAUYHDCZEJSRPZPGRZFX764FYRWZSPWQCJ6TBQXZQCWXP44R",
+  "timestamp": "1700000000",
+  "body": "{\"id\":\"tx-123\",\"status\":\"completed\"}",
+  "signature": "CNEhAiku0wQVhAYd2hw87XpWLm27IYE2UTQ861fx4FTN9oAwdUH9cePYvO1AzvXSV06+c+dWmX40DPDXUhXDBw=="
+}

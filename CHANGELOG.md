@@ -17,9 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MIT LICENSE file at repository root
 - Unit tests for domain_validator edge cases (Unicode/IDN, IP addresses, trailing slashes, length boundaries)
 - License field to Cargo.toml
+- `is_anchor_healthy(anchor) -> bool` contract method for checking an anchor against the configured minimum health score
+- `useAnchorHealth` / `useTransactionStatus` pause polling while the browser tab is hidden and refresh immediately when it becomes visible (opt out with `pauseWhenHidden: false`)
+- `useAnchorHealth` backs off exponentially (capped by `maxBackoff`) after consecutive errors and exposes `consecutiveErrors`
 
 ### Fixed
-<!-- Bug fixes go here -->
+- `get_anchor_health_score` no longer panics with `ValidationError` when the score is below the configured minimum; it now returns the score unconditionally. Use the new `is_anchor_healthy(anchor) -> bool` for the threshold check.
+- `useAnchorHealth` only warns about invalid poll intervals outside production builds, and at most once per hook instance.
 
 ### Breaking Changes
 <!-- Breaking changes go here -->

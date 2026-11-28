@@ -56,3 +56,4 @@ Error codes are non-contiguous. See the table below for the current values.
 | 127  | QuoteNotFound            | Quote not found (e.g. `receive_quote` with an unknown quote ID) |
 | 128  | EndpointNotSet           | Attestor is registered but has no endpoint configured (`get_endpoint`) |
 | 129  | AuditLogNotFound         | Audit log entry not found (`get_audit_log`) |
+| 130  | SchemaNotFound           | Attestation `schema_id` is not in the registry |

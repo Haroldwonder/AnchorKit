@@ -1,5 +1,6 @@
 ﻿/// Soroban RPC client for session operations exposed by the AnchorKit CLI.
 use soroban_client::{
+    account::{Account, AccountBehavior},
     address::{Address, AddressTrait},
     authorize_entry::{authorize_entry, AuthorizeEntryParams},
     contract::{ContractBehavior, Contracts},
@@ -8,7 +9,7 @@ use soroban_client::{
     transaction::{TransactionBehavior, TransactionBuilder, TransactionBuilderBehavior},
     xdr::{
         ContractDataDurability, LedgerEntryData, LedgerKey, LedgerKeyContractData, OperationBody,
-        ScSymbol, ScVal, SorobanCredentials, StringM, VecM,
+        ScMapEntry, ScSymbol, ScVal, SorobanCredentials, StringM, VecM,
     },
     Options, Server,
 };
@@ -46,6 +47,201 @@ pub fn get_secret_key() -> Result<String, String> {
         .map_err(|_| {
             "STELLAR_SECRET_KEY, SOROBAN_SECRET_KEY, or ANCHORKIT_SECRET_KEY not set".to_string()
         })
+}
+
+/// A routing quote candidate displayed by `anchorkit quote`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct QuoteCandidate {
+    pub quote_id: u64,
+    pub anchor: String,
+    pub base_asset: String,
+    pub quote_asset: String,
+    pub rate: u64,
+    pub fee_percentage: u32,
+    pub minimum_amount: u64,
+    pub maximum_amount: u64,
+    pub valid_until: u64,
+}
+
+/// Simulate a read-only contract invocation and return its result value.
+pub fn simulate_contract_call(function: &str, args: Vec<ScVal>) -> Result<ScVal, String> {
+    let contract_id = get_contract_id()?;
+    let rpc_url = get_rpc_url();
+    let source = std::env::var("ANCHORKIT_SIMULATION_ACCOUNT")
+        .unwrap_or_else(|_| "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN".to_string());
+
+    run_rpc(async move {
+        let rpc = Server::new(&rpc_url, Options::default()).map_err(|e| e.to_string())?;
+        let network = rpc
+            .get_network()
+            .await
+            .map_err(|e| format!("Could not load network details: {e}"))?;
+        let passphrase = std::env::var("SOROBAN_NETWORK_PASSPHRASE")
+            .ok()
+            .or(network.passphrase)
+            .ok_or_else(|| "RPC did not provide a network passphrase".to_string())?;
+        let mut account = Account::new(&source, "0").map_err(|e| e.to_string())?;
+        let contract = Contracts::new(&contract_id).map_err(|e| e.to_string())?;
+        let operation = contract.call(
+            function,
+            if args.is_empty() { None } else { Some(args) },
+        );
+        let mut builder = TransactionBuilder::new(&mut account, &passphrase, None);
+        builder
+            .fee(100)
+            .set_timeout(30)
+            .map_err(|e| format!("Could not set transaction timeout: {e}"))?
+            .add_operation(operation);
+        let transaction = builder.build();
+        let response = rpc
+            .simulate_transaction(&transaction, None)
+            .await
+            .map_err(|e| format!("Could not simulate `{function}`: {e}"))?;
+        if let Some(error) = response.error {
+            return Err(format!("Simulation of `{function}` failed: {error}"));
+        }
+        response
+            .to_result()
+            .map(|(value, _)| value)
+            .ok_or_else(|| format!("Simulation of `{function}` returned no value"))
+    })
+}
+
+fn scval_string(value: &str) -> Result<ScVal, String> {
+    let string = StringM::from_str(value).map_err(|e| format!("Invalid string argument: {e}"))?;
+    Ok(ScVal::String(string))
+}
+
+fn scval_map(entries: Vec<(&str, ScVal)>) -> Result<ScVal, String> {
+    let entries = entries
+        .into_iter()
+        .map(|(name, value)| {
+            scval_symbol(name).map(|key| ScMapEntry { key, val: value })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let entries =
+        VecM::try_from(entries).map_err(|e| format!("Could not encode contract map: {e}"))?;
+    Ok(ScVal::Map(Some(entries)))
+}
+
+fn routing_options_arg(
+    base: &str,
+    quote: &str,
+    amount: u64,
+    strategy: &str,
+) -> Result<ScVal, String> {
+    let request = scval_map(vec![
+        ("base_asset", scval_string(base)?),
+        ("quote_asset", scval_string(quote)?),
+        ("amount", ScVal::U64(amount)),
+        ("operation_type", ScVal::U32(3)), // SERVICE_QUOTES
+    ])?;
+    let strategies = VecM::try_from(vec![scval_symbol(strategy)?])
+        .map_err(|e| format!("Could not encode strategy: {e}"))?;
+    let fallback = VecM::try_from(Vec::<ScVal>::new())
+        .map_err(|e| format!("Could not encode fallback chain: {e}"))?;
+    scval_map(vec![
+        ("request", request),
+        ("strategy", ScVal::Vec(Some(strategies))),
+        ("min_reputation", ScVal::U32(0)),
+        ("max_anchors", ScVal::U32(0)),
+        ("require_kyc", ScVal::Bool(false)),
+        ("jurisdiction", ScVal::Void),
+        ("fallback_chain", ScVal::Vec(Some(fallback))),
+    ])
+}
+
+fn map_field<'a>(value: &'a ScVal, name: &str) -> Result<&'a ScVal, String> {
+    match value {
+        ScVal::Map(Some(entries)) => entries
+            .iter()
+            .find(|entry| matches!(&entry.key, ScVal::Symbol(sym) if sym.to_utf8_string_lossy() == name))
+            .map(|entry| &entry.val)
+            .ok_or_else(|| format!("Contract record is missing `{name}`")),
+        _ => Err("Contract returned an unexpected value".to_string()),
+    }
+}
+
+fn field_u64(value: &ScVal, name: &str) -> Result<u64, String> {
+    match map_field(value, name)? {
+        ScVal::U64(number) => Ok(*number),
+        _ => Err(format!("Contract returned an invalid `{name}`")),
+    }
+}
+
+fn field_u32(value: &ScVal, name: &str) -> Result<u32, String> {
+    match map_field(value, name)? {
+        ScVal::U32(number) => Ok(*number),
+        _ => Err(format!("Contract returned an invalid `{name}`")),
+    }
+}
+
+fn field_string(value: &ScVal, name: &str) -> Result<String, String> {
+    match map_field(value, name)? {
+        ScVal::String(string) => Ok(string.to_utf8_string_lossy()),
+        _ => Err(format!("Contract returned an invalid `{name}`")),
+    }
+}
+
+fn quote_from_value(value: &ScVal) -> Result<QuoteCandidate, String> {
+    Ok(QuoteCandidate {
+        quote_id: field_u64(value, "quote_id")?,
+        anchor: Address::from_sc_val(map_field(value, "anchor")?)
+            .map_err(|e| format!("Contract returned an invalid anchor: {e}"))?
+            .to_string(),
+        base_asset: field_string(value, "base_asset")?,
+        quote_asset: field_string(value, "quote_asset")?,
+        rate: field_u64(value, "rate")?,
+        fee_percentage: field_u32(value, "fee_percentage")?,
+        minimum_amount: field_u64(value, "minimum_amount")?,
+        maximum_amount: field_u64(value, "maximum_amount")?,
+        valid_until: field_u64(value, "valid_until")?,
+    })
+}
+
+/// Run the read-only routing dry run and collect the anchor's quote candidates.
+pub fn route_quote_rpc(
+    base: &str,
+    quote: &str,
+    amount: u64,
+    strategy: &str,
+) -> Result<(String, Vec<QuoteCandidate>), String> {
+    let options = routing_options_arg(base, quote, amount, strategy)?;
+    let selected = simulate_contract_call("route_transaction_dry_run", vec![options])?;
+    let selected = Address::from_sc_val(&selected)
+        .map_err(|e| format!("Dry run returned an invalid anchor: {e}"))?
+        .to_string();
+
+    let anchors = simulate_contract_call("get_routing_anchors", Vec::new())?;
+    let anchors = match anchors {
+        ScVal::Vec(Some(anchors)) => anchors.iter().try_fold(Vec::new(), |mut acc, value| {
+            acc.push(
+                Address::from_sc_val(value)
+                    .map_err(|e| format!("Routing list contains an invalid anchor: {e}"))?
+                    .to_string(),
+            );
+            Ok::<_, String>(acc)
+        })?,
+        ScVal::Vec(None) => Vec::new(),
+        _ => return Err("Contract returned an invalid routing anchor list".to_string()),
+    };
+
+    let mut candidates = Vec::new();
+    for anchor in anchors {
+        let arg = Address::new(&anchor)
+            .map_err(|e| format!("Invalid anchor address {anchor}: {e}"))?
+            .to_sc_val()
+            .map_err(|e| e.to_string())?;
+        let value = simulate_contract_call("get_latest_quote", vec![arg])?;
+        if matches!(value, ScVal::Void) {
+            continue;
+        }
+        let candidate = quote_from_value(&value)?;
+        if candidate.base_asset == base && candidate.quote_asset == quote {
+            candidates.push(candidate);
+        }
+    }
+    Ok((selected, candidates))
 }
 
 /// Session data structure returned from contract storage
@@ -510,6 +706,199 @@ pub fn list_sessions_rpc(limit: u64) -> Result<Vec<SessionData>, String> {
         }
 
         Ok(sessions)
+    })
+}
+
+/// Health record decoded from the contract's `HealthStatus` storage entry.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HealthData {
+    pub anchor: String,
+    pub latency_ms: u64,
+    pub failure_count: u32,
+    pub availability_percent: u32,
+}
+
+/// Maximum number of ledger keys requested in one `getLedgerEntries` call.
+const LEDGER_ENTRY_BATCH: usize = 100;
+
+/// Expected network passphrase for a CLI network name.
+fn network_passphrase(network: &str) -> Option<&'static str> {
+    match network {
+        "testnet" => Some("Test SDF Network ; September 2015"),
+        "mainnet" => Some("Public Global Stellar Network ; September 2015"),
+        "futurenet" => Some("Test SDF Future Network ; October 2022"),
+        _ => None,
+    }
+}
+
+/// Resolve the RPC URL for a network: an explicit `SOROBAN_RPC_URL` /
+/// `ANCHORKIT_RPC_URL` wins, otherwise the public endpoint for the network.
+/// Mainnet has no public default, so it must be configured explicitly.
+pub fn get_rpc_url_for_network(network: &str) -> Result<String, String> {
+    if let Ok(url) = env::var(RPC_URL_VAR).or_else(|_| env::var(RPC_URL_ALT)) {
+        return Ok(url);
+    }
+    match network {
+        "testnet" => Ok("https://soroban-testnet.stellar.org".to_string()),
+        "futurenet" => Ok("https://rpc-futurenet.stellar.org".to_string()),
+        "mainnet" => Err(format!(
+            "No default RPC endpoint for mainnet; set {RPC_URL_VAR} or {RPC_URL_ALT}"
+        )),
+        other => Err(format!("Unknown network '{other}'")),
+    }
+}
+
+/// Validate that health queries are configured for `network`, returning
+/// `(contract_id, rpc_url)`.
+pub fn health_config(network: &str) -> Result<(String, String), String> {
+    let contract_id = get_contract_id()?;
+    let rpc_url = get_rpc_url_for_network(network)?;
+    Ok((contract_id, rpc_url))
+}
+
+fn health_from_value(value: ScVal) -> Result<HealthData, String> {
+    let entries = match value {
+        ScVal::Map(Some(entries)) => entries,
+        _ => return Err("Contract returned an invalid health record".to_string()),
+    };
+    let field = |name: &str| -> Result<&ScVal, String> {
+        entries
+            .iter()
+            .find(|entry| matches!(&entry.key, ScVal::Symbol(sym) if sym.to_utf8_string_lossy() == name))
+            .map(|entry| &entry.val)
+            .ok_or_else(|| format!("Contract returned a health record without `{name}`"))
+    };
+    let as_u32 = |name: &str| match field(name)? {
+        ScVal::U32(value) => Ok(*value),
+        _ => Err(format!("Contract returned an invalid health `{name}`")),
+    };
+    let latency_ms = match field("latency_ms")? {
+        ScVal::U64(value) => *value,
+        _ => return Err("Contract returned an invalid health `latency_ms`".to_string()),
+    };
+    let anchor = Address::from_sc_val(field("anchor")?)
+        .map_err(|e| format!("Contract returned an invalid health anchor: {e}"))?
+        .to_string();
+
+    Ok(HealthData {
+        anchor,
+        latency_ms,
+        failure_count: as_u32("failure_count")?,
+        availability_percent: as_u32("availability_percent")?,
+    })
+}
+
+fn health_key(contract_id: &str, anchor: &str) -> Result<LedgerKey, String> {
+    let anchor_val = Address::new(anchor)
+        .map_err(|e| format!("Invalid attestor address {anchor}: {e}"))?
+        .to_sc_val()
+        .map_err(|e| e.to_string())?;
+    let values = VecM::try_from(vec![scval_symbol("Health")?, anchor_val])
+        .map_err(|e| format!("Invalid storage key: {e}"))?;
+    contract_data_key(
+        contract_id,
+        ScVal::Vec(Some(values)),
+        ContractDataDurability::Persistent,
+    )
+}
+
+/// Read on-chain health status (the data behind `get_health_status`) for one
+/// attestor, or for every registered attestor when `attestor` is `None`.
+pub fn get_health_rpc(attestor: Option<&str>, network: &str) -> Result<Vec<HealthData>, String> {
+    if let Some(addr) = attestor {
+        if !is_valid_stellar_address(addr) {
+            return Err(format!("Invalid attestor address: {addr}"));
+        }
+    }
+    let (contract_id, rpc_url) = health_config(network)?;
+    let attestor = attestor.map(str::to_string);
+    let expected_passphrase = network_passphrase(network);
+    let network = network.to_string();
+
+    run_rpc(async move {
+        let rpc = Server::new(&rpc_url, Options::default()).map_err(|e| e.to_string())?;
+
+        // Make sure the RPC endpoint actually serves the requested network.
+        if let Some(expected) = expected_passphrase {
+            let info = rpc
+                .get_network()
+                .await
+                .map_err(|e| format!("Could not reach RPC endpoint {rpc_url}: {e}"))?;
+            if let Some(actual) = info.passphrase {
+                if actual != expected {
+                    return Err(format!(
+                        "RPC endpoint {rpc_url} serves '{actual}', not the {network} network"
+                    ));
+                }
+            }
+        }
+
+        let single = attestor.clone();
+        let anchors: Vec<String> = match attestor {
+            Some(addr) => vec![addr],
+            None => {
+                let list_key = contract_data_key(
+                    &contract_id,
+                    storage_key("ATTLST", None)?,
+                    ContractDataDurability::Persistent,
+                )?;
+                let entries = rpc
+                    .get_ledger_entries(vec![list_key])
+                    .await
+                    .map_err(|e| format!("Could not fetch the attestor list: {e}"))?
+                    .entries
+                    .unwrap_or_default();
+                match entries.first() {
+                    None => Vec::new(),
+                    Some(entry) => match contract_data_value(entry)? {
+                        ScVal::Vec(Some(values)) => values
+                            .iter()
+                            .map(|v| {
+                                Address::from_sc_val(v)
+                                    .map(|a| a.to_string())
+                                    .map_err(|e| format!("Contract returned an invalid attestor: {e}"))
+                            })
+                            .collect::<Result<_, _>>()?,
+                        ScVal::Vec(None) => Vec::new(),
+                        other => {
+                            return Err(format!(
+                                "Contract returned an invalid attestor list: {other:?}"
+                            ))
+                        }
+                    },
+                }
+            }
+        };
+
+        let mut records = Vec::with_capacity(anchors.len());
+        for chunk in anchors.chunks(LEDGER_ENTRY_BATCH) {
+            let keys = chunk
+                .iter()
+                .map(|anchor| health_key(&contract_id, anchor))
+                .collect::<Result<Vec<_>, _>>()?;
+            let entries = rpc
+                .get_ledger_entries(keys)
+                .await
+                .map_err(|e| format!("Could not fetch health status: {e}"))?
+                .entries
+                .unwrap_or_default();
+            let mut by_anchor = std::collections::HashMap::new();
+            for entry in &entries {
+                let health = health_from_value(contract_data_value(entry)?)?;
+                by_anchor.insert(health.anchor.clone(), health);
+            }
+            // Preserve the on-chain attestor order.
+            for anchor in chunk {
+                if let Some(health) = by_anchor.remove(anchor) {
+                    records.push(health);
+                }
+            }
+        }
+
+        if let (Some(addr), true) = (single, records.is_empty()) {
+            return Err(format!("No health status recorded for attestor {addr}"));
+        }
+        Ok(records)
     })
 }
 

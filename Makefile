@@ -1,4 +1,4 @@
-.PHONY: build test testnet-integration lint fmt clean deploy-testnet help build-wasm storybook validate coverage bench
+.PHONY: build test testnet-integration lint fmt clean deploy-testnet help build-wasm storybook validate coverage bench perf-docs
 
 ## build: Build the contract in release mode
 build:
@@ -24,13 +24,25 @@ lint:
 build-wasm:
 	cargo build --release --target wasm32-unknown-unknown
 
+## bindings: Regenerate the typed TS contract client from the built WASM
+bindings: build-wasm
+	stellar contract bindings typescript \
+		--wasm target/wasm32-unknown-unknown/release/anchorkit.wasm \
+		--output-dir ui/src/contracts/anchorkit \
+		--overwrite
+
+## bindings-check: Fail if committed bindings drift from the contract spec
+bindings-check: bindings
+	@git diff --exit-code -- ui/src/contracts/anchorkit \
+		|| (echo "Committed contract bindings are out of date. Run 'make bindings' and commit the result." && exit 1)
+
 ## storybook: Run Storybook (UI components)
 storybook:
 	cd ui && npm run storybook
 
 ## validate: Run repo validation (configs + Rust validation)
 validate:
-	./validate_all.sh
+	./scripts/validate_all.sh
 
 ## coverage: Run Rust + UI coverage (best-effort)
 coverage:
@@ -39,6 +51,10 @@ coverage:
 	@cargo tarpaulin --ignore-tests 2>/dev/null || cargo test
 	@echo "(2/2) UI coverage"
 	cd ui && npm run test:coverage
+
+## perf-docs: Regenerate docs/performance.md (gas/resource cost table for entry points)
+perf-docs:
+	./scripts/gen_performance_docs.sh
 
 ## fmt: Format code with rustfmt
 fmt:
@@ -50,7 +66,7 @@ clean:
 
 ## deploy-testnet: Deploy contract to Stellar testnet
 deploy-testnet: build-wasm
-	soroban contract deploy \
+	stellar contract deploy \
 		--wasm target/wasm32-unknown-unknown/release/anchorkit.wasm \
 		--network testnet
 

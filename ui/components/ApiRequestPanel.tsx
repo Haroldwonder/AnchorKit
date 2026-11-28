@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { formatDateTime } from '../src/intl';
+import { useTranslate } from '../src/i18n';
 import './ApiRequestPanel.css';
+import './rtl.css';
 
 const HISTORY_KEY = 'anchorkit_api_history';
 const HISTORY_MAX = 20;
@@ -132,6 +135,8 @@ export const ApiRequestPanel: React.FC<ApiRequestPanelProps> = ({
   sensitiveFields = DEFAULT_SENSITIVE_FIELDS,
   redactHistoryEntry,
 }) => {
+  const t = useTranslate();
+
   const formatJson = (data: any): string => {
     if (typeof data === 'string') return data;
     return JSON.stringify(data, null, 2);
@@ -377,13 +382,13 @@ export const ApiRequestPanel: React.FC<ApiRequestPanelProps> = ({
       {persistHistory && (
         <div className="panel-section history-section">
           <div className="section-header">
-            <h3>History</h3>
+            <h3>{t('common.history')}</h3>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {history.length > 0 && (
                 <button
                   className="copy-button"
                   onClick={() => { setHistory([]); saveHistory([]); }}
-                  title="Clear history"
+                  title={t('common.clearHistory')}
                 >
                   <span className="copy-icon">🗑️</span>
                 </button>
@@ -391,7 +396,7 @@ export const ApiRequestPanel: React.FC<ApiRequestPanelProps> = ({
               <button
                 className="copy-button"
                 onClick={() => setShowHistory((v) => !v)}
-                title={showHistory ? 'Hide history' : 'Show history'}
+                title={showHistory ? t('common.hideHistory') : t('common.showHistory')}
               >
                 <span className="copy-icon">{showHistory ? '▲' : '▼'}</span>
               </button>
@@ -400,15 +405,15 @@ export const ApiRequestPanel: React.FC<ApiRequestPanelProps> = ({
           {showHistory && (
             <div className="section-content">
               {history.length === 0 ? (
-                <div className="empty-state">No history yet</div>
+                <div className="empty-state">{t('common.noHistory')}</div>
               ) : (
-                <ul className="history-list" aria-label="Request history">
+                <ul className="history-list" aria-label={t('common.history')}>
                   {history.map((entry) => (
                     <li key={entry.id} className="history-item">
                       <span className="method-badge" data-method={entry.method}>{entry.method}</span>
                       <code className="endpoint-url">{entry.endpoint}</code>
                       <span className="history-time">
-                        {new Date(entry.timestamp).toLocaleTimeString()}
+                        {formatDateTime(entry.timestamp, { timeStyle: 'medium' })}
                       </span>
                       {entry.error && (
                         <span className="error-icon" title={entry.error}>⚠️</span>

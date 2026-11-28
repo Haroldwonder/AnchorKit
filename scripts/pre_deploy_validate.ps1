@@ -5,9 +5,10 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SchemaFile = Join-Path $ScriptDir "config_schema.json"
+$RootDir = Split-Path -Parent $ScriptDir
+$SchemaFile = Join-Path $RootDir "config_schema.json"
 $Validator = Join-Path $ScriptDir "validate_config_strict.py"
-$ConfigsDir = Join-Path $ScriptDir "configs"
+$ConfigsDir = Join-Path $RootDir "configs"
 
 Write-Output "🔍 AnchorKit Pre-Deployment Validation"
 Write-Output "========================================"

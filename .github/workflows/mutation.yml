@@ -1,0 +1,58 @@
+name: Mutation testing (cargo-mutants)
+
+on:
+  schedule:
+    # Weekly run every Monday at 00:00 UTC.
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: mutation-testing
+  cancel-in-progress: false
+
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: mutation-cargo-registry-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: mutation-cargo-target-${{ hashFiles('Cargo.lock') }}
+
+      - name: Run cargo-mutants on validation modules
+        run: |
+          cargo mutants \
+            --include domain_validator \
+            --include response_validator \
+            --include sep10_jwt \
+            --include rate_limiter \
+            --tests \
+            --report-format html \
+            --output mutation-report.html
+
+      - name: Publish mutants report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cargo-mutants-report
+          path: mutation-report.html
+          retention-days: 30

@@ -39,6 +39,12 @@ Closes #
 - [ ] No documentation changes needed
 - [ ] Documentation will be added in a follow-up PR
 
+## Changelog
+<!-- PRs touching src/ or ui/ must either use a conventional-commit title (e.g. "feat: ...") or add a CHANGELOG.md entry. Apply the "skip-changelog" label to bypass. -->
+- [ ] PR title follows Conventional Commits (e.g. `feat:`, `fix:`)
+- [ ] CHANGELOG.md updated (if applicable)
+- [ ] `skip-changelog` label applied (bypasses the check)
+
 ## Breaking Changes
 <!-- If this is a breaking change, describe the impact and migration path -->
 - [ ] No breaking changes

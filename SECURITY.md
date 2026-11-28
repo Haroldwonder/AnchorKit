@@ -72,6 +72,7 @@ The following are **out of scope**:
 
 For an overview of AnchorKit's authorization model, access control tiers, and replay protection mechanisms, see:
 
+- **[docs/THREAT_MODEL.md](./docs/THREAT_MODEL.md)** — Trust assumptions, attack surfaces, mitigations, and known gaps
 - **[docs/features/AUTHORIZATION_MODEL.md](./docs/features/AUTHORIZATION_MODEL.md)** — Admin-only, self-only, and public function access tiers
 - **[docs/features/SEP10_AUTH.md](./docs/features/SEP10_AUTH.md)** — SEP-10 authentication flow
 - **[docs/features/ERROR_CODES_REFERENCE.md](./docs/features/ERROR_CODES_REFERENCE.md)** — Stable error codes including auth failures

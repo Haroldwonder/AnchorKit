@@ -26,7 +26,7 @@ The status monitor provides visual indicators for anchor service reliability wit
 
 ### Production Monitoring
 
-1. Open `status-monitor.html` in a web browser
+1. Open `tools/status-monitor.html` in a web browser
 2. Enter your anchor base URL (e.g., `https://anchor.example.com`)
 3. Monitor the status indicators
 
@@ -34,7 +34,7 @@ The status monitor provides visual indicators for anchor service reliability wit
 
 1. Start the mock anchor server:
 ```bash
-python3 mock-server.py
+python3 scripts/mock-server.py
 ```
 
 2. In another terminal, serve the status monitor:
@@ -42,14 +42,14 @@ python3 mock-server.py
 python3 -m http.server 8000
 ```
 
-3. Open `http://localhost:8000/status-monitor.html`
+3. Open `http://localhost:8000/tools/status-monitor.html`
 
 4. Use the default URL `http://localhost:8080` to test against the mock server
 
 ## Files
 
-- `status-monitor.html` - Status monitoring dashboard
-- `mock-server.py` - Mock anchor server for testing
+- `tools/status-monitor.html` - Status monitoring dashboard
+- `scripts/mock-server.py` - Mock anchor server for testing
 
 ## Technical Details
 
