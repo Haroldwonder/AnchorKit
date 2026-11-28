@@ -27,6 +27,24 @@ Returns a health score (0-100) for the specified anchor based on its cached meta
 - `CacheNotFound` (49) - No metadata cached for this anchor
 - `CacheExpired` (48) - Cached metadata has expired
 
+The getter is read-only and always returns the computed score; it never fails
+because the score is below the configured minimum. Use `is_anchor_healthy` for
+the policy check.
+
+### is_anchor_healthy
+
+```rust
+pub fn is_anchor_healthy(env: Env, anchor: Address) -> bool
+```
+
+Returns `true` when the anchor's health score is at or above the minimum set
+via `set_health_failure_threshold`. When no threshold is configured (or it is
+`0`), every anchor with a computable score is healthy.
+
+**Errors:**
+- `CacheNotFound` (49) - No metadata cached for this anchor
+- `CacheExpired` (48) - Cached metadata has expired
+
 ## Score Formula
 
 The health score is computed as a weighted combination of three metrics:
@@ -192,9 +210,8 @@ Calculation:
 The health score can be used alongside the existing routing strategies:
 
 ```rust
-// Filter anchors by minimum health score before routing
-let health_score = client.get_anchor_health_score(&anchor);
-if health_score >= 70 {
+// Filter anchors by the configured minimum health score before routing
+if client.is_anchor_healthy(&anchor) {
     // Include in routing candidates
     let quote = client.route_transaction(&options);
 }

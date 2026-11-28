@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslate } from '../src/i18n';
+import './rtl.css';
 
 export interface AnchorOption {
   id: string;
@@ -23,10 +25,10 @@ function scoreColor(score: number): string {
   return "#dc2626";
 }
 
-function scoreLabel(score: number): string {
-  if (score >= 80) return "Healthy";
-  if (score >= 60) return "Degraded";
-  return "Unhealthy";
+function scoreLabel(score: number, t: (key: string) => string): string {
+  if (score >= 80) return t('common.healthy');
+  if (score >= 60) return t('common.degraded');
+  return t('common.unhealthy');
 }
 
 export function AnchorSelector({
@@ -36,6 +38,8 @@ export function AnchorSelector({
   minHealthScore = 0,
   className,
 }: AnchorSelectorProps) {
+  const t = useTranslate();
+
   const eligible = anchors.filter((a) => a.healthScore >= minHealthScore);
   const best = eligible.length > 0
     ? eligible.reduce((a, b) => (b.healthScore > a.healthScore ? b : a))
@@ -89,7 +93,7 @@ export function AnchorSelector({
         style={{ padding: "12px 16px", color: "var(--ak-text-muted)", fontSize: 13 }}
         className={className}
       >
-        No anchors available.
+        {t('common.noAnchors')}
       </div>
     );
   }
@@ -97,7 +101,7 @@ export function AnchorSelector({
   return (
     <div
       role="listbox"
-      aria-label="Select anchor"
+      aria-label={t('common.selectAnchor')}
       className={className}
       style={{ display: "flex", flexDirection: "column", gap: 8 }}
     >
@@ -187,7 +191,7 @@ export function AnchorSelector({
                 {anchor.id === best?.id && (
                   <span
                     style={{
-                      marginLeft: 8,
+                      marginInlineStart: 8,
                       fontSize: 10,
                       fontWeight: 700,
                       letterSpacing: "0.08em",
@@ -198,7 +202,7 @@ export function AnchorSelector({
                       color: "var(--ak-status-completed-color)",
                     }}
                   >
-                    Best
+                    {t('common.best')}
                   </span>
                 )}
               </span>
@@ -215,7 +219,7 @@ export function AnchorSelector({
                 {anchor.healthScore}
               </span>
               <span style={{ fontSize: 10, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                {scoreLabel(anchor.healthScore)}
+                {scoreLabel(anchor.healthScore, t)}
               </span>
             </div>
           </div>

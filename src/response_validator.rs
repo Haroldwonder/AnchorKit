@@ -26,39 +26,57 @@ pub struct AnchorInfoResponse {
     pub supported_assets: alloc::vec::Vec<alloc::string::String>,
 }
 
-/// Validates a raw deposit response map, returning a typed [`DepositResponse`]
-/// or [`Error::validation_error`] if any required field is missing or empty,
-/// or if `expires_at` is not strictly in the future relative to `current_time`.
+/// Validates a raw SEP-6 deposit response, returning a typed [`DepositResponse`]
+/// or [`Error::validation_error`] on mismatch.
+///
+/// Per SEP-6, `deposit_address` and `expires_at` are optional: fiat deposits
+/// typically describe how to pay via `how` / `instructions` (e.g. bank details)
+/// with no address and no expiry. The response must carry at least one of
+/// `deposit_address`, `how` or `instructions`. `expires_at`, when present, must
+/// be strictly in the future relative to `current_time`.
 pub fn validate_deposit_response(
     transaction_id: &str,
     status: &str,
-    deposit_address: &str,
-    expires_at: u64,
+    deposit_address: Option<&str>,
+    how: Option<&str>,
+    instructions: Option<&str>,
+    expires_at: Option<u64>,
     current_time: u64,
 ) -> Result<DepositResponse, Error> {
+    fn non_empty(v: Option<&str>) -> Option<&str> {
+        v.filter(|s| !s.trim().is_empty())
+    }
+
     if transaction_id.is_empty() {
         return Err(Error::validation_error("transaction_id is empty"));
     }
     if status.is_empty() {
         return Err(Error::validation_error("status is empty"));
     }
-    if deposit_address.is_empty() {
-        return Err(Error::validation_error("deposit_address is empty"));
+    let deposit_address = non_empty(deposit_address);
+    let how = non_empty(how);
+    let instructions = non_empty(instructions);
+    if deposit_address.is_none() && how.is_none() && instructions.is_none() {
+        return Err(Error::validation_error(
+            "deposit response must include deposit_address, how or instructions",
+        ));
     }
-    if expires_at <= current_time {
-        return Err(Error::validation_error("deposit has already expired"));
+    if let Some(exp) = expires_at {
+        if exp <= current_time {
+            return Err(Error::validation_error("deposit has already expired"));
+        }
     }
 
     Ok(DepositResponse {
         transaction_id: alloc::string::String::from(transaction_id),
-        how: None,
-        extra_info: None,
-        deposit_address: Some(alloc::string::String::from(deposit_address)),
+        how: how.map(alloc::string::String::from),
+        extra_info: instructions.map(alloc::string::String::from),
+        deposit_address: deposit_address.map(alloc::string::String::from),
         min_amount: None,
         max_amount: None,
         fee_fixed: None,
         fee_percent: None,
-        expires_at: Some(expires_at),
+        expires_at,
         status: TransactionStatus::from_str(status),
     })
 }
@@ -154,7 +172,7 @@ mod tests {
 
     #[test]
     fn test_valid_deposit_response() {
-        let result = validate_deposit_response("dep_123", "pending", "GDEPOSIT...", 9999, 1000);
+        let result = validate_deposit_response("dep_123", "pending", Some("GDEPOSIT..."), None, None, Some(9999), 1000);
         assert!(result.is_ok());
         let r = result.unwrap();
         assert_eq!(r.transaction_id, "dep_123");
@@ -165,21 +183,57 @@ mod tests {
 
     #[test]
     fn test_deposit_missing_transaction_id() {
-        let result = validate_deposit_response("", "pending", "GDEPOSIT...", 9999, 1000);
+        let result = validate_deposit_response("", "pending", Some("GDEPOSIT..."), None, None, Some(9999), 1000);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
     }
 
     #[test]
     fn test_deposit_missing_status() {
-        let result = validate_deposit_response("dep_123", "", "GDEPOSIT...", 9999, 1000);
+        let result = validate_deposit_response("dep_123", "", Some("GDEPOSIT..."), None, None, Some(9999), 1000);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
     }
 
     #[test]
+    fn test_bank_deposit_without_address_or_expiry_validates() {
+        let result = validate_deposit_response(
+            "dep_123",
+            "pending_user_transfer_start",
+            None,
+            Some("Wire to IBAN DE89 3704 0044 0532 0130 00, reference 12345"),
+            None,
+            None,
+            1000,
+        );
+        let r = result.expect("spec-compliant bank deposit must validate");
+        assert_eq!(r.deposit_address, None);
+        assert_eq!(r.expires_at, None);
+        assert!(r.how.is_some());
+    }
+
+    #[test]
+    fn test_deposit_with_only_instructions_validates() {
+        let result = validate_deposit_response(
+            "dep_123", "pending", None, None, Some("bank: Example Bank"), None, 1000,
+        );
+        assert!(result.is_ok());
+        assert!(result.unwrap().extra_info.is_some());
+    }
+
+    #[test]
+    fn test_bank_deposit_with_expired_expires_at_rejected() {
+        let result = validate_deposit_response(
+            "dep_123", "pending", None, Some("wire"), None, Some(500), 1000,
+        );
+        let err = result.unwrap_err();
+        assert_eq!(err.code, crate::errors::ErrorCode::ValidationError);
+        assert!(err.context.as_deref().unwrap_or("").contains("expired"));
+    }
+
+    #[test]
     fn test_deposit_missing_deposit_address() {
-        let result = validate_deposit_response("dep_123", "pending", "", 9999, 1000);
+        let result = validate_deposit_response("dep_123", "pending", Some(""), None, None, Some(9999), 1000);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, crate::errors::ErrorCode::ValidationError);
     }
@@ -187,7 +241,7 @@ mod tests {
     #[test]
     fn test_deposit_zero_expires_at_fails() {
         // expires_at = 0 is always in the past — must be rejected
-        let result = validate_deposit_response("dep_123", "pending", "GDEPOSIT...", 0, 1000);
+        let result = validate_deposit_response("dep_123", "pending", Some("GDEPOSIT..."), None, None, Some(0), 1000);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code, crate::errors::ErrorCode::ValidationError);
@@ -197,7 +251,7 @@ mod tests {
     #[test]
     fn test_deposit_past_expires_at_fails() {
         // expires_at in the past relative to current_time
-        let result = validate_deposit_response("dep_123", "pending", "GDEPOSIT...", 500, 1000);
+        let result = validate_deposit_response("dep_123", "pending", Some("GDEPOSIT..."), None, None, Some(500), 1000);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code, crate::errors::ErrorCode::ValidationError);
@@ -207,7 +261,7 @@ mod tests {
     #[test]
     fn test_deposit_expires_at_equal_to_current_time_fails() {
         // expires_at == current_time is not strictly in the future
-        let result = validate_deposit_response("dep_123", "pending", "GDEPOSIT...", 1000, 1000);
+        let result = validate_deposit_response("dep_123", "pending", Some("GDEPOSIT..."), None, None, Some(1000), 1000);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code, crate::errors::ErrorCode::ValidationError);
@@ -216,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_deposit_future_expires_at_passes() {
-        let result = validate_deposit_response("dep_123", "pending", "GDEPOSIT...", 2000, 1000);
+        let result = validate_deposit_response("dep_123", "pending", Some("GDEPOSIT..."), None, None, Some(2000), 1000);
         assert!(result.is_ok());
     }
 
@@ -406,7 +460,7 @@ mod tests {
     #[test]
     fn test_validation_error_does_not_panic() {
         // Simulates SDK consumer handling the error gracefully
-        let result = validate_deposit_response("", "", "", 0, 1000);
+        let result = validate_deposit_response("", "", Some(""), None, None, Some(0), 1000);
         match result {
             Err(e) if e.code == crate::errors::ErrorCode::ValidationError => { /* handled, no crash */ }
             _ => panic!("Expected ValidationError"),

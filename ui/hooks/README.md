@@ -336,8 +336,8 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 ## Related
 
 - [ApiRequestPanel](../components/ApiRequestPanel.tsx) - Uses similar copy pattern
-- [Webhook Monitor](../../webhook_monitor.html) - Could benefit from this hook
-- [SDK Config Form](../../sdk_config_form.html) - Could use for JSON output
+- [Webhook Monitor](../../tools/webhook_monitor.html) - Could benefit from this hook
+- [SDK Config Form](../../tools/sdk_config_form.html) - Could use for JSON output
 
 ## License
 
