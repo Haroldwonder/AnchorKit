@@ -131,11 +131,10 @@ pub use types::Session;
 
 /// Anchor metadata and routing request types.
 pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
-
-/// Soroban contract entry point and free helper functions.
-pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
-
-/// Events re-exported for downstream consumers.
+pub use contract::{
+    AnchorKitContract, attestation_signing_digest, get_admin, get_endpoint, set_endpoint,
+    get_attestation_count, get_subject_attestation_count,
+};
 pub use events::EndpointUpdated;
 
 /// Transaction state tracking for long-lived off-chain flows.

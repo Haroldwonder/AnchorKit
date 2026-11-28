@@ -204,6 +204,17 @@ impl AnchorKitContract {
     pub fn get_attestation_count(env: Env) -> u64 {
         env.storage().instance().get(&key_total_count(&env)).unwrap_or(0)
     }
+
+    /// Number of non-revoked attestations recorded for a subject.
+    ///
+    /// `SubjectCount` remains the append-only pagination index, so this
+    /// separate counter is safe to decrement when an attestation is revoked.
+    pub fn get_subject_attestation_count(env: Env, subject: Address) -> u64 {
+        env.storage()
+            .persistent()
+            .get::<_, u64>(&StorageKey::SubjectActiveCount(subject))
+            .unwrap_or(0)
+    }
     // -----------------------------------------------------------------------
     // Initialization
     // -----------------------------------------------------------------------
@@ -1068,8 +1079,11 @@ impl AnchorKitContract {
         }
         Self::require_attestor_active(&env, &attestor);
         let revoked_key = StorageKey::AttestationRevoked(attestation_id);
-        env.storage().persistent().set(&revoked_key, &true);
-        env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        if !env.storage().persistent().has(&revoked_key) {
+            env.storage().persistent().set(&revoked_key, &true);
+            env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
+            Self::decrement_subject_active_count(&env, &attestation.subject);
+        }
         env.events().publish(
             (symbol_short!("attest"), symbol_short!("revoked"), attestation_id),
             attestor.clone(),
@@ -1247,8 +1261,11 @@ impl AnchorKitContract {
 
         // Soft-revoke: preserve the record for audit purposes (#868).
         let revoked_key = StorageKey::AttestationRevoked(attestation_id);
-        env.storage().persistent().set(&revoked_key, &true);
-        env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
+        if !env.storage().persistent().has(&revoked_key) {
+            env.storage().persistent().set(&revoked_key, &true);
+            env.storage().persistent().extend_ttl(&revoked_key, PERSISTENT_TTL, PERSISTENT_TTL);
+            Self::decrement_subject_active_count(&env, &attestation.subject);
+        }
         let timestamp = env.ledger().timestamp();
         env.events().publish(
             (symbol_short!("attest"), symbol_short!("revoked")),
@@ -2987,6 +3004,21 @@ impl AnchorKitContract {
     // Routing
     // -----------------------------------------------------------------------
 
+    /// Return the most recently submitted quote for an anchor.
+    ///
+    /// This is a read-only view used by tooling (for example `anchorkit quote`)
+    /// to display the quote selected by `route_transaction_dry_run` without
+    /// submitting a routing transaction.
+    pub fn get_latest_quote(env: Env, anchor: Address) -> Option<Quote> {
+        let quote_id = env
+            .storage()
+            .persistent()
+            .get::<_, u64>(&StorageKey::LatestQuote(anchor.clone()))?;
+        env.storage()
+            .persistent()
+            .get::<_, Quote>(&StorageKey::Quote(anchor, quote_id))
+    }
+
     pub fn get_quote(env: Env, anchor: Address, quote_id: u64) -> Option<Quote> {
         let key = StorageKey::Quote(anchor, quote_id);
         let quote = env.storage().persistent().get::<_, Quote>(&key);
@@ -4161,6 +4193,17 @@ impl AnchorKitContract {
         Ok(())
     }
 
+    fn decrement_subject_active_count(env: &Env, subject: &Address) {
+        let key = StorageKey::SubjectActiveCount(subject.clone());
+        let count: u64 = env.storage().persistent().get(&key).unwrap_or(0);
+        if count > 0 {
+            env.storage().persistent().set(&key, &(count - 1));
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, PERSISTENT_TTL, PERSISTENT_TTL);
+        }
+    }
+
     /// Storage placement evaluation (#629): per-attestation records (`Attest`,
     /// `SubjectAttestation`, `SubjectCount`) intentionally remain in
     /// *persistent* storage rather than moving to instance storage. Instance
@@ -4212,6 +4255,17 @@ impl AnchorKitContract {
         env.storage().persistent().extend_ttl(&subj_att_key, PERSISTENT_TTL, PERSISTENT_TTL);
 
         env.storage().persistent().set(&count_key, &(count + 1));
+
+        // Active (non-revoked) count exposed to UIs for pagination.
+        let active_key = StorageKey::SubjectActiveCount(subject);
+        let active_count: u64 = env.storage().persistent().get(&active_key).unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&active_key, &(active_count + 1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&active_key, PERSISTENT_TTL, PERSISTENT_TTL);
+
         let total_key = key_total_count(env);
         let total: u64 = env.storage().instance().get(&total_key).unwrap_or(0);
         env.storage().instance().set(&total_key, &(total + 1));
@@ -4559,6 +4613,10 @@ pub fn get_admin(env: Env) -> Address {
 /// Total number of attestations submitted by `attestor`.
 pub fn get_attestation_count(env: Env, attestor: Address) -> u64 {
     AnchorKitContract::get_attestation_count(env, attestor)
+}
+
+pub fn get_subject_attestation_count(env: Env, subject: Address) -> u64 {
+    AnchorKitContract::get_subject_attestation_count(env, subject)
 }
 
 #[cfg(test)]
