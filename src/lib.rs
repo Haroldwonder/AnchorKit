@@ -146,6 +146,10 @@ mod attestor_endpoint_tests;
 #[cfg(test)]
 mod attestation_pagination_tests;
 
+// Issue #1513 – issuer-only attestation expiry extension.
+#[cfg(test)]
+mod extend_expiry_tests;
+
 #[cfg(test)]
 mod is_initialized_tests;
 

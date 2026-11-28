@@ -56,8 +56,9 @@ const MIN_TEMP_TTL: u32 = 15; // min_temp_entry_ttl - 1
 const LEDGER_PERIOD_SECS: u64 = 5; // approximate seconds per ledger
 
 use crate::events::{
-    AdminTransferCancelled, AdminTransferred, AnchorDeactivated, AnchorReactivated, AnchorRemoved,
-    AttestationRevoked, AttestEvent, AuditLogEvent, AuditLogPruned, ContractPaused, ContractUnpaused, EndpointUpdated,
+    AdminTransferCancelled, AdminTransferred, AnchorDeactivated, AttestationExpiryExtended,
+    AttestationRevoked, AttestEvent, AuditLogEvent, AuditLogPruned, ContractPaused,
+    ContractUnpaused, EndpointUpdated,
     QuoteReceivedEvent, QuoteSubmitEvent, SessionCreatedEvent,
     // #1361 – new admin governance events
     AnchorJurisdictionSet, AnchorMetadataSet, ContractUpgraded, AttestorRateLimitSet, CapabilitiesCached,
@@ -1067,31 +1068,106 @@ impl AnchorKitContract {
         );
     }
 
-    /// Revoke a single attestation by its ID. Only the issuing attestor may
-    /// revoke their own attestation.
-    pub fn revoke_attestation(env: Env, attestor: Address, attestation_id: u64) {
-        Self::require_not_paused(&env);
-        attestor.require_auth();
-        Self::revoke_attestation_core(&env, &attestor, attestation_id);
-    }
-
-    /// Revoke multiple attestations in a single call (#1512).
+    /// Extend the expiry of an attestation (#1513).
     ///
-    /// Each ID is checked and revoked exactly as `revoke_attestation` does:
-    /// the attestation must exist and must have been issued by `attestor`, and
-    /// one `"attest"/"revoked"` event is emitted per ID. At most
-    /// `MAX_REVOKE_BATCH_SIZE` IDs are accepted. On any failure the whole call
-    /// panics, so no ID in the batch is revoked.
-    pub fn revoke_attestations(env: Env, attestor: Address, ids: Vec<u64>) {
+    /// Only the attestation's issuer may call this, and `new_expires_at` must be
+    /// strictly later than the currently stored expiry. An attestation without
+    /// an expiry (`expires_at = None`) cannot be "extended": assigning it a
+    /// finite expiry would shorten its validity, so it is rejected as well.
+    ///
+    /// Direct (session-less) calls record an audit entry with
+    /// `session_id = 0` and `operation_index = 0`; this is the convention for
+    /// mutations that are not part of a session.
+    pub fn extend_attestation_expiry(
+        env: Env,
+        attestor: Address,
+        id: u64,
+        new_expires_at: u64,
+    ) {
         Self::require_not_paused(&env);
         attestor.require_auth();
-        if ids.len() > MAX_REVOKE_BATCH_SIZE {
-            panic_with_error!(&env, ErrorCode::ValidationError);
+
+        let attest_key = StorageKey::Attest(id);
+        let mut attestation: Attestation = env
+            .storage()
+            .persistent()
+            .get(&attest_key)
+            .unwrap_or_else(|| panic_with_error!(&env, ErrorCode::AttestationNotFound));
+        if attestation.issuer != attestor {
+            panic_with_error!(&env, ErrorCode::UnauthorizedAttestor);
         }
-        for i in 0..ids.len() {
-            let id = ids.get(i).unwrap();
-            Self::revoke_attestation_core(&env, &attestor, id);
+
+        let old_expires_at = attestation.expires_at;
+        match old_expires_at {
+            Some(current) if new_expires_at > current => {}
+            _ => panic_with_error!(&env, ErrorCode::InvalidTimestamp),
         }
+
+        attestation.expires_at = Some(new_expires_at);
+        env.storage().persistent().set(&attest_key, &attestation);
+        env.storage()
+            .persistent()
+            .extend_ttl(&attest_key, PERSISTENT_TTL, PERSISTENT_TTL);
+
+        // Audit entry for the mutation (mirrors the session-aware write path).
+        let inst = env.storage().instance();
+        let acnt_key = key_audit_counter(&env);
+        let log_id: u64 = inst.get(&acnt_key).unwrap_or(0u64);
+        let projected = log_id.saturating_add(1);
+        Self::maybe_prune_audit_log(&env, projected);
+        inst.set(&acnt_key, &projected);
+
+        let now = env.ledger().timestamp();
+        let operation_type = String::from_str(&env, "extend_expiry");
+        let status = String::from_str(&env, "success");
+        let audit = AuditLog {
+            log_id,
+            session_id: 0,
+            actor: attestor.clone(),
+            operation: OperationContext {
+                session_id: 0,
+                operation_index: 0,
+                operation_type: operation_type.clone(),
+                timestamp: now,
+                status: status.clone(),
+                result_summary: String::from_str(
+                    &env,
+                    &alloc::format!(
+                        "attestation_id={} new_expires_at={}",
+                        id,
+                        new_expires_at
+                    ),
+                ),
+                error_code: None,
+                attempt_number: 0,
+            },
+        };
+        let audit_key = StorageKey::AuditLog(log_id);
+        env.storage().persistent().set(&audit_key, &audit);
+        env.storage()
+            .persistent()
+            .extend_ttl(&audit_key, PERSISTENT_TTL, PERSISTENT_TTL);
+
+        env.events().publish(
+            (symbol_short!("attest"), symbol_short!("exp_ext"), id),
+            AttestationExpiryExtended {
+                attestation_id: id,
+                issuer: attestor,
+                old_expires_at,
+                new_expires_at,
+                timestamp: now,
+            },
+        );
+        env.events().publish(
+            (symbol_short!("audit"), symbol_short!("logged"), log_id),
+            AuditLogEvent {
+                log_id,
+                session_id: 0,
+                operation_index: 0,
+                operation_type,
+                status,
+            },
+        );
     }
 
     pub fn is_attestor(env: Env, attestor: Address) -> bool {
