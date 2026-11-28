@@ -6,9 +6,51 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
+  msrv:
+    name: MSRV (rust-version from Cargo.toml)
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check rust-version matches rust-toolchain.toml
+        id: msrv
+        run: |
+          msrv=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)
+          pinned=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)
+          echo "Cargo.toml rust-version=$msrv, rust-toolchain.toml channel=$pinned"
+          if [ "$msrv" != "$pinned" ]; then
+            echo "::error::rust-version ($msrv) must equal rust-toolchain.toml channel ($pinned)"
+            exit 1
+          fi
+          echo "version=$msrv" >> "$GITHUB_OUTPUT"
+
+      - name: Install exact MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - name: cargo check (locked) with MSRV
+        run: cargo +${{ steps.msrv.outputs.version }} check --locked --all-targets
+
+      - name: cargo check fuzz/ (locked) with MSRV
+        working-directory: fuzz
+        run: cargo +${{ steps.msrv.outputs.version }} check --locked
+
+  build-and-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -18,16 +60,8 @@ jobs:
         with:
           components: clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
 
       - name: Build
         run: cargo build --locked --verbose --examples
@@ -39,8 +73,21 @@ jobs:
         # closing braces) as early as possible and surfaces them as a distinct
         # CI step rather than a buried cargo test failure. Closes #884.
 
-      - name: Run tests
+      - name: Run tests (host target)
         run: cargo test --locked --verbose
+
+      - name: Run CLI tests
+        run: |
+          cargo test --locked --bin anchorkit
+          cargo run --locked --bin anchorkit -- --help
+
+      - name: Run Windows PowerShell validation scripts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\validate_all.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\pre_deploy_validate.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\validate_health_score.ps1
 
       - name: Run clippy
         run: cargo clippy --locked --all-targets -- -D warnings
@@ -73,16 +120,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            fuzz/target
-          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('fuzz/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-fuzz-
+          workspaces: fuzz
 
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
@@ -109,16 +150,8 @@ jobs:
         with:
           components: clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-proptest-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-proptest-
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
 
       - name: Check proptest test compilation
         run: cargo check --locked --tests --features proptest-tests
@@ -141,16 +174,8 @@ jobs:
         with:
           components: clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-testnet-integration-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-testnet-integration-
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
 
       - name: Check testnet-integration test compilation
         run: cargo check --locked --tests --features testnet-integration

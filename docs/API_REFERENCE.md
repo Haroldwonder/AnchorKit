@@ -341,6 +341,37 @@ Submits an attestation and records a `TracingSpan` keyed by `request_id`.
 
 ---
 
+### `extend_attestation_expiry`
+
+```rust
+fn extend_attestation_expiry(
+    env: Env,
+    attestor: Address,
+    id: u64,
+    new_expires_at: u64,
+)
+```
+
+Extends the expiry of an attestation originally submitted with an `expires_at`
+value (for example via `submit_with_request_id`). Only the attestation's issuer
+may call this, and `new_expires_at` must be strictly later than the stored
+expiry. Attestations with `expires_at = None` never expire and cannot be
+extended.
+
+The mutation emits an `AttestationExpiryExtended` event and writes an
+`AuditLog` entry (`operation_type = "extend_expiry"`, `session_id = 0`,
+`operation_index = 0` for a direct call).
+
+**Errors:** `ContractPaused (122)`, `AttestationNotFound (17)`,
+`UnauthorizedAttestor (4)`, `InvalidTimestamp (5)`
+
+**Example**
+```rust
+client.extend_attestation_expiry(&issuer, &attestation_id, &new_expires_at);
+```
+
+---
+
 ### `get_attestation`
 
 ```rust
@@ -669,6 +700,20 @@ Returns a composite health score in the range `[0, 100]` based on uptime, reputa
 let score: u32 = client.get_anchor_health_score(&anchor);
 if score >= 80 { /* high-quality anchor */ }
 ```
+
+The score is returned unconditionally, even when it is below the configured minimum.
+
+---
+
+### `is_anchor_healthy`
+
+```rust
+fn is_anchor_healthy(env: Env, anchor: Address) -> bool
+```
+
+Returns `true` when `get_anchor_health_score(anchor)` is at or above the threshold set by `set_health_failure_threshold`, or when no threshold is set. Returns `false` for an unhealthy anchor instead of failing.
+
+**Errors:** `CacheNotFound (49)`, `CacheExpired (48)`
 
 ---
 

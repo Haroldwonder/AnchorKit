@@ -136,7 +136,7 @@ anchorkit_health_watch() {
   }
   trap '_health_watch_cleanup' INT
 
-  echo "   → Watching health (interval: ${interval}s) — press Ctrl+C to stop"
+  echo "   → Watching health for ${attestor:-all anchors} (interval: ${interval}s) — press Ctrl+C to stop"
   while true; do
     echo "   → [$(date '+%H:%M:%S')] Latency: 45ms | Availability: 99.9% | Failures: 0"
     sleep "$interval" &

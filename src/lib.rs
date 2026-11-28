@@ -90,9 +90,37 @@ pub use domain_validator::validate_anchor_domain;
 pub use sep6::{
     fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
     deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
-    RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
+    signing_key_bytes, RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
+    RawSep6InfoResponse, RawSep6AssetEntry, RawSep6DepositInfo, RawSep6WithdrawInfo, RawSep6Field,
+    Sep6InfoResponse, Sep6AssetInfo, Sep6Field, Sep6OperationFields,
+};
+pub use sep38::{
+    get_sep38_info, get_sep38_prices, get_sep38_price, post_sep38_quote,
+    sep38_quote_to_contract_quote, handle_sep38_http_status,
+    RawSep38InfoResponse, RawSep38Asset, RawDeliveryMethod,
+    RawSep38PricesResponse, RawSep38Price,
+    RawSep38PriceResponse, RawSep38Fee, RawFeeDetail,
+    RawSep38QuoteResponse,
+    Sep38InfoResponse, Sep38Asset, Sep38DeliveryMethod,
+    Sep38PricesResponse, Sep38Price,
+    Sep38PriceResponse, Sep38Fee, Sep38FeeDetail,
+    Sep38QuoteResponse,
+};
+pub use sep31::{
+    get_sep31_info, initiate_sep31_transaction, get_sep31_transaction,
+    update_sep31_transaction, set_sep31_callback, handle_sep31_http_status,
+    RawSep31InfoResponse, RawSep31Asset, RawSep31Field,
+    RawSep31TransactionRequest, RawSep31TransactionResponse,
+    RawSep31TransactionStatusResponse, RawSep31UpdateRequest, RawSep31CallbackRequest,
+    Sep31InfoResponse, Sep31Asset, Sep31Field,
+    Sep31TransactionResponse, Sep31TransactionStatusResponse,
+    Sep31TransactionStatus,
+};
+pub use sep12::{
+    CustomerField, CustomerResponse, CustomerStatus, MockSep12Transport, RawCustomerResponse,
+    Sep10Auth, Sep12Client, Sep12Request, Sep12Response, Sep12Transport,
 };
 
 /// Canonical SEP-6 response types.
@@ -149,6 +177,8 @@ mod sep10_contract_tests;
 
 #[cfg(test)]
 mod routing_tests;
+#[cfg(test)]
+mod quote_lifecycle_tests;
 
 #[cfg(test)]
 mod routing_score_tests;
@@ -177,8 +207,21 @@ mod attestor_endpoint_tests;
 #[cfg(test)]
 mod attestation_pagination_tests;
 
+// Issue #1513 – issuer-only attestation expiry extension.
+#[cfg(test)]
+mod extend_expiry_tests;
+
 #[cfg(test)]
 mod is_initialized_tests;
+
+#[cfg(test)]
+mod contract_health_tests;
+
+#[cfg(test)]
+mod attestor_suspension_tests;
+
+#[cfg(test)]
+mod contract_config_tests;
 
 #[cfg(test)]
 mod get_attestation_tests;
@@ -189,11 +232,18 @@ mod replay_window_tests;
 #[cfg(test)]
 mod attestor_cap_batch_tests;
 
+// Issue #1512 — batch revocation parity with the single-attestation path.
+#[cfg(test)]
+mod batch_revoke_tests;
+
 #[cfg(test)]
 mod anchor_health_score_tests;
 
 #[cfg(test)]
 mod issue_1355_1362_1364_tests;
+
+#[cfg(test)]
+mod close_session_tests;
 
 #[cfg(test)]
 mod compute_payload_hash_tests;
@@ -233,3 +283,8 @@ mod forced_transfer_audit_tests;
 // Issue #956 – Rent vs capital claim separation regression.
 #[cfg(test)]
 mod typed_distribution_separation_tests;
+
+// Issue #1534 – Property tests for routing selection (proptest).
+#[cfg(feature = "proptest-tests")]
+#[cfg(test)]
+mod routing_property_tests;

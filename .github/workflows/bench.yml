@@ -13,6 +13,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -23,6 +30,8 @@ jobs:
     # Non-blocking: a regression is surfaced as a warning, not a build failure.
     # Flip to false once baseline numbers are stable and thresholds are agreed.
     continue-on-error: true
+    permissions:
+      contents: write  # auto-push benchmark baseline to gh-pages
 
     steps:
       - uses: actions/checkout@v4
@@ -30,16 +39,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-bench-
+      - name: Cache Rust builds (Cargo.lock + toolchain)
+        uses: Swatinem/rust-cache@v2
 
       - name: Build benchmarks (compile check)
         # Verify the bench target compiles before attempting a timed run.
