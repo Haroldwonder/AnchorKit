@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use std::process::Command;
 use std::time::Instant;
 use regex::Regex;
+use tracing_subscriber::{fmt, EnvFilter};
 
 mod soroban_rpc;
 use soroban_rpc::*;
@@ -36,9 +37,42 @@ fn resolve_network(flag: Option<&str>) -> String {
         .unwrap_or_else(|_| "testnet".to_string())
 }
 
+/// Resolve the effective log level from the `--log-level` flag, the
+/// `ANCHORKIT_LOG_LEVEL` env var, `RUST_LOG`, or the "info" default.
+fn resolve_log_level(flag: Option<&str>) -> String {
+    if let Some(l) = flag {
+        return l.to_string();
+    }
+    std::env::var("ANCHORKIT_LOG_LEVEL")
+        .or_else(|_| std::env::var("RUST_LOG"))
+        .unwrap_or_else(|_| "info".to_string())
+}
+
+/// Resolve the effective log format from the `--log-format` flag or the
+/// `ANCHORKIT_LOG_FORMAT` env var, defaulting to "text".
+fn resolve_log_format(flag: Option<&str>) -> String {
+    match flag {
+        Some(f) if matches!(f, "text" | "json") => f.to_string(),
+        _ => match std::env::var("ANCHORKIT_LOG_FORMAT").as_deref() {
+            Some("json") => "json".to_string(),
+            _ => "text".to_string(),
+        },
+    }
+}
+
 #[derive(Parser)]
-#[command(name = "anchorkit", about = "AnchorKit CLI for Soroban anchor management")]
+#[command(
+    name = "anchorkit",
+    about = "AnchorKit CLI for Soroban anchor management",
+    after_help = EXIT_CODES_HELP
+)]
 struct Cli {
+    /// Log output format: text or json
+    #[arg(long, value_name = "FORMAT", value_parser = clap::value_parser!(String))]
+    log_format: Option<String>,
+    /// Log level: trace, debug, info, warn, error (also RUST_LOG)
+    #[arg(long, value_name = "LEVEL", value_parser = clap::value_parser!(String))]
+    log_level: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -157,6 +191,10 @@ enum Commands {
         /// Output format: json, text, or table
         #[arg(long, default_value = "text")]
         output: String,
+        /// Target network (testnet, mainnet, futurenet).
+        /// Defaults to the ANCHORKIT_NETWORK env var, then "testnet".
+        #[arg(long, value_parser = validate_network_arg)]
+        network: Option<String>,
     },
     /// Run contract tests
     Test {
@@ -266,6 +304,23 @@ enum SessionAction {
 
 fn main() {
     let cli = Cli::parse();
+
+    // ── structured logging (issue #1532) ────────────────────────────────────
+    let log_format = resolve_log_format(cli.log_format.as_deref());
+    let log_level = resolve_log_level(cli.log_level.as_deref());
+    let env_filter = EnvFilter::try_new(&log_level).unwrap_or_else(|_| EnvFilter::new("info"));
+    if log_format == "json" {
+        fmt::json()
+            .with_env_filter(env_filter)
+            .with_target(false)
+            .init();
+    } else {
+        fmt()
+            .with_env_filter(env_filter)
+            .init();
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     match cli.command {
         Commands::Build { release } => run_build(release),
         Commands::Deploy { network } => run_deploy(&network),
@@ -334,11 +389,11 @@ fn run_build(release: bool) {
         Ok(output) => {
             eprintln!("❌ Build failed:");
             eprintln!("{}", String::from_utf8_lossy(&output.stderr));
-            std::process::exit(1);
+            std::process::exit(exit_code::GENERIC);
         }
         Err(e) => {
             eprintln!("❌ Failed to run cargo build: {}", e);
-            std::process::exit(1);
+            std::process::exit(exit_code::GENERIC);
         }
     }
 }
@@ -356,8 +411,8 @@ fn run_deploy(network: &str) {
     }
     
     println!("📋 Deployment steps:");
-    println!("  1. Use soroban CLI to deploy:");
-    println!("     soroban contract deploy \\");
+    println!("  1. Use stellar CLI to deploy:");
+    println!("     stellar contract deploy \\");
     println!("       --wasm {} \\", wasm_path);
     println!("       --source <YOUR_ACCOUNT> \\");
     println!("       --network {}", network);
@@ -365,7 +420,7 @@ fn run_deploy(network: &str) {
     println!("  2. Initialize the contract:");
     println!("     anchorkit init --admin <ADMIN_ADDRESS>");
     println!();
-    println!("💡 Note: Actual deployment requires soroban CLI and configured account");
+    println!("💡 Note: Actual deployment requires stellar CLI and configured account");
 }
 
 // ── init ────────────────────────────────────────────────────────────────────
@@ -381,12 +436,12 @@ fn run_init(admin: &str, network_flag: Option<&str>) {
     // Validate admin address format (prefix, length, and base32 strkey charset)
     if !is_valid_g_address(admin) {
         eprintln!("❌ Invalid admin address format. Expected Stellar public key starting with 'G' followed by 55 base32 characters (A-Z2-7)");
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
 
     println!("📋 Initialization steps:");
-    println!("  Use soroban CLI to initialize:");
-    println!("  soroban contract invoke \\");
+    println!("  Use stellar CLI to initialize:");
+    println!("  stellar contract invoke \\");
     println!("    --id <CONTRACT_ID> \\");
     println!("    --source {} \\", admin);
     println!("    --network {} \\", network);
@@ -414,17 +469,17 @@ fn run_attest(subject: &str, payload_hash: &str, session: Option<&str>, network_
     // Validate inputs
     if !is_valid_g_address(subject) {
         eprintln!("❌ Invalid subject address format. Expected Stellar public key starting with 'G' followed by 55 base32 characters (A-Z2-7)");
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
 
     if payload_hash.len() != 64 || !payload_hash.chars().all(|c| c.is_ascii_hexdigit()) {
         eprintln!("❌ Invalid payload hash format (expected 64-character hex string)");
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
 
     println!("📋 Attestation steps:");
-    println!("  Use soroban CLI to submit:");
-    println!("  soroban contract invoke \\");
+    println!("  Use stellar CLI to submit:");
+    println!("  stellar contract invoke \\");
     println!("    --id <CONTRACT_ID> \\");
     println!("    --source <ATTESTOR_ACCOUNT> \\");
     println!("    --network {} \\", network);
@@ -492,7 +547,7 @@ fn print_ascii_table(headers: &[&str], rows: &[Vec<String>]) {
 fn validate_output_format(output: &str) {
     if !matches!(output, "json" | "text" | "table") {
         eprintln!("❌ Invalid output format '{}'. Use 'json', 'text', or 'table'", output);
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
 }
 
@@ -538,7 +593,7 @@ fn run_query(transaction_id: &str, output: &str, network_flag: Option<&str>) {
             print_ascii_table(headers, &rows);
             println!("\n💡 Fetch live data:");
             println!(
-                "   soroban contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
+                "   stellar contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
                  --network {} -- get_attestation --attestation-id {}",
                 network, transaction_id
             );
@@ -549,8 +604,8 @@ fn run_query(transaction_id: &str, output: &str, network_flag: Option<&str>) {
             for (k, v) in &record {
                 println!("  {:<16} {}", format!("{}:", k), v);
             }
-            println!("\n📋 Fetch live data with soroban CLI:");
-            println!("  soroban contract invoke \\");
+            println!("\n📋 Fetch live data with stellar CLI:");
+            println!("  stellar contract invoke \\");
             println!("    --id <CONTRACT_ID> \\");
             println!("    --source <ACCOUNT> \\");
             println!("    --network {} \\", network);
@@ -704,100 +759,109 @@ fn run_quote(
 
 // ── health ──────────────────────────────────────────────────────────────────
 
-fn run_health(attestor: Option<&str>, watch: bool, interval: u64, output: &str) {
+fn run_health(attestor: Option<&str>, watch: bool, interval: u64, output: &str, network_flag: Option<&str>) {
     validate_output_format(output);
+
+    // Issue #1493: respect the configured network and fail clearly when the
+    // contract / RPC endpoint are not configured instead of printing samples.
+    let network = resolve_network(network_flag);
+    if let Err(e) = health_config(&network) {
+        eprintln!("❌ Health check not configured: {}", e);
+        std::process::exit(1);
+    }
 
     if watch {
         if interval == 0 {
             eprintln!("❌ Invalid interval '0'. --interval must be greater than 0 seconds");
-            std::process::exit(1);
+            std::process::exit(exit_code::USAGE);
         }
         eprintln!("👀 Watch mode enabled (interval: {}s) — press Ctrl+C to stop", interval);
         loop {
-            render_health(attestor, output);
+            if let Err(e) = render_health(attestor, output, &network) {
+                eprintln!("❌ {}", e);
+            }
             std::thread::sleep(std::time::Duration::from_secs(interval));
         }
     }
 
-    render_health(attestor, output);
+    if let Err(e) = render_health(attestor, output, &network) {
+        eprintln!("❌ {}", e);
+        std::process::exit(1);
+    }
 }
 
-fn render_health(attestor: Option<&str>, output: &str) {
-    // Simulated health records.  In a real implementation these come from
-    // on-chain queries; the shape maps 1-to-1 with HealthStatus in types.rs.
-    let records: Vec<[&str; 4]> = if let Some(addr) = attestor {
-        vec![[addr, "18", "0", "99"]]
-    } else {
-        vec![
-            ["G…attestor-1", "18",  "0", "99"],
-            ["G…attestor-2", "42",  "1", "97"],
-            ["G…attestor-3", "120", "3", "92"],
-        ]
-    };
+fn render_health(attestor: Option<&str>, output: &str, network: &str) -> Result<(), String> {
+    // Live health records read from the contract's HealthStatus storage
+    // (the data returned by `get_health_status`).
+    let records = get_health_rpc(attestor, network)?;
 
     match output {
         "json" => {
             let json_records: Vec<serde_json::Value> = records
                 .iter()
                 .map(|r| serde_json::json!({
-                    "anchor":               r[0],
-                    "latency_ms":           r[1].parse::<u64>().unwrap_or(0),
-                    "failure_count":        r[2].parse::<u32>().unwrap_or(0),
-                    "availability_percent": r[3].parse::<u32>().unwrap_or(0),
+                    "anchor":               r.anchor,
+                    "latency_ms":           r.latency_ms,
+                    "failure_count":        r.failure_count,
+                    "availability_percent": r.availability_percent,
                 }))
                 .collect();
             println!("{}", serde_json::to_string_pretty(&json_records).unwrap());
         }
         "table" => {
-            println!("🏥 Health status\n");
+            println!("🏥 Health status ({})\n", network);
             let headers = &["Anchor", "Latency (ms)", "Failures", "Availability (%)"];
             let rows: Vec<Vec<String>> = records
                 .iter()
-                .map(|r| r.iter().map(|c| c.to_string()).collect())
+                .map(|r| vec![
+                    r.anchor.clone(),
+                    r.latency_ms.to_string(),
+                    r.failure_count.to_string(),
+                    r.availability_percent.to_string(),
+                ])
                 .collect();
             print_ascii_table(headers, &rows);
-            println!("\n💡 Fetch live data:");
+            if records.is_empty() {
+                println!("  No health status recorded for any attestor");
+            }
             if let Some(addr) = attestor {
+                println!("\n💡 Health score:");
                 println!(
-                    "   soroban contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
-                     --network testnet -- get_anchor_health_score --anchor {}",
-                    addr
-                );
-            } else {
-                println!(
-                    "   soroban contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
-                     --network testnet -- get_all_attestors"
+                    "   stellar contract invoke --id <CONTRACT_ID> --source <ACCOUNT> \
+                     --network {} -- get_anchor_health_score --anchor {}",
+                    network, addr
                 );
             }
         }
         _ => {
             // "text" (default)
             if let Some(addr) = attestor {
-                println!("🏥 Health for attestor: {}", addr);
+                println!("🏥 Health for attestor: {} ({})", addr, network);
             } else {
-                println!("🏥 Health for all attestors:");
+                println!("🏥 Health for all attestors ({}):", network);
+            }
+            if records.is_empty() {
+                println!("  No health status recorded for any attestor");
             }
             for r in &records {
                 println!(
                     "  anchor={} latency={}ms failures={} availability={}%",
-                    r[0], r[1], r[2], r[3]
+                    r.anchor, r.latency_ms, r.failure_count, r.availability_percent
                 );
             }
-            println!("\n📋 Fetch live data:");
-            println!("  soroban contract invoke \\");
-            println!("    --id <CONTRACT_ID> \\");
-            println!("    --source <ACCOUNT> \\");
-            println!("    --network testnet \\");
-            println!("    -- \\");
             if let Some(addr) = attestor {
+                println!("\n📋 Health score:");
+                println!("  stellar contract invoke \\");
+                println!("    --id <CONTRACT_ID> \\");
+                println!("    --source <ACCOUNT> \\");
+                println!("    --network {} \\", network);
+                println!("    -- \\");
                 println!("    get_anchor_health_score \\");
                 println!("    --anchor {}", addr);
-            } else {
-                println!("    get_all_attestors");
             }
-            println!("\n💡 Note: Health monitoring requires active contract deployment");
         }
     }
+    Ok(())
 }
 
 // ── test ────────────────────────────────────────────────────────────────────
@@ -828,11 +892,11 @@ fn run_test(pattern: Option<&str>, verbose: bool) {
         Ok(output) => {
             eprintln!("❌ Some tests failed:");
             eprintln!("{}", String::from_utf8_lossy(&output.stderr));
-            std::process::exit(1);
+            std::process::exit(exit_code::GENERIC);
         }
         Err(e) => {
             eprintln!("❌ Failed to run tests: {}", e);
-            std::process::exit(1);
+            std::process::exit(exit_code::GENERIC);
         }
     }
 }
@@ -850,6 +914,7 @@ fn run_doctor() {
     all_ok &= check_rpc();
     all_ok &= check_configs();
     all_ok &= check_network();
+    check_contract_config();
 
     println!("\n⏱  Completed in {:.2}s\n", start.elapsed().as_secs_f64());
 
@@ -858,8 +923,20 @@ fn run_doctor() {
         std::process::exit(0);
     } else {
         println!("⚠️  Some checks failed. Please address the issues above.");
-        std::process::exit(1);
+        std::process::exit(exit_code::GENERIC);
     }
+}
+
+/// Report the on-chain settings bundle exposed by `get_config()` (#1567).
+/// Doctor users can compare these fields against a deployed contract instead of
+/// calling eight separate getters.
+fn check_contract_config() {
+    println!(
+        "✔ Contract settings view: get_config() -> ContractConfig \
+         (max_page_size, replay_window_seconds, clock_skew_seconds, \
+         health_failure_threshold, rate_limit_config, audit_log_max_size, \
+         attestor_cap, paused)"
+    );
 }
 
 fn check_rust_version() -> bool {
@@ -1056,7 +1133,7 @@ fn run_validate(path: &str) {
             Ok(rd) => rd,
             Err(e) => {
                 eprintln!("error: cannot read directory '{}': {}", path, e);
-                std::process::exit(1);
+                std::process::exit(exit_code::CONFIG);
             }
         };
         let mut entries: Vec<_> = read_dir
@@ -1078,10 +1155,13 @@ fn run_validate(path: &str) {
             all_ok &= validate_file(&entry.path());
         }
         if !all_ok {
-            std::process::exit(1);
+            std::process::exit(exit_code::USAGE);
         }
+    } else if !p.exists() {
+        eprintln!("error: config path '{}' does not exist", path);
+        std::process::exit(exit_code::CONFIG);
     } else if !validate_file(p) {
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
 }
 
@@ -1625,7 +1705,7 @@ fn run_config_validate(path: &str) {
             .ok()
             .and_then(|e| e.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| std::path::PathBuf::from("."));
-        p.push("validate_config.py");
+        p.push("scripts/validate_config.py");
         if !p.exists() {
             // Fall back to the repo root (development layout: target/…/anchorkit)
             p = std::env::current_exe()
@@ -1635,7 +1715,7 @@ fn run_config_validate(path: &str) {
                     // target/debug/ and target/release/ layouts)
                     let mut dir = e.parent()?.to_path_buf();
                     for _ in 0..5 {
-                        let candidate = dir.join("validate_config.py");
+                        let candidate = dir.join("scripts/validate_config.py");
                         if candidate.exists() {
                             return Some(candidate);
                         }
@@ -1643,17 +1723,17 @@ fn run_config_validate(path: &str) {
                     }
                     None
                 })
-                .unwrap_or_else(|| std::path::PathBuf::from("validate_config.py"));
+                .unwrap_or_else(|| std::path::PathBuf::from("scripts/validate_config.py"));
         }
         p
     };
 
     if !script_path.exists() {
         eprintln!(
-            "❌ validate_config.py not found (looked in: {})",
+            "❌ scripts/validate_config.py not found (looked in: {})",
             script_path.display()
         );
-        eprintln!("   Make sure validate_config.py is present in the project root.");
+        eprintln!("   Make sure scripts/validate_config.py is present in the project.");
         std::process::exit(1);
     }
 
@@ -1665,7 +1745,7 @@ fn run_config_validate(path: &str) {
     } else {
         eprintln!("❌ Python 3 is required but was not found in PATH.");
         eprintln!("   Install Python 3.7+ from https://www.python.org/downloads/");
-        std::process::exit(1)
+        std::process::exit(exit_code::GENERIC)
     };
 
     println!("🔍 Running config validation on: {}", path);
@@ -1691,12 +1771,18 @@ fn run_config_validate(path: &str) {
                 eprint!("{}", stderr);
             }
             if !output.status.success() {
-                std::process::exit(output.status.code().unwrap_or(1));
+                // validate_config.py exits 1 both for a missing path and for
+                // validation failures; map those onto the documented codes.
+                if std::path::Path::new(path).exists() {
+                    std::process::exit(exit_code::USAGE);
+                } else {
+                    std::process::exit(exit_code::CONFIG);
+                }
             }
         }
         Err(e) => {
             eprintln!("❌ Failed to execute validate_config.py: {}", e);
-            std::process::exit(1);
+            std::process::exit(exit_code::GENERIC);
         }
     }
 }
@@ -1723,14 +1809,14 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
                 invalid.join(", "),
                 VALID_SERVICES.join(", ")
             );
-            std::process::exit(1);
+            std::process::exit(exit_code::USAGE);
         }
     }
 
     // Validate address format (prefix, length, and base32 strkey charset)
     if !is_valid_g_address(address) {
         eprintln!("error: invalid attestor address format. Expected Stellar public key starting with 'G' followed by 55 base32 characters (A-Z2-7)");
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
 
     let services_str = services.unwrap_or("(none)");
@@ -1757,9 +1843,9 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
                 vec!["Status".to_string(),   status.to_string()],
             ];
             print_ascii_table(headers, &rows);
-            println!("\n💡 Execute with soroban CLI:");
+            println!("\n💡 Execute with stellar CLI:");
             println!(
-                "   soroban contract invoke --id <CONTRACT_ID> --source <ADMIN_ACCOUNT> \
+                "   stellar contract invoke --id <CONTRACT_ID> --source <ADMIN_ACCOUNT> \
                  --network testnet -- register_attestor --attestor {}",
                 address
             );
@@ -1771,8 +1857,8 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
             if let Some(e) = endpoint { println!("  Endpoint: {}", e); }
 
             println!("\n📋 Registration steps:");
-            println!("  1. Use soroban CLI to register attestor:");
-            println!("     soroban contract invoke \\");
+            println!("  1. Use stellar CLI to register attestor:");
+            println!("     stellar contract invoke \\");
             println!("       --id <CONTRACT_ID> \\");
             println!("       --source <ADMIN_ACCOUNT> \\");
             println!("       --network testnet \\");
@@ -1782,7 +1868,7 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
 
             if let Some(s) = services {
                 println!("\n  2. Configure services:");
-                println!("     soroban contract invoke \\");
+                println!("     stellar contract invoke \\");
                 println!("       --id <CONTRACT_ID> \\");
                 println!("       --source <ADMIN_ACCOUNT> \\");
                 println!("       --network testnet \\");
@@ -1794,7 +1880,7 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
 
             if let Some(e) = endpoint {
                 println!("\n  3. Set endpoint:");
-                println!("     soroban contract invoke \\");
+                println!("     stellar contract invoke \\");
                 println!("       --id <CONTRACT_ID> \\");
                 println!("       --source <ADMIN_ACCOUNT> \\");
                 println!("       --network testnet \\");
@@ -1805,7 +1891,7 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
             }
 
             println!("\n💡 Note: Replace <CONTRACT_ID> and <ADMIN_ACCOUNT> with actual values");
-            println!("🔗 This will create actual on-chain transactions when executed with soroban CLI");
+            println!("🔗 This will create actual on-chain transactions when executed with stellar CLI");
         }
     }
 }
@@ -1815,7 +1901,7 @@ fn run_register(address: &str, services: Option<&str>, endpoint: Option<&str>, o
 fn run_export_audit(format: &str, output: &str) {
     if format != "json" && format != "csv" {
         eprintln!("error: unsupported format '{}'. Use 'json' or 'csv'", format);
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
     
     // Validate output path before starting export
@@ -1826,7 +1912,7 @@ fn run_export_audit(format: &str, output: &str) {
         if !parent.as_os_str().is_empty() && !parent.exists() {
             eprintln!("error: parent directory '{}' does not exist", parent.display());
             eprintln!("  → Create the directory first or specify a valid path");
-            std::process::exit(1);
+            std::process::exit(exit_code::USAGE);
         }
         
         // Check if parent directory is writable (Unix-specific check)
@@ -1838,7 +1924,7 @@ fn run_export_audit(format: &str, output: &str) {
                 if permissions.mode() & 0o200 == 0 {
                     eprintln!("error: directory '{}' is not writable", parent.display());
                     eprintln!("  → Check directory permissions");
-                    std::process::exit(1);
+                    std::process::exit(exit_code::USAGE);
                 }
             }
         }
@@ -1849,7 +1935,7 @@ fn run_export_audit(format: &str, output: &str) {
         if let Err(e) = std::fs::OpenOptions::new().write(true).open(output_path) {
             eprintln!("error: cannot write to existing file '{}': {}", output, e);
             eprintln!("  → Check file permissions or choose a different path");
-            std::process::exit(1);
+            std::process::exit(exit_code::USAGE);
         }
     }
     
@@ -1859,7 +1945,7 @@ fn run_export_audit(format: &str, output: &str) {
 
     if total == 0 {
         eprintln!("error: no audit log entries found — verify ANCHORKIT_CONTRACT_ID and ANCHORKIT_RPC_URL are set correctly");
-        std::process::exit(1);
+        std::process::exit(if contract_id_missing() { exit_code::CONFIG } else { exit_code::GENERIC });
     }
 
     let content = match format {
@@ -1874,7 +1960,7 @@ fn run_export_audit(format: &str, output: &str) {
     };
     std::fs::write(output, &content).unwrap_or_else(|e| {
         eprintln!("error: cannot write to {}: {}", output, e);
-        std::process::exit(1);
+        std::process::exit(exit_code::GENERIC);
     });
     println!("✔ Exported {} audit log entries to {} ({})", total, output, format);
 }
@@ -2125,7 +2211,7 @@ fn run_audit_get(log_id: u64) {
         }
         None => {
             eprintln!("✖ Audit log entry {} not found", log_id);
-            std::process::exit(1);
+            std::process::exit(if contract_id_missing() { exit_code::CONFIG } else { exit_code::CONTRACT });
         }
     }
 }
@@ -2138,7 +2224,7 @@ fn run_audit_list(session: u64, from: Option<u64>, to: Option<u64>, format: &str
     // Validate format
     if !["text", "json", "csv"].contains(&format) {
         eprintln!("error: unsupported format '{}'. Use 'text', 'json', or 'csv'", format);
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
 
     let entries = fetch_audit_logs_by_session(session, from, to);
@@ -2660,7 +2746,7 @@ fn run_session_create(initiator: Option<String>) {
         }
         Err(e) => {
             eprintln!("✖ Failed to create session: {}", e);
-            std::process::exit(1);
+            std::process::exit(exit_code_for_rpc_error(&e));
         }
     }
 }
@@ -2677,11 +2763,11 @@ fn run_session_get(session_id: u64) {
         }
         Ok(None) => {
             eprintln!("✖ Session {} not found", session_id);
-            std::process::exit(1);
+            std::process::exit(exit_code::CONTRACT);
         }
         Err(e) => {
             eprintln!("✖ Failed to fetch session {}: {}", session_id, e);
-            std::process::exit(1);
+            std::process::exit(exit_code_for_rpc_error(&e));
         }
     }
 }
@@ -2693,14 +2779,14 @@ fn run_session_list(format: &str, pretty: bool, limit: Option<u64>) {
     // Validate format
     if !["text", "json", "csv"].contains(&format) {
         eprintln!("error: unsupported format '{}'. Use 'text', 'json', or 'csv'", format);
-        std::process::exit(1);
+        std::process::exit(exit_code::USAGE);
     }
 
     let sessions = match fetch_sessions_from_chain(limit) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("✖ Failed to fetch sessions: {}", e);
-            std::process::exit(1);
+            std::process::exit(exit_code_for_rpc_error(&e));
         }
     };
 
@@ -2838,7 +2924,7 @@ where
         match read_input(prompt) {
             None => {
                 eprintln!("\n❌ Unexpected end of input. Aborting.");
-                std::process::exit(1);
+                std::process::exit(exit_code::GENERIC);
             }
             Some(raw) => match validate(&raw) {
                 Ok(v) => return v,
@@ -2986,7 +3072,7 @@ fn run_config_init() {
             match read_input("Contract ID (optional, press Enter to skip): ") {
                 None => {
                     eprintln!("\n❌ Unexpected end of input. Aborting.");
-                    std::process::exit(1);
+                    std::process::exit(exit_code::GENERIC);
                 }
                 Some(ref s) if s.is_empty() => break None,
                 Some(ref s) => match validate_contract_id(s) {
@@ -3032,7 +3118,7 @@ fn run_config_init() {
     // Ensure configs/ directory exists
     if let Err(e) = std::fs::create_dir_all("configs") {
         eprintln!("❌ Failed to create configs/ directory: {}", e);
-        std::process::exit(1);
+        std::process::exit(exit_code::GENERIC);
     }
 
     let json_str = serde_json::to_string_pretty(&config)
@@ -3040,7 +3126,7 @@ fn run_config_init() {
 
     if let Err(e) = std::fs::write(&out_path, &json_str) {
         eprintln!("❌ Failed to write {}: {}", out_path.display(), e);
-        std::process::exit(1);
+        std::process::exit(exit_code::GENERIC);
     }
 
     // ── Validate the file we just wrote ───────────────────────────────────
@@ -3065,7 +3151,7 @@ fn run_config_init() {
         eprintln!();
         eprintln!("⚠  The generated file failed validation — this is a bug in anchorkit.");
         eprintln!("   Please open an issue and include the file contents above.");
-        std::process::exit(1);
+        std::process::exit(exit_code::GENERIC);
     }
 }
 

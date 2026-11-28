@@ -249,3 +249,63 @@ fn test_realistic_scenarios() {
     let score = client.get_anchor_health_score(&anchor_struggling);
     assert!(score >= 40 && score <= 55, "Struggling anchor should score 40-55");
 }
+
+// ---------------------------------------------------------------------------
+// Minimum health threshold: getter vs. is_anchor_healthy
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_score_below_threshold_is_returned_unconditionally() {
+    let (env, client, _admin, anchor) = setup_test_env();
+
+    // (40 * 60 + 35 * 50 + 25 * 40) / 100 = 51.5 → 51
+    let metadata = create_metadata(&env, &anchor, 6000, 5000, 3000);
+    client.cache_metadata(&anchor, &metadata, &3600);
+    client.set_health_failure_threshold(&60u32);
+
+    // The read-only getter must not fail based on policy.
+    assert_eq!(client.get_anchor_health_score(&anchor), 51);
+}
+
+#[test]
+fn test_is_anchor_healthy_false_below_threshold() {
+    let (env, client, _admin, anchor) = setup_test_env();
+
+    let metadata = create_metadata(&env, &anchor, 6000, 5000, 3000);
+    client.cache_metadata(&anchor, &metadata, &3600);
+    client.set_health_failure_threshold(&60u32);
+
+    assert!(!client.is_anchor_healthy(&anchor));
+}
+
+#[test]
+fn test_is_anchor_healthy_true_at_or_above_threshold() {
+    let (env, client, _admin, anchor) = setup_test_env();
+
+    // (40 * 95 + 35 * 85 + 25 * 80) / 100 = 87.75 → 87
+    let metadata = create_metadata(&env, &anchor, 9500, 8500, 480);
+    client.cache_metadata(&anchor, &metadata, &3600);
+
+    client.set_health_failure_threshold(&87u32);
+    assert!(client.is_anchor_healthy(&anchor));
+
+    client.set_health_failure_threshold(&50u32);
+    assert!(client.is_anchor_healthy(&anchor));
+}
+
+#[test]
+fn test_is_anchor_healthy_true_without_threshold() {
+    let (env, client, _admin, anchor) = setup_test_env();
+
+    let metadata = create_metadata(&env, &anchor, 1000, 1000, 7200);
+    client.cache_metadata(&anchor, &metadata, &3600);
+
+    assert!(client.is_anchor_healthy(&anchor));
+}
+
+#[test]
+#[should_panic]
+fn test_is_anchor_healthy_without_cached_metadata_panics() {
+    let (_env, client, _admin, anchor) = setup_test_env();
+    client.is_anchor_healthy(&anchor);
+}

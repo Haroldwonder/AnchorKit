@@ -13,7 +13,7 @@
     },
     "ghcr.io/devcontainers/features/common-utils:2": {}
   },
-  "postCreateCommand": "set -euo pipefail && (command -v soroban >/dev/null 2>&1 || cargo install --locked soroban-cli) && npm --version && node --version && cargo --version && rustc --version",
+  "postCreateCommand": "set -euo pipefail && (command -v stellar >/dev/null 2>&1 || cargo install --locked stellar-cli) && npm --version && node --version && cargo --version && rustc --version",
   "customizations": {
     "vscode": {
       "settings": {

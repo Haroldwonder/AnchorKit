@@ -7,7 +7,7 @@ echo "=== Testing anchorkit validate (TOML support) ==="
 echo ""
 
 TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+trap 'rm -rf "$TMPDIR"' EXIT
 
 # Test 1: Valid TOML file
 cat > "$TMPDIR/valid.toml" << 'EOF'

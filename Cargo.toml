@@ -2,7 +2,15 @@
 name = "anchorkit"
 version = "0.1.0"
 edition = "2021"
+# MSRV: must equal `channel` in rust-toolchain.toml (soroban-sdk 26 requires 1.91).
+# Verified by the `msrv` job in .github/workflows/rust-ci.yml.
+rust-version = "1.91.0"
 license = "MIT"
+description = "Soroban-native toolkit for anchoring off-chain attestations to Stellar"
+documentation = "https://github.com/Haroldwonder/AnchorKit/blob/main/docs/README.md"
+repository = "https://github.com/Haroldwonder/AnchorKit"
+keywords = ["stellar", "soroban", "anchor", "attestation", "sep-10"]
+categories = ["cryptography", "smart-contracts", "blockchain"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -14,7 +22,7 @@ required-features = ["std"]
 
 [features]
 default = ["std"]
-std = ["serde", "serde_json", "toml", "regex", "reqwest", "dep:soroban-client", "dep:tokio"]
+std = ["serde", "serde_json", "toml", "regex", "reqwest", "dep:soroban-client", "dep:tokio", "dep:tracing", "dep:tracing-subscriber"]
 wasm = []
 mock-only = []
 stress-tests = []
@@ -25,14 +33,24 @@ testnet-integration = []
 soroban-sdk = "26.1.0"
 sha2 = "0.11"
 hex = "0.4"
+base64 = "0.22"
 ed25519-dalek = { version = "2", default-features = false }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 toml = { version = "1.1", optional = true }
 regex = { version = "1.10", optional = true }
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter", "json"] }
 soroban-client = { version = "0.6.0", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "time"], optional = true }
+base64 = { version = "0.22", default-features = false, features = ["alloc"] }
+
+# Optional OpenTelemetry tracing for anchor HTTP calls. Enabled with the `otel`
+# feature; off by default so the published crate has no tracing dependency.
+tracing = { version = "0.1", optional = true }
+opentelemetry = { version = "0.21", optional = true, features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.13", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -50,6 +68,11 @@ criterion = "0.5"
 [[bench]]
 name = "hot_paths"
 harness = false
+
+[[example]]
+name = "sep31_send"
+path = "examples/sep31_send_example.rs"
+required-features = ["std"]
 
 [profile.release]
 opt-level = "z"
@@ -70,3 +93,12 @@ debug-assertions = true
 # the criterion baselines (issue #738) reflect runtime cost, not code size.
 [profile.bench]
 opt-level = 3
+
+# Build settings used by docs.rs when rendering this crate's API documentation.
+# `all-features = true` ensures optional modules (SEP-6, SEP-10 JWT, std-only
+# CLI helpers) are documented, and the wasm32 + native targets are both built so
+# the docs cover the no_std/wasm and native code paths (issue #1538).
+[package.metadata.docs.rs]
+all-features = true
+targets = ["wasm32-unknown-unknown", "x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--cfg=docsrs"]

@@ -6,7 +6,7 @@ A real-time webhook event monitoring panel for debugging anchor callbacks with v
 
 ## Files Created
 
-### 1. `webhook_monitor.html` (489 lines)
+### 1. `tools/webhook_monitor.html` (489 lines)
 **Purpose**: Interactive web-based monitoring dashboard
 
 **Features**:
@@ -19,7 +19,7 @@ A real-time webhook event monitoring panel for debugging anchor callbacks with v
 - Responsive design matching existing SDK config form
 
 **Design Patterns Followed**:
-- Same CSS framework as `sdk_config_form.html`
+- Same CSS framework as `tools/sdk_config_form.html`
 - Consistent color scheme and typography
 - Accessible UI with proper ARIA labels
 - Mobile-responsive layout
@@ -187,7 +187,7 @@ setInterval(async () => {
 
 ```bash
 # Open the monitor
-open webhook_monitor.html
+open tools/webhook_monitor.html
 
 # In production, integrate with backend:
 # 1. Replace simulation code with WebSocket/SSE
