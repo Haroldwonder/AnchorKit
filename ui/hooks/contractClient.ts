@@ -6,6 +6,10 @@
  * @stellar/stellar-sdk (or a hosted serverless proxy).  The signatures are
  * stable so callers and hooks can import the types without importing the SDK.
  *
+ * Types are derived from the generated bindings in `ui/src/contracts/anchorkit`
+ * (see `scripts/generate-bindings.sh`) so they cannot drift from the Rust
+ * contract.
+ *
  * Stellar ledger context
  * ─────────────────────
  * Stellar targets a ~5-second ledger close time.  The rate-limit window is
@@ -14,6 +18,12 @@
  * that callers can project wall-clock deadlines without a separate RPC round-
  * trip.
  */
+
+import type {
+  AnchorkitClient,
+  RateLimitConfig,
+  RateLimitState,
+} from '../src/contracts/anchorkit';
 
 /** Raw values returned directly from the Soroban contract. */
 export interface RateLimitStatusRaw {
@@ -69,6 +79,35 @@ export function setRateLimitClient(client: RateLimitStatusFetcher | null): void 
  */
 export function resetRateLimitClient(): void {
   activeClient = null;
+}
+
+/**
+ * Build a `RateLimitStatusFetcher` backed by the generated contract client.
+ *
+ * Combines the generated `get_state` and `get_effective_config` view calls
+ * into a single typed response, keeping the UI types aligned with the Rust
+ * contract via the generated bindings.
+ */
+export function createRateLimitStatusFetcher(
+  client: AnchorkitClient,
+  currentLedger: number,
+  ledgerTimestamp: number,
+): RateLimitStatusFetcher {
+  return async (attestor: string): Promise<RateLimitStatusRaw> => {
+    const [state, config]: [RateLimitState, RateLimitConfig] = await Promise.all([
+      client.get_state(attestor),
+      client.get_effective_config(attestor),
+    ]);
+
+    return {
+      submissionCount: state.submission_count,
+      maxSubmissions: config.max_submissions,
+      windowStartLedger: state.window_start_ledger,
+      windowLength: config.window_length,
+      currentLedger,
+      ledgerTimestamp,
+    };
+  };
 }
 
 /**
