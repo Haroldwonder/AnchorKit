@@ -6,6 +6,11 @@ edition = "2021"
 # Verified by the `msrv` job in .github/workflows/rust-ci.yml.
 rust-version = "1.91.0"
 license = "MIT"
+description = "Soroban-native toolkit for anchoring off-chain attestations to Stellar"
+documentation = "https://github.com/Haroldwonder/AnchorKit/blob/main/docs/README.md"
+repository = "https://github.com/Haroldwonder/AnchorKit"
+keywords = ["stellar", "soroban", "anchor", "attestation", "sep-10"]
+categories = ["cryptography", "smart-contracts", "blockchain"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -88,3 +93,12 @@ debug-assertions = true
 # the criterion baselines (issue #738) reflect runtime cost, not code size.
 [profile.bench]
 opt-level = 3
+
+# Build settings used by docs.rs when rendering this crate's API documentation.
+# `all-features = true` ensures optional modules (SEP-6, SEP-10 JWT, std-only
+# CLI helpers) are documented, and the wasm32 + native targets are both built so
+# the docs cover the no_std/wasm and native code paths (issue #1538).
+[package.metadata.docs.rs]
+all-features = true
+targets = ["wasm32-unknown-unknown", "x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--cfg=docsrs"]

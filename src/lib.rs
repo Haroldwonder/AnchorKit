@@ -1,43 +1,92 @@
 #![no_std]
+#![warn(missing_docs)]
+
 extern crate alloc;
 
+/// Soroban contract implementing the AnchorKit attestation ledger.
+///
+/// Provides attestation recording, attestor registration/revocation,
+/// SEP-10 JWT verification, rate limiting, replay-window protection and
+/// admin/pause controls.
 mod contract;
-pub mod deterministic_hash;
-pub mod domain_validator;
+/// Error types for AnchorKit.
+///
+/// All errors are represented as [`AnchorKitError`], a unified base error type
+/// carrying a [`code`](AnchorKitError::code), [`message`](AnchorKitError::message),
+/// and optional [`context`](AnchorKitError::context).
+///
+/// The [`ErrorCode`] enum enumerates every distinct error kind. Use the
+/// provided constructor helpers (e.g. [`AnchorKitError::already_initialized`])
+/// to build errors without touching raw codes.
+///
+/// ## no-std / WASM builds
+///
+/// When compiled without the `std` feature (e.g. for Soroban WASM), heap
+/// allocation via `alloc::string::String` is unavailable on the hot path.
+/// In that case `AnchorKitError` stores only an `ErrorCode` discriminant and
+/// a static message, and falls back to a code-only representation.
 mod errors;
+/// Contract events emitted by `AnchorKitContract`.
+///
+/// Events are published through `env.events().publish(...)` and mirror every
+/// state mutation so off-chain indexers can react to attestation, session,
+/// rate-limit and admin changes.
 mod events;
+/// Per-attestor rate limiting for attestation submissions.
+///
+/// Implements sliding-window counters stored in contract persistent storage
+/// so the same window is observed across transactions.
 mod rate_limiter;
+/// Response schema validation for AnchorKit API responses.
+///
+/// Validates that anchor API responses contain all required fields before
+/// returning them to the SDK consumer. Throws [`Error::ValidationError`] on mismatch.
 mod response_validator;
+/// Retry configuration for off-chain anchor requests.
+///
+/// Implements exponential backoff with a cap, jitter and a retryable-error
+/// predicate used by the transport layer.
 mod retry;
-pub mod sep31;
-pub mod sep10_jwt;
-pub mod sdk_config;
+/// Typed storage keys for all contract state.
+///
+/// Using an enum prevents typos in raw string literals and makes every
+/// storage access site self-documenting.
 mod storage;
-pub mod transaction_state_tracker;
-pub mod transport;
+/// SEP-6 response types and canonical helpers.
+///
+/// Merges the raw SEP-6 response shapes with the validated, SDK-friendly
+/// types re-exported from this crate.
 mod types;
-pub mod sep6;
-#[cfg(feature = "std")]
-pub mod webhook;
 
+/// Unified error type for AnchorKit.
+///
+/// Every error carries a stable [`ErrorCode`](AnchorKitError::code), a human
+/// readable message and optional context. Prefer the constructor helpers
+/// over building errors directly.
 pub use errors::{AnchorKitError, ErrorCode};
 
+/// Lower-level error wrapper used by the off-chain SDK layer.
 pub use errors::Error;
-pub use sep31::{
-    callback_signature_header, MockSep31Transport, RawSep31CreationResponse,
-    RawSep31InfoResponse, RawSep31Transaction, Sep31AssetInfo, Sep31Auth, Sep31Callback,
-    Sep31Client, Sep31CreatedTransaction, Sep31CustomerReference, Sep31Info, Sep31Request,
-    Sep31Response, Sep31Status, Sep31Transaction, Sep31TransactionRequest, Sep31Transport,
-};
+
+/// Per-attestor rate limiter with sliding-window counters.
 pub use rate_limiter::{RateLimiter, RateLimitConfig, RateLimitState, RateLimitStatus};
+
+/// Validators for anchor API responses.
 pub use response_validator::{
     validate_anchor_info_response, validate_deposit_response, validate_quote_response,
     validate_withdraw_response, AnchorInfoResponse, QuoteResponse,
 };
+
+/// Retry-with-backoff helpers for transient anchor API failures.
 pub use retry::{retry_with_backoff, is_retryable, RetryConfig, RetryErrorCode};
+
+/// Deterministic payload hashing for attestation signatures.
 pub use deterministic_hash::{compute_payload_hash, verify_payload_hash};
+
+/// Stellar.toml / SEP-1 domain validation.
 pub use domain_validator::validate_anchor_domain;
 
+/// SEP-6 deposit/withdrawal exchange helpers.
 pub use sep6::{
     fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
     deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
@@ -73,11 +122,23 @@ pub use sep12::{
     CustomerField, CustomerResponse, CustomerStatus, MockSep12Transport, RawCustomerResponse,
     Sep10Auth, Sep12Client, Sep12Request, Sep12Response, Sep12Transport,
 };
+
+/// Canonical SEP-6 response types.
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
+
+/// Stateful session used by the off-chain SDK.
 pub use types::Session;
-pub use types::{AnchorMetadata, RouteCandidate, RoutingOptions, RoutingRequest};
+
+/// Anchor metadata and routing request types.
+pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
+
+/// Soroban contract entry point and free helper functions.
 pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
+
+/// Events re-exported for downstream consumers.
 pub use events::EndpointUpdated;
+
+/// Transaction state tracking for long-lived off-chain flows.
 pub use transaction_state_tracker::{
     StateTransition, TransactionState, TransactionStateRecord, TransactionStateTracker,
 };

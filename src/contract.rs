@@ -3,6 +3,14 @@ use soroban_sdk::{
     Env, String, Symbol, Vec,
 };
 
+//! Soroban contract implementation for AnchorKit.
+//!
+//! This module hosts the `AnchorKitContract` entry point and all of its
+//! associated types, storage helpers and free functions. It is intentionally
+//! private to the crate so the public API surface is the re-exports in
+//! [`crate::lib`]; the generated Soroban client is re-exported publicly for
+//! downstream consumers.
+
 use crate::deterministic_hash::{compute_payload_hash, verify_payload_hash};
 use crate::domain_validator::validate_anchor_domain;
 use crate::errors::ErrorCode;
@@ -4533,18 +4541,22 @@ impl AnchorKitContract {
     }
 }
 
+/// Read the endpoint registered for `attestor` (empty string if unset).
 pub fn get_endpoint(env: Env, attestor: Address) -> String {
     AnchorKitContract::get_endpoint(env, attestor)
 }
 
+/// Set the endpoint string for `attestor`. Must be called by the attestor.
 pub fn set_endpoint(env: Env, attestor: Address, endpoint: String) {
     AnchorKitContract::set_endpoint(env, attestor, endpoint)
 }
 
+/// Return the contract admin address (set at deploy time).
 pub fn get_admin(env: Env) -> Address {
     AnchorKitContract::get_admin(env)
 }
 
+/// Total number of attestations submitted by `attestor`.
 pub fn get_attestation_count(env: Env, attestor: Address) -> u64 {
     AnchorKitContract::get_attestation_count(env, attestor)
 }
