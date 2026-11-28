@@ -95,7 +95,7 @@ All 11 methods exposed in contract:
 3. `ANCHOR_INFO_DISCOVERY.md` - Feature documentation (600+ lines)
 4. `ANCHOR_INFO_DISCOVERY_IMPLEMENTATION.md` - Implementation details
 5. `examples/anchor_info_discovery.sh` - Usage examples
-6. `ci_preflight_check.sh` - CI/CD verification script
+6. `scripts/ci_preflight_check.sh` - CI/CD verification script
 7. `CI_CD_READINESS.md` - Readiness report
 
 ### Modified Files (2)

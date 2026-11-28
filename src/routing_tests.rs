@@ -10,9 +10,10 @@ mod routing_tests {
     use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
+    use crate::errors::ErrorCode;
     use crate::types::{RoutingOptions, RoutingRequest};
     use crate::sep10_test_util::register_attestor_with_sep10;
-    use crate::events::RoutingDecisionEvent;
+    use crate::events::{AnchorReactivated, AnchorRemoved, RoutingDecisionEvent};
 
     fn make_env() -> Env {
         let env = Env::default();
@@ -925,6 +926,61 @@ mod routing_tests {
         assert_eq!(client.get_anchor_jurisdiction(&anchor), None);
     }
 
+    #[test]
+    fn test_set_anchor_jurisdiction_accepts_alpha3_codes() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        for code in ["USA", "GBR", "DEU", "NGA"] {
+            client.set_anchor_jurisdiction(&anchor, &jurisdiction(&env, code));
+            assert_eq!(
+                client.get_anchor_jurisdiction(&anchor),
+                jurisdiction(&env, code)
+            );
+        }
+    }
+
+    #[test]
+    fn test_set_anchor_jurisdiction_rejects_invalid_codes() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        for code in ["usa", "Usa", "US", "USAA", "", "United States", "US1", "U A", "ÜSA"] {
+            let result = client.try_set_anchor_jurisdiction(&anchor, &jurisdiction(&env, code));
+            assert_eq!(
+                result.unwrap_err().unwrap(),
+                crate::errors::ErrorCode::ValidationError,
+                "expected ValidationError for jurisdiction {:?}",
+                code
+            );
+            assert_eq!(client.get_anchor_jurisdiction(&anchor), None);
+        }
+    }
+
+    #[test]
+    fn test_set_anchor_jurisdiction_invalid_code_keeps_previous_value() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        client.set_anchor_jurisdiction(&anchor, &jurisdiction(&env, "USA"));
+
+        let result = client.try_set_anchor_jurisdiction(&anchor, &jurisdiction(&env, "usa"));
+        assert!(result.is_err());
+        assert_eq!(
+            client.get_anchor_jurisdiction(&anchor),
+            jurisdiction(&env, "USA")
+        );
+    }
+
     fn make_lowest_fee_options(env: &Env) -> RoutingOptions {
         let mut strategy = Vec::new(env);
         strategy.push_back(Symbol::new(env, "LowestFee"));
@@ -1033,7 +1089,7 @@ mod routing_tests {
         register_anchor(&env, &client, &us_anchor);
         register_anchor(&env, &client, &eu_anchor);
         client.set_anchor_jurisdiction(&us_anchor, &jurisdiction(&env, "USA"));
-        client.set_anchor_jurisdiction(&eu_anchor, &jurisdiction(&env, "EU"));
+        client.set_anchor_jurisdiction(&eu_anchor, &jurisdiction(&env, "DEU"));
         submit_standard_quote(&env, &client, &us_anchor, 10);
         submit_standard_quote(&env, &client, &eu_anchor, 50);
 
@@ -1045,7 +1101,7 @@ mod routing_tests {
             min_reputation: 0,
             max_anchors: 0,
             require_kyc: false,
-            jurisdiction: jurisdiction(&env, "EU"),
+            jurisdiction: jurisdiction(&env, "DEU"),
             fallback_chain: Vec::new(&env),
         };
 
@@ -1141,6 +1197,43 @@ mod routing_tests {
         assert_eq!(best.anchor, healthy);
         assert_ne!(best.anchor, no_quotes);
     }
+
+    #[test]
+    fn test_reactivate_anchor_emits_governance_event() {
+        let env = make_env();
+        set_ledger(&env, 1700000500);
+        let (client, admin) = setup(&env);
+        let anchor = Address::generate(&env);
+
+        client.set_anchor_metadata(&anchor, &80, &10, &1000000, &100, &500000, &String::from_str(&env, "https://example.com"));
+        client.update_health_status(&anchor, &10, &5, &50); // deactivate
+
+        let timestamp = env.ledger().timestamp();
+        env.events().publish_expect(
+            &(symbol_short!("admin"), symbol_short!("areactiv")),
+            &AnchorReactivated { anchor: anchor.clone(), timestamp },
+        );
+        client.reactivate_anchor(&anchor);
+        assert_eq!(admin, client.get_admin());
+    }
+
+    #[test]
+    fn test_remove_anchor_emits_governance_event() {
+        let env = make_env();
+        set_ledger(&env, 1700000600);
+        let (client, _admin) = setup(&env);
+        let anchor = Address::generate(&env);
+
+        client.set_anchor_metadata(&anchor, &80, &10, &1000000, &100, &500000, &String::from_str(&env, "https://example.com"));
+
+        let timestamp = env.ledger().timestamp();
+        env.events().publish_expect(
+            &(symbol_short!("admin"), symbol_short!("aremove")),
+            &AnchorRemoved { anchor: anchor.clone(), timestamp },
+        );
+        client.remove_anchor(&anchor);
+        assert!(!client.get_routing_anchors().contains(&anchor));
+    }
 }
 
     #[test]
@@ -1208,3 +1301,23 @@ mod routing_tests {
         // Must panic — no active anchors remain
         client.route_transaction(&options);
     }
+
+    #[test]
+    fn test_remove_anchor_missing_returns_error_without_write() {
+        let env = make_env();
+        let (client, _admin) = setup(&env);
+        let anchor = Address::generate(&env);
+        let missing = Address::generate(&env);
+
+        client.set_anchor_metadata(&anchor, &80, &10, &1000000, &100, &500000, &String::from_str(&env, "https://example.com"));
+        let before = client.get_routing_anchors();
+        let event_count = env.events().all().len();
+
+        assert_eq!(
+            client.try_remove_anchor(&missing).unwrap_err().unwrap(),
+            ErrorCode::AnchorNotFound
+        );
+        assert_eq!(client.get_routing_anchors(), before);
+        assert_eq!(env.events().all().len(), event_count);
+    }
+}

@@ -134,6 +134,8 @@ fn raw_deposit_incomplete(tx_id: &str) -> RawDepositResponse {
         fee_percent: Some(25), // 0.25 %
         status: Some("incomplete".to_string()),
         depositor_account: None,
+        claimable_balance_supported: false,
+        on_change_callback: None,
     }
 }
 
@@ -375,6 +377,8 @@ fn test_sep6_deposit_with_depositor_account_accepted() {
         fee_percent: None,
         status: Some("pending_external".to_string()),
         depositor_account: Some(valid_account.to_string()),
+        claimable_balance_supported: false,
+        on_change_callback: None,
     };
 
     let result = initiate_deposit(raw, "USDC");
@@ -399,6 +403,8 @@ fn test_sep6_deposit_invalid_depositor_account_rejected() {
         fee_percent: None,
         status: None,
         depositor_account: Some("not-a-stellar-address".to_string()),
+        claimable_balance_supported: false,
+        on_change_callback: None,
     };
 
     let result = initiate_deposit(raw, "USDC");

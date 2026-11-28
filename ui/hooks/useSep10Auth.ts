@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { verifyChallenge, VerifyChallengeOptions } from '../src/sep10Challenge';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -14,6 +15,14 @@ export interface Sep10AuthAdapters {
   signChallenge: (challengeXdr: string) => Promise<string>;
   /** POST /{domain}/auth with signed XDR → JWT bearer token */
   submitChallenge: (domain: string, signedXdr: string) => Promise<string>;
+}
+
+/** Configuration for client-side SEP-10 challenge verification */
+export interface Sep10ChallengeVerificationConfig extends VerifyChallengeOptions {
+  /** Enable/disable challenge verification (default: true) */
+  enabled?: boolean;
+  /** Called when verification fails */
+  onVerificationFailed?: (error: string, challengeXdr: string) => void;
 }
 
 export interface UseSep10AuthResult {
@@ -56,6 +65,7 @@ export interface UseSep10AuthResult {
 export function useSep10Auth(
   anchorDomain: string,
   adapters: Sep10AuthAdapters,
+  challengeVerification?: Sep10ChallengeVerificationConfig,
 ): UseSep10AuthResult {
   const [token, setToken] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -68,6 +78,9 @@ export function useSep10Auth(
 
   const domainRef = useRef(anchorDomain);
   domainRef.current = anchorDomain;
+
+  const verificationRef = useRef<Sep10ChallengeVerificationConfig | undefined>(challengeVerification);
+  verificationRef.current = challengeVerification;
 
   // In-flight guard: prevents duplicate concurrent SEP-10 flows.
   const inFlightRef = useRef(false);
@@ -90,6 +103,31 @@ export function useSep10Auth(
     try {
       const domain = domainRef.current;
       const challengeXdr = await adaptersRef.current.fetchChallenge(domain, walletAddress);
+
+      // Verify challenge before signing
+      const verification = verificationRef.current;
+      if (verification?.enabled !== false) {
+        const serverKey = verification?.serverSigningKey;
+        const homeDomain = verification?.homeDomain ?? domain;
+        const webAuthDomain = verification?.webAuthDomain ?? domain;
+
+        if (serverKey) {
+          const result = verifyChallenge(challengeXdr, {
+            serverSigningKey: serverKey,
+            homeDomain,
+            webAuthDomain,
+            maxTimeboundsAge: verification?.maxTimeboundsAge,
+            allowNonZeroSequence: verification?.allowNonZeroSequence,
+          });
+
+          if (!result.valid) {
+            const err = new Error(`Challenge verification failed: ${result.error}`);
+            verification?.onVerificationFailed?.(result.error!, challengeXdr);
+            throw err;
+          }
+        }
+      }
+
       const signedXdr = await adaptersRef.current.signChallenge(challengeXdr);
       const jwt = await adaptersRef.current.submitChallenge(domain, signedXdr);
       setToken(jwt);

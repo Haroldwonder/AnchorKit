@@ -82,7 +82,7 @@ Write-Host "Step 3: Setting credential policies..."
 $invokeArgs = @("--id", $ContractId, "--source", $AdminAccount, "--network", $Network, "--")
 
 Write-Host "  Setting policy for KYC provider (30-day rotation)..."
-soroban contract invoke @invokeArgs `
+stellar contract invoke @invokeArgs `
     set_credential_policy `
     --attestor $KycProvider `
     --rotation_interval_seconds 2592000 `
@@ -90,7 +90,7 @@ soroban contract invoke @invokeArgs `
 if ($LASTEXITCODE -ne 0) { Write-Host "    (Skipped - contract not deployed)" }
 
 Write-Host "  Setting policy for bank integration (7-day rotation)..."
-soroban contract invoke @invokeArgs `
+stellar contract invoke @invokeArgs `
     set_credential_policy `
     --attestor $BankIntegration `
     --rotation_interval_seconds 604800 `
@@ -110,7 +110,7 @@ $KycExpiry   = $Now + 2592000  # 30 days
 $BankExpiry  = $Now + 604800   # 7 days
 
 Write-Host "  Storing KYC provider credential..."
-soroban contract invoke @invokeArgs `
+stellar contract invoke @invokeArgs `
     store_encrypted_credential `
     --attestor $KycProvider `
     --credential_type ApiKey `
@@ -119,7 +119,7 @@ soroban contract invoke @invokeArgs `
 if ($LASTEXITCODE -ne 0) { Write-Host "    (Skipped - contract not deployed)" }
 
 Write-Host "  Storing bank integration credential..."
-soroban contract invoke @invokeArgs `
+stellar contract invoke @invokeArgs `
     store_encrypted_credential `
     --attestor $BankIntegration `
     --credential_type BearerToken `
@@ -138,7 +138,7 @@ Write-Host "Step 5: Checking credential rotation status..."
 function Check-Rotation {
     param([string]$Attestor, [string]$Name)
     Write-Host "  Checking $Name..."
-    $result = soroban contract invoke --id $ContractId --network $Network -- `
+    $result = stellar contract invoke --id $ContractId --network $Network -- `
         check_credential_rotation --attestor $Attestor 2>$null
     if ($result -eq "true") {
         Write-Host "    [!] Rotation required!" -ForegroundColor Yellow
@@ -160,7 +160,7 @@ function Rotate-Credential {
     param([string]$Attestor, [string]$Name, [string]$NewCredential, [string]$CredentialType, [long]$Expiry)
     Write-Host "  Rotating credential for $Name..."
     $encryptedNew = Encrypt-Credential $NewCredential
-    soroban contract invoke @invokeArgs `
+    stellar contract invoke @invokeArgs `
         rotate_credential `
         --attestor $Attestor `
         --credential_type $CredentialType `
@@ -184,7 +184,7 @@ Write-Host "Step 7: Verifying credential policies..."
 function Verify-Policy {
     param([string]$Attestor, [string]$Name)
     Write-Host "  Verifying policy for $Name..."
-    soroban contract invoke --id $ContractId --network $Network -- `
+    stellar contract invoke --id $ContractId --network $Network -- `
         get_credential_policy --attestor $Attestor 2>$null
     if ($LASTEXITCODE -ne 0) { Write-Host "    (Skipped - contract not deployed)" }
 }

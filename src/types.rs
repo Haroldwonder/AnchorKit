@@ -1,4 +1,5 @@
 use soroban_sdk::{contracttype, Address, Bytes, String, Symbol, Vec};
+use crate::rate_limiter::RateLimitConfig;
 extern crate alloc;
 use alloc::string::String as AllocString;
 
@@ -15,6 +16,7 @@ pub enum TransactionStatus {
     PendingAnchor,
     PendingTrust,
     PendingUser,
+    PendingUserTransferStart,
     Completed,
     Refunded,
     Expired,
@@ -29,7 +31,8 @@ impl TransactionStatus {
             "pending_external" => Self::PendingExternal,
             "pending_anchor" => Self::PendingAnchor,
             "pending_trust" => Self::PendingTrust,
-            "pending_user" | "pending_user_transfer_start" => Self::PendingUser,
+            "pending_user" => Self::PendingUser,
+            "pending_user_transfer_start" => Self::PendingUserTransferStart,
             "completed" => Self::Completed,
             "refunded" => Self::Refunded,
             "expired" => Self::Expired,
@@ -48,6 +51,7 @@ impl TransactionStatus {
             Self::PendingAnchor => "pending_anchor",
             Self::PendingTrust => "pending_trust",
             Self::PendingUser => "pending_user",
+            Self::PendingUserTransferStart => "pending_user_transfer_start",
             Self::Completed => "completed",
             Self::Refunded => "refunded",
             Self::Expired => "expired",
@@ -242,6 +246,17 @@ pub struct Attestation {
     /// Optional Unix timestamp (seconds) after which this attestation is
     /// considered expired. `None` means no expiry.
     pub expires_at: Option<u64>,
+}
+
+/// One page of subject attestations (#1563). `next_cursor` indexes the
+/// subject's attestation-ID index and may be passed back as `offset` to fetch
+/// the next page, even when revoked/expired entries were skipped.
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestationPage {
+    pub attestations: Vec<Attestation>,
+    pub next_cursor: u64,
+    pub has_more: bool,
 }
 
 #[contracttype]
@@ -607,4 +622,32 @@ pub struct StoredCredential {
     pub encrypted_value: String,
     pub expires_at: u64,
     pub updated_at: u64,
+}
+
+/// Cheap read-only snapshot for uptime checks and the CLI `doctor` command (#1568).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractHealth {
+    pub initialized: bool,
+    pub paused: bool,
+    /// `None` until the contract has been initialized.
+    pub admin: Option<Address>,
+    pub attestor_count: u64,
+    pub attestation_counter: u64,
+    pub session_counter: u64,
+    pub contract_version: String,
+}
+
+/// All admin-tunable settings in one view, used by the CLI `doctor` (#1567).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractConfig {
+    pub max_page_size: u32,
+    pub replay_window_seconds: u64,
+    pub clock_skew_seconds: u64,
+    pub health_failure_threshold: u32,
+    pub rate_limit_config: RateLimitConfig,
+    pub audit_log_max_size: u64,
+    pub attestor_cap: u64,
+    pub paused: bool,
 }
