@@ -42,7 +42,7 @@ fn resolve_log_level(flag: Option<&str>) -> String {
 fn resolve_log_format(flag: Option<&str>) -> String {
     match flag {
         Some(f) if matches!(f, "text" | "json") => f.to_string(),
-        _ => match std::env::var("ANCHORKIT_LOG_FORMAT").as_deref() {
+        _ => match std::env::var("ANCHORKIT_LOG_FORMAT").ok().as_deref() {
             Some("json") => "json".to_string(),
             _ => "text".to_string(),
         },
@@ -317,7 +317,8 @@ fn main() {
     let log_level = resolve_log_level(cli.log_level.as_deref());
     let env_filter = EnvFilter::try_new(&log_level).unwrap_or_else(|_| EnvFilter::new("info"));
     if log_format == "json" {
-        fmt::json()
+        fmt()
+            .json()
             .with_env_filter(env_filter)
             .with_target(false)
             .init();

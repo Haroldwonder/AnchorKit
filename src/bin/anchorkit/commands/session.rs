@@ -20,7 +20,7 @@ pub fn run_session_create(initiator: Option<String>) {
     println!("◈ Creating new session");
     println!();
 
-    match initiator {
+    match &initiator {
         Some(addr) => {
             println!("  Initiator: {}", addr);
         }

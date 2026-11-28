@@ -9,9 +9,9 @@ use soroban_client::{
     transaction::{TransactionBehavior, TransactionBuilder, TransactionBuilderBehavior},
     xdr::{
         ContractDataDurability, LedgerEntryData, LedgerKey, LedgerKeyContractData, OperationBody,
-        ScMapEntry, ScSymbol, ScVal, SorobanCredentials, StringM, VecM,
+        ScMap, ScMapEntry, ScString, ScSymbol, ScVal, ScVec, SorobanCredentials, StringM, VecM,
     },
-    Options, Server,
+    Durability, Options, Server,
 };
 use std::{env, str::FromStr, time::Duration};
 
@@ -83,6 +83,7 @@ pub fn simulate_contract_call(function: &str, args: Vec<ScVal>) -> Result<ScVal,
     let rpc_url = get_rpc_url();
     let source = std::env::var("ANCHORKIT_SIMULATION_ACCOUNT")
         .unwrap_or_else(|_| "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN".to_string());
+    let function = function.to_string();
 
     run_rpc(async move {
         let rpc = Server::new(&rpc_url, Options::default()).map_err(|e| e.to_string())?;
@@ -97,12 +98,12 @@ pub fn simulate_contract_call(function: &str, args: Vec<ScVal>) -> Result<ScVal,
         let mut account = Account::new(&source, "0").map_err(|e| e.to_string())?;
         let contract = Contracts::new(&contract_id).map_err(|e| e.to_string())?;
         let operation = contract.call(
-            function,
+            &function,
             if args.is_empty() { None } else { Some(args) },
         );
         let mut builder = TransactionBuilder::new(&mut account, &passphrase, None);
         builder
-            .fee(100)
+            .fee(100u32)
             .set_timeout(30)
             .map_err(|e| format!("Could not set transaction timeout: {e}"))?
             .add_operation(operation);
@@ -123,7 +124,7 @@ pub fn simulate_contract_call(function: &str, args: Vec<ScVal>) -> Result<ScVal,
 
 fn scval_string(value: &str) -> Result<ScVal, String> {
     let string = StringM::from_str(value).map_err(|e| format!("Invalid string argument: {e}"))?;
-    Ok(ScVal::String(string))
+    Ok(ScVal::String(ScString(string)))
 }
 
 fn scval_map(entries: Vec<(&str, ScVal)>) -> Result<ScVal, String> {
@@ -135,7 +136,7 @@ fn scval_map(entries: Vec<(&str, ScVal)>) -> Result<ScVal, String> {
         .collect::<Result<Vec<_>, _>>()?;
     let entries =
         VecM::try_from(entries).map_err(|e| format!("Could not encode contract map: {e}"))?;
-    Ok(ScVal::Map(Some(entries)))
+    Ok(ScVal::Map(Some(ScMap(entries))))
 }
 
 fn routing_options_arg(
@@ -156,12 +157,12 @@ fn routing_options_arg(
         .map_err(|e| format!("Could not encode fallback chain: {e}"))?;
     scval_map(vec![
         ("request", request),
-        ("strategy", ScVal::Vec(Some(strategies))),
+        ("strategy", ScVal::Vec(Some(ScVec(strategies)))),
         ("min_reputation", ScVal::U32(0)),
         ("max_anchors", ScVal::U32(0)),
         ("require_kyc", ScVal::Bool(false)),
         ("jurisdiction", ScVal::Void),
-        ("fallback_chain", ScVal::Vec(Some(fallback))),
+        ("fallback_chain", ScVal::Vec(Some(ScVec(fallback)))),
     ])
 }
 
@@ -304,7 +305,7 @@ fn storage_key(variant: &str, session_id: Option<u64>) -> Result<ScVal, String> 
         values.push(ScVal::U64(session_id));
     }
     let values = VecM::try_from(values).map_err(|e| format!("Invalid storage key: {e}"))?;
-    Ok(ScVal::Vec(Some(values)))
+    Ok(ScVal::Vec(Some(ScVec(values))))
 }
 
 fn contract_data_value(
@@ -454,7 +455,7 @@ pub fn create_session_rpc(initiator_addr: Option<String>) -> Result<u64, String>
 
         let mut builder = TransactionBuilder::new(&mut account, &passphrase, None);
         builder
-            .fee(100)
+            .fee(100u32)
             .set_timeout(30)
             .map_err(|e| format!("Could not set transaction timeout: {e}"))?
             .add_operation(operation);
@@ -579,7 +580,7 @@ pub fn get_session_rpc(session_id: u64) -> Result<SessionData, String> {
             .get_contract_data(
                 &contract_id,
                 storage_key("SessionOpCount", Some(session_id))?,
-                ContractDataDurability::Persistent,
+                Durability::Persistent,
             )
             .await
         {
@@ -638,7 +639,7 @@ pub fn get_attestation_rpc(attestation_id: u64, rpc_url: &str) -> Result<Attesta
                 .map_err(|e| format!("Invalid storage key: {e}"))?;
             let revoked_key = contract_data_key(
                 &contract_id,
-                ScVal::Vec(Some(revoked_key)),
+                ScVal::Vec(Some(ScVec(revoked_key))),
                 ContractDataDurability::Persistent,
             )?;
             let revoked = rpc
@@ -683,7 +684,7 @@ pub fn list_sessions_rpc(limit: u64) -> Result<Vec<SessionData>, String> {
         //
         // Fix: fetch the contract instance ledger entry and look up the
         // `SESS_CNT` key in its `storage` map.
-        use soroban_client::xdr::{LedgerKeyContractInstance, ScContractInstance};
+        use soroban_client::xdr::ScContractInstance;
 
         let contract = Contracts::new(&contract_id).map_err(|e| e.to_string())?;
         let contract_address = contract
@@ -694,7 +695,8 @@ pub fn list_sessions_rpc(limit: u64) -> Result<Vec<SessionData>, String> {
         let instance_key = LedgerKey::ContractData(LedgerKeyContractData {
             contract: contract_address.clone(),
             key: ScVal::LedgerKeyContractInstance,
-            durability: ContractDataDurability::Instance,
+            // Instance storage lives in the Persistent instance entry.
+            durability: ContractDataDurability::Persistent,
         });
 
         // Use getLedgerEntries on the instance key — the RPC returns the
@@ -911,7 +913,7 @@ fn health_key(contract_id: &str, anchor: &str) -> Result<LedgerKey, String> {
         .map_err(|e| format!("Invalid storage key: {e}"))?;
     contract_data_key(
         contract_id,
-        ScVal::Vec(Some(values)),
+        ScVal::Vec(Some(ScVec(values))),
         ContractDataDurability::Persistent,
     )
 }

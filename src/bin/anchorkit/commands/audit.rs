@@ -138,20 +138,6 @@ fn print_audit_entry_compact(entry: &AuditLogEntry) {
              result_truncated);
 }
 
-fn format_timestamp(ts: u64) -> String {
-    // ts is Unix timestamp in seconds
-    let secs_per_day = 86400;
-    let secs_per_hour = 3600;
-    let secs_per_minute = 60;
-    
-    let days = ts / secs_per_day;
-    let hours = (ts % secs_per_day) / secs_per_hour;
-    let minutes = (ts % secs_per_hour) / secs_per_minute;
-    let seconds = ts % secs_per_minute;
-    
-    format!("{}d {:02}h {:02}m {:02}s", days, hours, minutes, seconds)
-}
-
 // ── On-chain data fetching ───────────────────────────────────────────────────
 
 /// Fetch a single audit log entry from on-chain contract storage.
