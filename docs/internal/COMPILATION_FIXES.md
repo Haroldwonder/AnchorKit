@@ -121,7 +121,7 @@ The new code added in this PR (SDK Configuration and Deterministic Hashing) is s
 - ✅ Syntax validation of new types in `src/types.rs`
 - ✅ Test structure in `src/sdk_config_tests.rs`
 - ✅ Test structure in `src/deterministic_hash_tests.rs`
-- ✅ HTML form validation in `sdk_config_form.html`
+- ✅ HTML form validation in `tools/sdk_config_form.html`
 
 ### What Needs Testing (After Error Enum Fix)
 - Full compilation with `cargo build`

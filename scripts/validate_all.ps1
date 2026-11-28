@@ -3,6 +3,9 @@
 
 $ErrorActionPreference = "Stop"
 
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RootDir = Split-Path -Parent $ScriptDir
+
 Write-Output "🔍 AnchorKit Pre-Deployment Validation"
 Write-Output "========================================"
 Write-Output ""
@@ -30,8 +33,8 @@ Write-Output ""
 
 # Validate all configuration files
 Write-Output "📋 Validating configuration files..."
-$ConfigDir = "configs"
-$SchemaFile = "config_schema.json"
+$ConfigDir = Join-Path $RootDir "configs"
+$SchemaFile = Join-Path $RootDir "config_schema.json"
 $Failed = 0
 
 if (-not (Test-Path $SchemaFile)) {
@@ -44,7 +47,7 @@ $configFiles = Get-ChildItem -Path $ConfigDir -Include *.json,*.toml -File
 foreach ($configFile in $configFiles) {
     Write-Output "  Validating $($configFile.Name)..."
 
-    $result = python validate_config_strict.py $configFile.FullName $SchemaFile 2>&1
+    $result = python $Validator $configFile.FullName $SchemaFile 2>&1
 
     if ($LASTEXITCODE -eq 0) {
         Write-Output "  ✅ $($configFile.Name)"

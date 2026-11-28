@@ -10,9 +10,10 @@ mod routing_tests {
     use rand::rngs::OsRng;
 
     use crate::contract::{AnchorKitContract, AnchorKitContractClient};
-    use crate::types::{RoutingOptions, RoutingRequest};
+    use crate::types::{AssetInfo, RoutingOptions, RoutingRequest, StellarToml};
+    use crate::storage::StorageKey;
     use crate::sep10_test_util::register_attestor_with_sep10;
-    use crate::events::RoutingDecisionEvent;
+    use crate::events::{AnchorReactivated, AnchorRemoved, RoutingDecisionEvent};
 
     fn make_env() -> Env {
         let env = Env::default();
@@ -925,6 +926,61 @@ mod routing_tests {
         assert_eq!(client.get_anchor_jurisdiction(&anchor), None);
     }
 
+    #[test]
+    fn test_set_anchor_jurisdiction_accepts_alpha3_codes() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        for code in ["USA", "GBR", "DEU", "NGA"] {
+            client.set_anchor_jurisdiction(&anchor, &jurisdiction(&env, code));
+            assert_eq!(
+                client.get_anchor_jurisdiction(&anchor),
+                jurisdiction(&env, code)
+            );
+        }
+    }
+
+    #[test]
+    fn test_set_anchor_jurisdiction_rejects_invalid_codes() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        for code in ["usa", "Usa", "US", "USAA", "", "United States", "US1", "U A", "ÜSA"] {
+            let result = client.try_set_anchor_jurisdiction(&anchor, &jurisdiction(&env, code));
+            assert_eq!(
+                result.unwrap_err().unwrap(),
+                crate::errors::ErrorCode::ValidationError,
+                "expected ValidationError for jurisdiction {:?}",
+                code
+            );
+            assert_eq!(client.get_anchor_jurisdiction(&anchor), None);
+        }
+    }
+
+    #[test]
+    fn test_set_anchor_jurisdiction_invalid_code_keeps_previous_value() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+
+        let anchor = Address::generate(&env);
+        register_anchor(&env, &client, &anchor);
+        client.set_anchor_jurisdiction(&anchor, &jurisdiction(&env, "USA"));
+
+        let result = client.try_set_anchor_jurisdiction(&anchor, &jurisdiction(&env, "usa"));
+        assert!(result.is_err());
+        assert_eq!(
+            client.get_anchor_jurisdiction(&anchor),
+            jurisdiction(&env, "USA")
+        );
+    }
+
     fn make_lowest_fee_options(env: &Env) -> RoutingOptions {
         let mut strategy = Vec::new(env);
         strategy.push_back(Symbol::new(env, "LowestFee"));
@@ -953,7 +1009,7 @@ mod routing_tests {
         submit_standard_quote(&env, &client, &anchor2, 20);
 
         let options = make_lowest_fee_options(&env);
-        let dry_run_anchor = client.route_transaction_dry_run(&options);
+        let dry_run_anchor = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
         let routed = client.route_transaction(&options);
 
         assert_eq!(dry_run_anchor, anchor2);
@@ -973,7 +1029,7 @@ mod routing_tests {
 
         let options = make_lowest_fee_options(&env);
         let events_before = env.events().all().len();
-        let dry_run_anchor = client.route_transaction_dry_run(&options);
+        let dry_run_anchor = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
         let events_after = env.events().all().len();
 
         assert_eq!(dry_run_anchor, anchor);
@@ -1004,7 +1060,7 @@ mod routing_tests {
 
         let options = make_lowest_fee_options(&env);
         let events_before = env.events().all().len();
-        let dry_run_anchor = client.route_transaction_dry_run(&options);
+        let dry_run_anchor = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
         let events_after = env.events().all().len();
 
         assert_eq!(dry_run_anchor, valid_anchor);
@@ -1033,7 +1089,7 @@ mod routing_tests {
         register_anchor(&env, &client, &us_anchor);
         register_anchor(&env, &client, &eu_anchor);
         client.set_anchor_jurisdiction(&us_anchor, &jurisdiction(&env, "USA"));
-        client.set_anchor_jurisdiction(&eu_anchor, &jurisdiction(&env, "EU"));
+        client.set_anchor_jurisdiction(&eu_anchor, &jurisdiction(&env, "DEU"));
         submit_standard_quote(&env, &client, &us_anchor, 10);
         submit_standard_quote(&env, &client, &eu_anchor, 50);
 
@@ -1045,11 +1101,11 @@ mod routing_tests {
             min_reputation: 0,
             max_anchors: 0,
             require_kyc: false,
-            jurisdiction: jurisdiction(&env, "EU"),
+            jurisdiction: jurisdiction(&env, "DEU"),
             fallback_chain: Vec::new(&env),
         };
 
-        let dry_run_anchor = client.route_transaction_dry_run(&options);
+        let dry_run_anchor = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
         assert_eq!(dry_run_anchor, eu_anchor);
     }
 
@@ -1064,7 +1120,7 @@ mod routing_tests {
         submit_standard_quote(&env, &client, &anchor, 25);
 
         let options = make_lowest_fee_options(&env);
-        let _ = client.route_transaction_dry_run(&options);
+        let _ = client.route_transaction_dry_run(&options).get(0).unwrap().anchor;
 
         let events_before = env.events().all().len();
         let routed = client.route_transaction(&options);
@@ -1141,7 +1197,6 @@ mod routing_tests {
         assert_eq!(best.anchor, healthy);
         assert_ne!(best.anchor, no_quotes);
     }
-}
 
     #[test]
     fn test_single_anchor_routing_returns_that_anchor() {
@@ -1208,3 +1263,118 @@ mod routing_tests {
         // Must panic — no active anchors remain
         client.route_transaction(&options);
     }
+
+    /// Cache a SEP-6 asset entry with the given fixed fee for an anchor.
+    fn cache_asset_fixed_fee(env: &Env, client: &AnchorKitContractClient, anchor: &Address, fixed: u64) {
+        let mut currencies = Vec::new(env);
+        currencies.push_back(AssetInfo {
+            code: String::from_str(env, "USD"),
+            issuer: String::from_str(env, "GABC123"),
+            deposit_enabled: true,
+            withdrawal_enabled: true,
+            deposit_fee_fixed: fixed,
+            deposit_fee_percent: 0,
+            withdrawal_fee_fixed: fixed,
+            withdrawal_fee_percent: 0,
+            deposit_min_amount: 1,
+            deposit_max_amount: 10_000_000,
+            withdrawal_min_amount: 1,
+            withdrawal_max_amount: 10_000_000,
+            decimals: 7,
+        });
+        let toml = StellarToml {
+            version: String::from_str(env, "2.0.0"),
+            network_passphrase: String::from_str(env, "Test SDF Network ; September 2015"),
+            accounts: Vec::new(env),
+            signing_key: None,
+            currencies,
+            fiat_currencies: Vec::new(env),
+            transfer_server: String::from_str(env, "https://api.example.com"),
+            transfer_server_sep0024: String::from_str(env, "https://api.example.com/sep24"),
+            kyc_server: String::from_str(env, "https://kyc.example.com"),
+            web_auth_endpoint: String::from_str(env, "https://auth.example.com"),
+            claimable_balance_supported: false,
+        };
+        env.as_contract(&client.address, || {
+            env.storage().temporary().set(&StorageKey::TomlCache(anchor.clone()), &toml);
+        });
+    }
+
+    fn strategy_options(env: &Env, name: &str, amount: u64) -> RoutingOptions {
+        let mut strategy = Vec::new(env);
+        strategy.push_back(Symbol::new(env, name));
+        let mut request = make_request(env);
+        request.amount = amount;
+        RoutingOptions {
+            request,
+            strategy,
+            min_reputation: 0,
+            max_anchors: 0,
+            require_kyc: false,
+            jurisdiction: None,
+            fallback_chain: Vec::new(env),
+        }
+    }
+
+    #[test]
+    fn test_lowest_total_cost_differs_from_lowest_fee_for_small_amounts() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+        let high_percentage = Address::generate(&env);
+        let low_percentage = Address::generate(&env);
+        register_anchor(&env, &client, &high_percentage);
+        register_anchor(&env, &client, &low_percentage);
+        submit_standard_quote(&env, &client, &high_percentage, 10); // 10 bps, no fixed fee
+        submit_standard_quote(&env, &client, &low_percentage, 5);   // 5 bps + 100 fixed
+        cache_asset_fixed_fee(&env, &client, &high_percentage, 0);
+        cache_asset_fixed_fee(&env, &client, &low_percentage, 100);
+
+        // LowestFee only compares bps and picks the low-percentage anchor.
+        let fee_options = strategy_options(&env, "LowestFee", 5_000);
+        assert_eq!(client.route_transaction(&fee_options).anchor, low_percentage);
+
+        // Including the fixed fee reverses the decision for a small amount.
+        let total_options = strategy_options(&env, "LowestTotalCost", 5_000);
+        assert_eq!(client.route_transaction(&total_options).anchor, high_percentage);
+
+        // For large amounts the percentage dominates and LowestTotalCost agrees.
+        let large_options = strategy_options(&env, "LowestTotalCost", 1_000_000);
+        assert_eq!(client.route_transaction(&large_options).anchor, low_percentage);
+        let fee_large = strategy_options(&env, "LowestFee", 1_000_000);
+        assert_eq!(client.route_transaction(&fee_large).anchor, low_percentage);
+    }
+
+    #[test]
+    fn test_route_candidates_returns_ranked_list_with_exclusion_reasons() {
+        let env = make_env();
+        set_ledger(&env, 1_000_000);
+        let (client, _) = setup(&env);
+        let best = Address::generate(&env);
+        let worse = Address::generate(&env);
+        let inactive = Address::generate(&env);
+        for anchor in [&best, &worse, &inactive] {
+            register_anchor(&env, &client, anchor);
+        }
+        submit_standard_quote(&env, &client, &best, 10);
+        submit_standard_quote(&env, &client, &worse, 50);
+        submit_standard_quote(&env, &client, &inactive, 1);
+        client.update_health_status(&inactive, &200u64, &2u32, &5000u32);
+
+        let candidates = client.route_candidates(&strategy_options(&env, "LowestFee", 5_000));
+        assert_eq!(candidates.len(), 3);
+        assert_eq!(candidates.get(0).unwrap().anchor, best);
+        assert_eq!(candidates.get(0).unwrap().reason, String::from_str(&env, "Eligible"));
+        assert_eq!(candidates.get(1).unwrap().anchor, worse);
+        assert!(candidates.get(0).unwrap().score > candidates.get(1).unwrap().score);
+        let last = candidates.get(2).unwrap();
+        assert_eq!(last.anchor, inactive);
+        assert_eq!(last.reason, String::from_str(&env, "Inactive"));
+        assert_eq!(last.score, i64::MIN);
+
+        // The dry run now exposes the same full ranked list.
+        let dry_run = client.route_transaction_dry_run(&strategy_options(&env, "LowestFee", 5_000));
+        assert_eq!(dry_run.len(), 3);
+        assert_eq!(dry_run.get(0).unwrap().anchor, best);
+    }
+}

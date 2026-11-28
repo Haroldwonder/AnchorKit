@@ -16,6 +16,8 @@ pub enum StorageKey {
     /// Ed25519 attestation-signing keys for an issuer (persistent). Kept separate
     /// from `Sep10Key` so web-auth key rotation never affects attestation signing.
     AttestationKey(Address),
+    /// Active self-service attestation key rotation (old key + overlap expiry).
+    AttestationKeyRotation(Address),
     /// Whether an address is a registered attestor (persistent).
     Attestor(Address),
     /// Revocation marker for an attestor — present when the attestor has been
@@ -25,6 +27,8 @@ pub enum StorageKey {
     /// First attestation ID not covered by the attestor's latest revocation.
     /// Attestations with a lower ID remain revoked after re-registration.
     AttestorRevokedBefore(Address),
+    /// Admin suspension flag: freezes an attestor without revoking it (#1570).
+    AttestorSuspended(Address),
     /// HTTPS endpoint URL for an attestor (persistent).
     Endpoint(Address),
     /// Supported services record for an anchor (persistent).
@@ -33,8 +37,10 @@ pub enum StorageKey {
     Used(Bytes),
     /// Attestation record by ID (persistent).
     Attest(u64),
-    /// Per-subject attestation count (persistent).
+    /// Per-subject attestation index high-water mark (persistent).
     SubjectCount(Address),
+    /// Active (non-revoked) attestation count for a subject (persistent).
+    SubjectActiveCount(Address),
     /// Per-subject attestation index entry (persistent).
     SubjectAttestation(Address, u64),
     /// Tracing span keyed by request-ID bytes (temporary).
@@ -53,6 +59,12 @@ pub enum StorageKey {
     Quote(Address, u64),
     /// Latest quote ID for an anchor (persistent).
     LatestQuote(Address),
+    /// Cancellation marker for an anchor's quote (persistent, #1508).
+    QuoteCancelled(Address, u64),
+    /// Index of an anchor's active quote IDs, pruned on expiry/cancel (persistent, #1510).
+    AnchorQuotes(Address),
+    /// Anchors whose latest quote covers `(base_asset, quote_asset)` (persistent, #1511).
+    PairAnchors(String, String),
     /// Metadata cache for an anchor (temporary).
     MetadataCache(Address),
     /// Capabilities cache for an anchor (temporary).

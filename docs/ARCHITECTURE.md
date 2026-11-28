@@ -2,6 +2,8 @@
 
 This document explains how the core AnchorKit components interact, including the typical data flow for a deposit operation.
 
+> New to the terminology? See the [Glossary](./GLOSSARY.md). Design rationale lives in [Architecture Decision Records](./adr/README.md).
+
 ## Component Interaction
 
 AnchorKit is designed as a layered integration stack. A typical deposit request passes through the following components:
@@ -168,7 +170,7 @@ All contract state is managed via the `StorageKey` enum defined in `src/storage.
 | `Services(Address)` | Persistent | `AnchorServices` | Supported services record for an anchor; lists available deposit/withdrawal endpoints |
 | `Health(Address)` | Persistent | `HealthStatus` | Health status snapshot for an anchor; tracks latency, failure count, and availability |
 | `AnchorMeta(Address)` | Persistent | Metadata object | Routing and operational metadata for an anchor; used for intelligent request routing |
-| `AnchorJurisdiction(Address)` | Persistent | `String` | ISO 3166-1 alpha-3 jurisdiction code for an anchor; used for regulatory compliance and geographic routing |
+| `AnchorJurisdiction(Address)` | Persistent | `String` | ISO 3166-1 alpha-3 jurisdiction code for an anchor (validated: exactly 3 ASCII uppercase letters); used for regulatory compliance and geographic routing |
 
 #### Caching (Temporary Storage)
 | Variant | Storage | Type | Description |
@@ -189,6 +191,7 @@ All contract state is managed via the `StorageKey` enum defined in `src/storage.
 |---------|---------|------|-------------|
 | `MaxPageSize` | Instance | `u32` | Configuration: maximum allowed page size for list operations (e.g., `list_attestations`) |
 | `IsPaused` | Instance | `bool` | Contract pause state; when `true`, most contract operations are blocked for emergency situations |
+| `ContractVersion` | Instance | `u32` | Contract code version; starts at 1 and is incremented by each admin `upgrade` (see [CONTRACT_UPGRADE.md](./guides/CONTRACT_UPGRADE.md)) |
 
 ### Instance Storage Keys (Vec<Symbol>)
 
