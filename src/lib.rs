@@ -17,7 +17,8 @@ pub mod transaction_state_tracker;
 pub mod transport;
 mod types;
 pub mod sep6;
-pub mod sep12;
+#[cfg(feature = "std")]
+pub mod webhook;
 
 pub use errors::{AnchorKitError, ErrorCode};
 
@@ -40,8 +41,7 @@ pub use domain_validator::validate_anchor_domain;
 pub use sep6::{
     fetch_transaction_status, initiate_deposit, initiate_withdrawal, withdraw_exchange,
     deposit_exchange, validate_amount, get_fee_estimate, get_transactions,
-    fetch_sep6_info, handle_sep6_info_http_status,
-    RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
+    signing_key_bytes, RawDepositResponse, RawTransactionResponse, RawWithdrawalResponse, RawWithdrawExchangeResponse,
     TransactionKind, TransactionStatusResponse, RawDepositExchangeRequest, DepositExchangeResponse,
     AssetLimits, AnchorFeeData, FeeEstimate, FeeOperation, FeeSchedule, TransactionFilters,
     RawSep6InfoResponse, RawSep6AssetEntry, RawSep6DepositInfo, RawSep6WithdrawInfo, RawSep6Field,
@@ -75,11 +75,8 @@ pub use sep12::{
 };
 pub use types::{DepositResponse, WithdrawalResponse, TransactionStatus};
 pub use types::Session;
-pub use types::{AnchorMetadata, RoutingOptions, RoutingRequest};
-pub use contract::{
-    get_admin, get_attestation_count, get_endpoint, set_endpoint, AnchorKitContract,
-    MAX_REVOKE_BATCH_SIZE,
-};
+pub use types::{AnchorMetadata, RouteCandidate, RoutingOptions, RoutingRequest};
+pub use contract::{AnchorKitContract, get_admin, get_endpoint, set_endpoint, get_attestation_count};
 pub use events::EndpointUpdated;
 pub use transaction_state_tracker::{
     StateTransition, TransactionState, TransactionStateRecord, TransactionStateTracker,

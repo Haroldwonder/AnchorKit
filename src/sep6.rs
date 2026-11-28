@@ -331,6 +331,23 @@ fn decode_strkey(s: &str) -> Option<[u8; 35]> {
     Some(out)
 }
 
+/// Decodes the ed25519 public key bytes from a Stellar `SIGNING_KEY`
+/// (StrKey "G..." account address). Returns `None` for malformed keys.
+pub fn signing_key_bytes(s: &str) -> Option<[u8; 32]> {
+    let decoded = decode_strkey(s)?;
+    if decoded[0] != STRKEY_VERSION_ACCOUNT_ID {
+        return None;
+    }
+    let payload = &decoded[..33];
+    let expected = u16::from_le_bytes([decoded[33], decoded[34]]);
+    if crc16_xmodem(payload) != expected {
+        return None;
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&decoded[1..33]);
+    Some(key)
+}
+
 /// Computes the CRC16-XModem checksum used by Stellar's StrKey encoding.
 fn crc16_xmodem(data: &[u8]) -> u16 {
     let mut crc: u16 = 0;

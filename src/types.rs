@@ -290,6 +290,19 @@ pub struct RoutingRequest {
     pub operation_type: u32,
 }
 
+/// One entry in the ranked list returned by `route_candidates`.
+///
+/// `score` is higher-is-better for the selected strategy; excluded anchors
+/// receive `i64::MIN`. `reason` is `"Eligible"` or names the filter that
+/// excluded the anchor (e.g. `"Inactive"`, `"LowReputation"`).
+#[contracttype]
+#[derive(Clone)]
+pub struct RouteCandidate {
+    pub anchor: Address,
+    pub score: i64,
+    pub reason: String,
+}
+
 /// Options passed to `route_transaction` to control anchor selection.
 ///
 /// # Strategy
@@ -300,6 +313,7 @@ pub struct RoutingRequest {
 /// | Symbol                | Behaviour                                                  |
 /// |-----------------------|------------------------------------------------------------|
 /// | `"LowestFee"`         | Selects the anchor with the lowest `fee_percentage`.       |
+/// | `"LowestTotalCost"`   | Lowest percentage fee plus the anchor's fixed SEP-6 fee for the requested amount. |
 /// | `"FastestSettlement"` | Selects the anchor with the lowest `average_settlement_time`. |
 /// | `"HighestReputation"` | Selects the anchor with the highest `reputation_score`.    |
 /// | `"Balanced"`          | Composite scoring: (40_000/fee) + (30_000/time) + (reputation*3000/10000). |
