@@ -1,4 +1,4 @@
-.PHONY: build test testnet-integration lint fmt clean deploy-testnet help build-wasm storybook validate coverage bench bindings bindings-check
+.PHONY: build test testnet-integration lint fmt clean deploy-testnet help build-wasm storybook validate coverage bench perf-docs
 
 ## build: Build the contract in release mode
 build:
@@ -51,6 +51,10 @@ coverage:
 	@cargo tarpaulin --ignore-tests 2>/dev/null || cargo test
 	@echo "(2/2) UI coverage"
 	cd ui && npm run test:coverage
+
+## perf-docs: Regenerate docs/performance.md (gas/resource cost table for entry points)
+perf-docs:
+	./scripts/gen_performance_docs.sh
 
 ## fmt: Format code with rustfmt
 fmt:

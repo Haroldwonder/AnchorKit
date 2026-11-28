@@ -1,0 +1,56 @@
+/* Theme definitions for the app.
+ * Themes are applied by setting data-theme on the root element.
+ * Available themes: light, dark, high-contrast.
+ */
+
+:root,
+[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-surface: #f5f5f5;
+  --color-text: #1a1a1a;
+  --color-text-muted: #595959;
+  --color-border: #d0d0d0;
+  --color-primary: #1a5fb4;
+  --color-primary-text: #ffffff;
+  --color-focus: #1a5fb4;
+}
+
+[data-theme="dark"] {
+  --color-bg: #121212;
+  --color-surface: #1e1e1e;
+  --color-text: #f0f0f0;
+  --color-text-muted: #b0b0b0;
+  --color-border: #3a3a3a;
+  --color-primary: #6ea8fe;
+  --color-primary-text: #0b0b0b;
+  --color-focus: #6ea8fe;
+}
+
+/* High-contrast theme: WCAG AAA contrast for text and borders. */
+[data-theme="high-contrast"] {
+  --color-bg: #000000;
+  --color-surface: #000000;
+  --color-text: #ffffff;
+  --color-text-muted: #ffffff;
+  --color-border: #ffffff;
+  --color-primary: #ffff00;
+  --color-primary-text: #000000;
+  --color-focus: #ffff00;
+}
+
+/* Automatically honour the OS high-contrast preference unless the user
+ * has explicitly selected a theme via useTheme. */
+@media (prefers-contrast: more) {
+  :root:not([data-theme]),
+  [data-theme="light"],
+  [data-theme="dark"] {
+    --color-bg: #000000;
+    --color-surface: #000000;
+    --color-text: #ffffff;
+    --color-text-muted: #ffffff;
+    --color-border: #ffffff;
+    --color-primary: #ffff00;
+    --color-primary-text: #000000;
+    --color-focus: #ffff00;
+  }
+}

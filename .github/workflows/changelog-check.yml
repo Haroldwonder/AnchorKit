@@ -1,0 +1,61 @@
+name: Changelog check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changelog-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify changelog or conventional-commit title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+
+          if printf '%s' "$LABELS" | tr ',' '\n' | grep -qx 'skip-changelog'; then
+            echo "skip-changelog label present; skipping check."
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true)
+          echo "Changed files:"
+          echo "$changed"
+
+          touches_release_paths=false
+          if printf '%s\n' "$changed" | grep -Eq '^(src|ui)/'; then
+            touches_release_paths=true
+          fi
+
+          if [ "$touches_release_paths" = false ]; then
+            echo "No changes under src/ or ui/; changelog check not required."
+            exit 0
+          fi
+
+          if printf '%s\n' "$changed" | grep -qx 'CHANGELOG.md'; then
+            echo "CHANGELOG.md updated; check passed."
+            exit 0
+          fi
+
+          conventional='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?: .+'
+          if printf '%s' "$PR_TITLE" | grep -Eq "$conventional"; then
+            echo "PR title is a conventional commit; check passed."
+            exit 0
+          fi
+
+          echo "::error::This PR touches src/ or ui/ but has no CHANGELOG.md entry and its title is not a conventional commit. Add a CHANGELOG entry, rename the PR to a conventional-commit title, or apply the 'skip-changelog' label."
+          exit 1
