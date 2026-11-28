@@ -139,6 +139,7 @@ mod attestor_cap_batch_tests {
                 timestamp: ts,
                 payload_hash: payload(&env, i),
                 signature: sig_bytes.clone(),
+                schema_id: None,
             });
         }
 
@@ -181,6 +182,7 @@ mod attestor_cap_batch_tests {
             timestamp: ts,
             payload_hash: ph.clone(),
             signature: sig_bytes.clone(),
+            schema_id: None,
         };
         let mut inputs: soroban_sdk::Vec<AttestationInput> = soroban_sdk::Vec::new(&env);
         inputs.push_back(input.clone());
@@ -212,6 +214,7 @@ mod attestor_cap_batch_tests {
             timestamp: ts,
             payload_hash: payload(&env, 1),
             signature: Bytes::new(&env),
+            schema_id: None,
         });
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -263,6 +266,7 @@ mod attestor_cap_batch_tests {
             timestamp: ts,
             payload_hash: ph2.clone(),
             signature: sign_attestation(&env, &signing_key, &client.address, &issuer, &subject, ts, &ph2),
+            schema_id: None,
         });
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             client.submit_attestation_batch(&issuer, &inputs);

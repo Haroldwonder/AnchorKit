@@ -1,4 +1,5 @@
 use soroban_sdk::{contracttype, Address, Bytes, String, Symbol, Vec};
+use crate::rate_limiter::RateLimitConfig;
 extern crate alloc;
 use alloc::string::String as AllocString;
 
@@ -15,6 +16,7 @@ pub enum TransactionStatus {
     PendingAnchor,
     PendingTrust,
     PendingUser,
+    PendingUserTransferStart,
     Completed,
     Refunded,
     Expired,
@@ -29,7 +31,8 @@ impl TransactionStatus {
             "pending_external" => Self::PendingExternal,
             "pending_anchor" => Self::PendingAnchor,
             "pending_trust" => Self::PendingTrust,
-            "pending_user" | "pending_user_transfer_start" => Self::PendingUser,
+            "pending_user" => Self::PendingUser,
+            "pending_user_transfer_start" => Self::PendingUserTransferStart,
             "completed" => Self::Completed,
             "refunded" => Self::Refunded,
             "expired" => Self::Expired,
@@ -48,6 +51,7 @@ impl TransactionStatus {
             Self::PendingAnchor => "pending_anchor",
             Self::PendingTrust => "pending_trust",
             Self::PendingUser => "pending_user",
+            Self::PendingUserTransferStart => "pending_user_transfer_start",
             Self::Completed => "completed",
             Self::Refunded => "refunded",
             Self::Expired => "expired",
@@ -225,6 +229,18 @@ pub struct RequestId {
     pub created_at: u64,
 }
 
+/// Metadata for a registered attestation payload schema (#1514).
+///
+/// The registry maps a short `schema_id` to the human-readable name, version
+/// and URI of the schema that describes the bytes behind `payload_hash`.
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestationSchema {
+    pub name: String,
+    pub version: String,
+    pub uri: String,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct Attestation {
@@ -242,6 +258,20 @@ pub struct Attestation {
     /// Optional Unix timestamp (seconds) after which this attestation is
     /// considered expired. `None` means no expiry.
     pub expires_at: Option<u64>,
+    /// Optional ID of the registered schema describing the payload. `None`
+    /// means the attestation was submitted without schema metadata.
+    pub schema_id: Option<Symbol>,
+}
+
+/// One page of subject attestations (#1563). `next_cursor` indexes the
+/// subject's attestation-ID index and may be passed back as `offset` to fetch
+/// the next page, even when revoked/expired entries were skipped.
+#[contracttype]
+#[derive(Clone)]
+pub struct AttestationPage {
+    pub attestations: Vec<Attestation>,
+    pub next_cursor: u64,
+    pub has_more: bool,
 }
 
 #[contracttype]
@@ -275,6 +305,19 @@ pub struct RoutingRequest {
     pub operation_type: u32,
 }
 
+/// One entry in the ranked list returned by `route_candidates`.
+///
+/// `score` is higher-is-better for the selected strategy; excluded anchors
+/// receive `i64::MIN`. `reason` is `"Eligible"` or names the filter that
+/// excluded the anchor (e.g. `"Inactive"`, `"LowReputation"`).
+#[contracttype]
+#[derive(Clone)]
+pub struct RouteCandidate {
+    pub anchor: Address,
+    pub score: i64,
+    pub reason: String,
+}
+
 /// Options passed to `route_transaction` to control anchor selection.
 ///
 /// # Strategy
@@ -285,6 +328,7 @@ pub struct RoutingRequest {
 /// | Symbol                | Behaviour                                                  |
 /// |-----------------------|------------------------------------------------------------|
 /// | `"LowestFee"`         | Selects the anchor with the lowest `fee_percentage`.       |
+/// | `"LowestTotalCost"`   | Lowest percentage fee plus the anchor's fixed SEP-6 fee for the requested amount. |
 /// | `"FastestSettlement"` | Selects the anchor with the lowest `average_settlement_time`. |
 /// | `"HighestReputation"` | Selects the anchor with the highest `reputation_score`.    |
 /// | `"Balanced"`          | Composite scoring: (40_000/fee) + (30_000/time) + (reputation*3000/10000). |
@@ -607,4 +651,32 @@ pub struct StoredCredential {
     pub encrypted_value: String,
     pub expires_at: u64,
     pub updated_at: u64,
+}
+
+/// Cheap read-only snapshot for uptime checks and the CLI `doctor` command (#1568).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractHealth {
+    pub initialized: bool,
+    pub paused: bool,
+    /// `None` until the contract has been initialized.
+    pub admin: Option<Address>,
+    pub attestor_count: u64,
+    pub attestation_counter: u64,
+    pub session_counter: u64,
+    pub contract_version: String,
+}
+
+/// All admin-tunable settings in one view, used by the CLI `doctor` (#1567).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractConfig {
+    pub max_page_size: u32,
+    pub replay_window_seconds: u64,
+    pub clock_skew_seconds: u64,
+    pub health_failure_threshold: u32,
+    pub rate_limit_config: RateLimitConfig,
+    pub audit_log_max_size: u64,
+    pub attestor_cap: u64,
+    pub paused: bool,
 }

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 echo "🔍 AnchorKit Pre-Deployment Validation"
 echo "========================================"
 echo ""
@@ -22,8 +25,8 @@ echo ""
 
 # Validate all configuration files
 echo "📋 Validating configuration files..."
-CONFIG_DIR="configs"
-SCHEMA_FILE="config_schema.json"
+CONFIG_DIR="$ROOT_DIR/configs"
+SCHEMA_FILE="$ROOT_DIR/config_schema.json"
 FAILED=0
 
 if [ ! -f "$SCHEMA_FILE" ]; then
@@ -34,11 +37,11 @@ fi
 for config_file in "$CONFIG_DIR"/*.json "$CONFIG_DIR"/*.toml; do
     if [ -f "$config_file" ]; then
         echo -n "  Validating $(basename "$config_file")... "
-        if python3 validate_config_strict.py "$config_file" "$SCHEMA_FILE" > /dev/null 2>&1; then
+        if python3 "$SCRIPT_DIR/validate_config_strict.py" "$config_file" "$SCHEMA_FILE" > /dev/null 2>&1; then
             echo "✅"
         else
             echo "❌"
-            python3 validate_config_strict.py "$config_file" "$SCHEMA_FILE"
+            python3 "$SCRIPT_DIR/validate_config_strict.py" "$config_file" "$SCHEMA_FILE"
             FAILED=1
         fi
     fi

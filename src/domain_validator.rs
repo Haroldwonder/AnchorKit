@@ -868,4 +868,36 @@ mod tests {
         // Should handle incomplete sequences gracefully
         assert!(result.len() > 0, "Should handle incomplete sequences");
     }
+
+    // Issue #1535 follow-up test for surviving mutants in domain_validator.
+    // Exercises batch ordering and empty input, plus the empty-host boundary
+    // right after the scheme (mutants often drop these checks).
+    #[test]
+    fn test_batch_ordering_and_empty_host_boundary() {
+        // Empty batch returns empty results.
+        assert!(validate_anchor_domain_batch(&[]).is_empty());
+
+        // Batch preserves input order and per-URL validity.
+        let urls = [
+            "https://valid.example.com",
+            "http://invalid-protocol.com",
+            "https://another.valid.org/sep6",
+            "not-a-url",
+            "https://also-valid.io:8443",
+        ];
+        let results = validate_anchor_domain_batch(&urls);
+        assert_eq!(results.len(), 5);
+        assert!(results[0].is_ok());
+        assert!(results[1].is_err());
+        assert!(results[2].is_ok());
+        assert!(results[3].is_err());
+        assert!(results[4].is_ok());
+
+        // Empty host right after the scheme must be rejected.
+        assert!(validate_anchor_domain("https://").is_err());
+        assert!(validate_anchor_domain("HTTPS://").is_err());
+        // Host present but single-label (no TLD) must be rejected.
+        assert!(validate_anchor_domain("https://anchor").is_err());
+        assert!(validate_anchor_domain("https://anchor/sep6").is_err());
+    }
 }

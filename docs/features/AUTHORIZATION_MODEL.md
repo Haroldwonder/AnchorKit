@@ -34,11 +34,16 @@ Caller must be the relevant attestor/anchor address **and** must already be regi
 | `submit_attestation` | `issuer.require_auth()` | `check_attestor` |
 | `submit_with_request_id` | `issuer.require_auth()` | `check_attestor` |
 | `submit_attestation_with_session` | `issuer.require_auth()` | `check_attestor` |
+| `extend_attestation_expiry` | `attestor.require_auth()` | issuer of the stored attestation must match the caller |
 | `submit_quote` | `anchor.require_auth()` | `check_attestor` |
 | `fetch_anchor_info` | `anchor.require_auth()` | — (TOML cache, not state-critical) |
 | `refresh_anchor_info` | `anchor.require_auth()` | — (clears own cache entry) |
 | `create_session` | `initiator.require_auth()` | — |
 | `receive_quote` | `receiver.require_auth()` | — |
+
+`extend_attestation_expiry` deliberately checks only the issuer recorded on the
+attestation (like `revoke_attestation`), so historical attestations remain
+manageable even if the attestor registry later changes.
 
 ## Public (read-only, no auth required)
 

@@ -5,7 +5,7 @@ Get up and running with AnchorKit on Stellar testnet in minutes.
 ## Prerequisites
 
 - Rust toolchain (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
-- Soroban CLI (`cargo install --locked soroban-cli`)
+- Stellar CLI (`cargo install --locked stellar-cli`)
 
 ## 1. Build
 
@@ -45,7 +45,7 @@ Expected output:
 For strict schema validation (field lengths, patterns, enums):
 
 ```bash
-python validate_config.py
+python scripts/validate_config.py
 ```
 
 ## 4. Run environment diagnostics

@@ -218,6 +218,170 @@ impl Default for MockTransport {
     }
 }
 
+// ── Optional OpenTelemetry tracing for anchor HTTP calls ─────────────────────
+//
+// Enabled with the `otel` Cargo feature (off by default). `OtelTransport` wraps
+// any `AnchorTransport` and emits one span per anchor request carrying the
+// anchor domain, endpoint, attempt number and request status. The current
+// `traceparent` can be injected into outgoing HTTP requests via
+// `OtelTransport::traceparent_headers`, and spans can be exported to an OTLP
+// collector with `opentelemetry_otlp`.
+#[cfg(feature = "otel")]
+pub mod otel {
+    use super::{AnchorTransport, Error, TransportRequest, TransportResponse};
+    use opentelemetry::KeyValue;
+    use opentelemetry::propagation::Setter;
+    use opentelemetry::trace::{Span, Tracer, TraceContextExt};
+    use opentelemetry::Context;
+    use soroban_sdk::Env;
+    use std::cell::Cell;
+
+    const ANCHOR_DOMAIN: &str = "anchor.domain";
+    const ENDPOINT: &str = "anchor.endpoint";
+    const HTTP_STATUS: &str = "http.status_code";
+    const ATTEMPT: &str = "anchor.attempt";
+
+    /// Carrier used to inject a `traceparent` header into outgoing requests.
+    struct HeaderSetter<'a>(&'a mut Vec<(String, String)>);
+
+    impl<'a> Setter<Vec<(String, String)>> for HeaderSetter<'a> {
+        fn set(&mut self, carrier: &mut Vec<(String, String)>, key: &str, value: String) {
+            carrier.push((key.to_string(), value));
+        }
+    }
+
+    fn endpoint_domain(endpoint: &str) -> String {
+        let rest = endpoint.split_once("://").map(|(_, r)| r).unwrap_or(endpoint);
+        rest.split('/').next().unwrap_or(rest).to_string()
+    }
+
+    fn request_endpoint(request: &TransportRequest) -> String {
+        match request {
+            TransportRequest::GetQuote { endpoint, .. }
+            | TransportRequest::SubmitAttestation { endpoint, .. }
+            | TransportRequest::CheckHealth { endpoint }
+            | TransportRequest::VerifyKYC { endpoint, .. } => endpoint.clone(),
+        }
+    }
+
+    fn response_status(response: &TransportResponse) -> i64 {
+        match response {
+            TransportResponse::Quote { .. }
+            | TransportResponse::AttestationConfirmed { .. }
+            | TransportResponse::Health { .. }
+            | TransportResponse::KYCVerified { .. } => 200,
+            TransportResponse::Error { code, .. } => *code as i64,
+        }
+    }
+
+    /// Wraps an inner [`AnchorTransport`] and emits an OpenTelemetry span per
+    /// request. Spans carry `anchor.domain`, `anchor.endpoint`, `anchor.attempt`
+    /// and `http.status_code`. Call `traceparent_headers` to obtain headers to
+    /// attach to the raw outbound HTTP call for context propagation.
+    pub struct OtelTransport<T: AnchorTransport> {
+        inner: T,
+        tracer: opentelemetry::global::BoxedTracer,
+        attempt: Cell<u32>,
+    }
+
+    impl<T: AnchorTransport> OtelTransport<T> {
+        pub fn new(inner: T) -> Self {
+            Self {
+                inner,
+                tracer: opentelemetry::global::tracer("anchorkit"),
+                attempt: Cell::new(0),
+            }
+        }
+
+        /// Execute a request inside a span. `attempt` is the current retry
+        /// attempt (0-based). Returns the transport response plus the
+        /// `traceparent` headers to attach to the outgoing HTTP request.
+        pub fn send_request_traced(
+            &mut self,
+            env: &Env,
+            request: TransportRequest,
+            attempt: u32,
+        ) -> Result<(TransportResponse, Vec<(String, String)>), Error> {
+            self.attempt.set(attempt);
+
+            let cx = Context::current();
+            let mut span = self
+                .tracer
+                .build("anchor.request")
+                .with_context(cx)
+                .start(&self.tracer);
+
+            let endpoint = request_endpoint(&request);
+            span.set_attribute(KeyValue::new(ANCHOR_DOMAIN, endpoint_domain(&endpoint)));
+            span.set_attribute(KeyValue::new(ENDPOINT, endpoint));
+            span.set_attribute(KeyValue::new(ATTEMPT, attempt as i64));
+
+            let mut headers: Vec<(String, String)> = Vec::new();
+            let setter = HeaderSetter(&mut headers);
+            opentelemetry::global::get_text_map_propagator()
+                .inject_context(&cx, setter);
+
+            let result = self.inner.send_request(env, request);
+            match &result {
+                Ok(response) => {
+                    span.set_attribute(KeyValue::new(HTTP_STATUS, response_status(response)));
+                    span.set_attribute(KeyValue::new("anchor.status", "ok"));
+                }
+                Err(err) => {
+                    span.set_attribute(KeyValue::new(HTTP_STATUS, 0));
+                    span.set_attribute(KeyValue::new("anchor.status", "error"));
+                    span.set_attribute(KeyValue::new("anchor.error", format!("{:?}", err)));
+                }
+            }
+            span.end();
+
+            result.map(|response| (response, headers))
+        }
+
+        /// Returns the `traceparent` headers for the current context so callers
+        /// can attach them to raw outbound HTTP requests.
+        pub fn traceparent_headers(&self) -> Vec<(String, String)> {
+            let mut headers: Vec<(String, String)> = Vec::new();
+            let setter = HeaderSetter(&mut headers);
+            opentelemetry::global::get_text_map_propagator()
+                .inject_context(&Context::current(), setter);
+            headers
+        }
+
+        pub fn inner(&self) -> &T {
+            &self.inner
+        }
+    }
+
+    impl<T: AnchorTransport> AnchorTransport for OtelTransport<T> {
+        fn send_request(
+            &mut self,
+            env: &Env,
+            request: TransportRequest,
+        ) -> Result<TransportResponse, Error> {
+            self.send_request_traced(env, request, self.attempt.get())
+                .map(|(response, _)| response)
+        }
+
+        fn send_request_with_timeout(
+            &mut self,
+            env: &Env,
+            request: TransportRequest,
+            timeout_seconds: u32,
+        ) -> Result<TransportResponse, Error> {
+            self.inner.send_request_with_timeout(env, request, timeout_seconds)
+        }
+
+        fn is_available(&self) -> bool {
+            self.inner.is_available()
+        }
+
+        fn name(&self) -> &str {
+            "OtelTransport"
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
