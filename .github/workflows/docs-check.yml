@@ -1,0 +1,19 @@
+name: Docs Check
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  troubleshooting-error-codes:
+    name: Troubleshooting guide covers every ErrorCode
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Check docs/guides/TROUBLESHOOTING.md against src/errors.rs
+        run: python3 scripts/check_troubleshooting.py

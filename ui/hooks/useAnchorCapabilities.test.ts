@@ -11,9 +11,9 @@ import {
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-// Valid Stellar StrKey addresses (G-address: 'G' + 55 Base32 chars)
-const ATTESTOR   = 'G' + 'A'.repeat(55);
-const ATTESTOR_2 = 'G' + 'B'.repeat(55);
+// Checksum-valid Stellar StrKey addresses (G-address: ed25519 public keys)
+const ATTESTOR   = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+const ATTESTOR_2 = 'GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H';
 
 const BASE_CAPS: AnchorServicesResult = {
   anchor: ATTESTOR,
@@ -423,6 +423,8 @@ describe('useAnchorCapabilities — skip conditions', () => {
     ['invalid base32 char', 'G' + 'A'.repeat(54) + '0'], // '0' is not in A-Z or 2-7
     ['too long', 'G' + 'A'.repeat(56)],
     ['lowercase', 'g' + 'a'.repeat(55)],
+    ['checksum-invalid (format ok)', 'G' + 'A'.repeat(55)],
+    ['checksum-invalid (typo in last char)', ATTESTOR.slice(0, -1) + 'G'],
   ])('does not fetch for invalid attestor: %s', (_, addr) => {
     const fetch = jest.fn();
     renderHook(() => useAnchorCapabilities(addr, { fetchCapabilities: fetch }));
@@ -430,7 +432,7 @@ describe('useAnchorCapabilities — skip conditions', () => {
   });
 
   test('accepts a valid C-address (contract ID)', async () => {
-    const contractAddr = 'C' + 'A'.repeat(55);
+    const contractAddr = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
     const caps: AnchorServicesResult = { anchor: contractAddr, services: [SERVICE_DEPOSITS] };
     const fetch = jest.fn().mockResolvedValue(caps);
 

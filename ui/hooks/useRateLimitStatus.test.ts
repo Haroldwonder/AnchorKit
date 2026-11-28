@@ -9,6 +9,8 @@ import {
   setRateLimitClient,
   resetRateLimitClient,
   ContractError,
+  NOT_CONFIGURED,
+  isNotConfiguredError,
   type RateLimitStatusRaw,
 } from './contractClient';
 
@@ -552,31 +554,64 @@ describe('useRateLimitStatus – returned shape', () => {
 
 // ── Default getStatus / contractClient ────────────────────────────────────────
 
-describe('useRateLimitStatus – default getStatus out of the box', () => {
-  it('works out of the box without options using default getRateLimitStatus', async () => {
+describe('useRateLimitStatus – no client configured', () => {
+  it('renders an explicit not-connected state instead of invented quota data', async () => {
     const { result } = renderHook(() => useRateLimitStatus(ATTESTOR_A));
 
-    await waitFor(() => expect(result.current.status).not.toBeNull());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.isNotConnected).toBe(true));
 
-    const s = result.current.status!;
-    expect(s.used).toBe(0);
-    expect(s.limit).toBe(10);
-    expect(s.isThrottled).toBe(false);
-    expect(s.windowResetsAt).toBeInstanceOf(Date);
+    expect(result.current.status).toBeNull();
+    expect(result.current.error).toBeInstanceOf(ContractError);
+    expect((result.current.error as ContractError).code).toBe(NOT_CONFIGURED);
+  });
+
+  it('clears the not-connected state once a client is configured and refreshed', async () => {
+    const { result } = renderHook(() => useRateLimitStatus(ATTESTOR_A));
+    await waitFor(() => expect(result.current.isNotConnected).toBe(true));
+
+    setRateLimitClient(async () => makeRaw({ submissionCount: 4 }));
+    act(() => { result.current.refresh(); });
+
+    await waitFor(() => expect(result.current.status).not.toBeNull());
+    expect(result.current.isNotConnected).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(result.current.loading).toBe(false);
+    expect(result.current.status!.used).toBe(4);
+  });
+
+  it('is not flagged as not-connected for other errors', async () => {
+    const getStatus = jest.fn().mockRejectedValue(new Error('RPC down'));
+    const { result } = renderHook(() =>
+      useRateLimitStatus(ATTESTOR_A, { getStatus }),
+    );
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.isNotConnected).toBe(false);
+  });
+
+  it('is false before any fetch and for an empty attestor', () => {
+    const { result } = renderHook(() => useRateLimitStatus(null));
+    expect(result.current.isNotConnected).toBe(false);
   });
 });
 
 describe('getRateLimitStatus & setRateLimitClient', () => {
-  it('returns default rate limit data when no custom client is configured', async () => {
-    const data = await getRateLimitStatus(ATTESTOR_A);
-    expect(data.submissionCount).toBe(0);
-    expect(data.maxSubmissions).toBe(10);
-    expect(data.windowLength).toBe(100);
-    expect(data.currentLedger).toBeGreaterThan(0);
-    expect(data.windowStartLedger).toBe(data.currentLedger);
-    expect(data.ledgerTimestamp).toBeGreaterThan(0);
+  it('throws a NOT_CONFIGURED ContractError when no client is configured', async () => {
+    await expect(getRateLimitStatus(ATTESTOR_A)).rejects.toThrow(ContractError);
+    await expect(getRateLimitStatus(ATTESTOR_A)).rejects.toMatchObject({
+      message: 'Rate-limit client not configured',
+      code: NOT_CONFIGURED,
+    });
+  });
+
+  it('does not return made-up unthrottled data without a client', async () => {
+    let data: RateLimitStatusRaw | undefined;
+    try {
+      data = await getRateLimitStatus(ATTESTOR_A);
+    } catch (err) {
+      expect(isNotConfiguredError(err)).toBe(true);
+    }
+    expect(data).toBeUndefined();
   });
 
   it('uses custom client when configured via setRateLimitClient', async () => {
@@ -585,14 +620,25 @@ describe('getRateLimitStatus & setRateLimitClient', () => {
     expect(data.submissionCount).toBe(5);
   });
 
-  it('reverts to default client after resetRateLimitClient', async () => {
+  it('throws NOT_CONFIGURED again after resetRateLimitClient', async () => {
     setRateLimitClient(async () => makeRaw({ submissionCount: 9 }));
     resetRateLimitClient();
-    const data = await getRateLimitStatus(ATTESTOR_A);
-    expect(data.submissionCount).toBe(0);
+    await expect(getRateLimitStatus(ATTESTOR_A)).rejects.toMatchObject({
+      code: NOT_CONFIGURED,
+    });
+  });
+
+  it('throws NOT_CONFIGURED after setRateLimitClient(null)', async () => {
+    setRateLimitClient(async () => makeRaw());
+    setRateLimitClient(null);
+    await expect(getRateLimitStatus(ATTESTOR_A)).rejects.toMatchObject({
+      code: NOT_CONFIGURED,
+    });
   });
 
   it('throws ContractError when attestor address is empty', async () => {
-    await expect(getRateLimitStatus('')).rejects.toThrow(ContractError);
+    await expect(getRateLimitStatus('')).rejects.toMatchObject({
+      code: 'INVALID_ATTESTOR',
+    });
   });
 });
