@@ -30,7 +30,7 @@ storybook:
 
 ## validate: Run repo validation (configs + Rust validation)
 validate:
-	./validate_all.sh
+	./scripts/validate_all.sh
 
 ## coverage: Run Rust + UI coverage (best-effort)
 coverage:
@@ -50,7 +50,7 @@ clean:
 
 ## deploy-testnet: Deploy contract to Stellar testnet
 deploy-testnet: build-wasm
-	soroban contract deploy \
+	stellar contract deploy \
 		--wasm target/wasm32-unknown-unknown/release/anchorkit.wasm \
 		--network testnet
 

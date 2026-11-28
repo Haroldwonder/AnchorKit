@@ -7,6 +7,7 @@ Complete index of all AnchorKit documentation.
 | Document | Description |
 |---|---|
 | [MIGRATION.md](./MIGRATION.md) | Upgrade guide: 0.0.1 → 0.1.0 breaking changes and before/after examples |
+| [CONTRACT_UPGRADE.md](./guides/CONTRACT_UPGRADE.md) | Replacing a deployed contract's WASM in place with the admin-only `upgrade` entry point |
 
 ## Feature Documentation
 

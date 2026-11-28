@@ -14,8 +14,8 @@ STATUS: ✅ COMPLETE - Ready for Production
 │    • Identified: Need Windows-specific tooling                              │
 │                                                                              │
 │ 2. Windows Support Added                                                     │
-│    • validate_all.ps1 - PowerShell validation script                        │
-│    • pre_deploy_validate.ps1 - PowerShell pre-deployment                    │
+│    • scripts/validate_all.ps1 - PowerShell validation script                        │
+│    • scripts/pre_deploy_validate.ps1 - PowerShell pre-deployment                    │
 │    • WINDOWS_SETUP.md - Complete setup guide                                │
 │                                                                              │
 │ 3. Cross-Platform Test Suite                                                │
@@ -42,10 +42,10 @@ STATUS: ✅ COMPLETE - Ready for Production
 │   • CROSS_PLATFORM_SUMMARY.txt (this file)                                   │
 │                                                                              │
 │ Scripts:                                                                     │
-│   • validate_all.ps1                                                         │
-│   • pre_deploy_validate.ps1                                                  │
-│   • validate_all.sh                                                          │
-│   • pre_deploy_validate.sh                                                   │
+│   • scripts/validate_all.ps1                                                         │
+│   • scripts/pre_deploy_validate.ps1                                                  │
+│   • scripts/validate_all.sh                                                          │
+│   • scripts/pre_deploy_validate.sh                                                   │
 │                                                                              │
 │ Configuration:                                                               │
 │   • .gitattributes                                                           │
@@ -54,7 +54,7 @@ STATUS: ✅ COMPLETE - Ready for Production
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ FILES MODIFIED (3 FILES)                                                     │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│   • validate_config.py - Enhanced path handling                             │
+│   • scripts/validate_config.py - Enhanced path handling                             │
 │   • src/lib.rs - Added cross_platform_tests module                          │
 │   • README.md - Added platform support section                              │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -88,12 +88,12 @@ STATUS: ✅ COMPLETE - Ready for Production
 │   cargo test cross_platform                                                  │
 │                                                                              │
 │ Linux/macOS:                                                                 │
-│   ./validate_all.sh                                                          │
-│   ./pre_deploy_validate.sh                                                   │
+│   ./scripts/validate_all.sh                                                          │
+│   ./scripts/pre_deploy_validate.sh                                                   │
 │                                                                              │
 │ Windows:                                                                     │
-│   .\validate_all.ps1                                                         │
-│   .\pre_deploy_validate.ps1                                                  │
+│   .\scripts\validate_all.ps1                                                         │
+│   .\scripts\pre_deploy_validate.ps1                                                  │
 └──────────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -113,11 +113,11 @@ STATUS: ✅ COMPLETE - Ready for Production
 │   • WINDOWS_SETUP.md - Windows-specific guide                                │
 │                                                                              │
 │ Validation:                                                                  │
-│   • validate_all.sh / validate_all.ps1 - Run all platform checks             │
-│   • pre_deploy_validate.sh / pre_deploy_validate.ps1 - Pre-deployment checks │
-│   • validate_config.py / validate_config_strict.py - Config validation      │
-│   • test_config_validation.py - Test config validation logic                │
-│   • validate_health_score.sh / validate_health_score.ps1 - Health scoring   │
+│   • scripts/validate_all.sh / scripts/validate_all.ps1 - Run all platform checks             │
+│   • scripts/pre_deploy_validate.sh / scripts/pre_deploy_validate.ps1 - Pre-deployment checks │
+│   • scripts/validate_config.py / scripts/validate_config_strict.py - Config validation      │
+│   • scripts/test_config_validation.py - Test config validation logic                │
+│   • scripts/validate_health_score.sh / scripts/validate_health_score.ps1 - Health scoring   │
 │                                                                              │
 │ Note: The following docs were referenced in earlier drafts but were never    │
 │ committed and do not exist in the repository:                                │
@@ -132,7 +132,7 @@ STATUS: ✅ COMPLETE - Ready for Production
 │ 1. Build:  cargo build --release                                            │
 │ 2. Test:   cargo test                                                        │
 │ 3. Cross:  cargo test cross_platform                                         │
-│ 4. Valid:  ./validate_all.sh (Unix) or .\validate_all.ps1 (Windows)         │
+│ 4. Valid:  ./scripts/validate_all.sh (Unix) or .\scripts\validate_all.ps1 (Windows)         │
 │ 5. CI/CD:  Push to GitHub and verify all platforms pass                     │
 └──────────────────────────────────────────────────────────────────────────────┘
 

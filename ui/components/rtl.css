@@ -1,0 +1,490 @@
+/* AnchorKit RTL Support – Logical Properties & Direction Utilities
+ *
+ * This file provides logical CSS property mappings and RTL-aware utilities.
+ * Import this in components that need RTL support.
+ *
+ * Logical properties automatically adapt to writing-mode and direction:
+ * - margin-inline-start / margin-inline-end (instead of margin-left/right)
+ * - padding-inline-start / padding-inline-end (instead of padding-left/right)
+ * - border-inline-start / border-inline-end (instead of border-left/right)
+ * - inset-inline-start / inset-inline-end (instead of left/right)
+ * - text-align: start / end (instead of left/right)
+ * - float: inline-start / inline-end (instead of left/right)
+ */
+
+/* ─── Base RTL Support ───────────────────────────────────────────────────── */
+
+/* Ensure proper direction handling */
+[dir="rtl"] {
+  direction: rtl;
+}
+
+[dir="ltr"] {
+  direction: ltr;
+}
+
+/* ─── Logical Property Utilities ─────────────────────────────────────────── */
+
+/* Margin utilities */
+.ak-margin-inline-start-0 { margin-inline-start: 0; }
+.ak-margin-inline-end-0 { margin-inline-end: 0; }
+.ak-margin-inline-start-auto { margin-inline-start: auto; }
+.ak-margin-inline-end-auto { margin-inline-end: auto; }
+
+.ak-margin-block-start-0 { margin-block-start: 0; }
+.ak-margin-block-end-0 { margin-block-end: 0; }
+.ak-margin-block-start-auto { margin-block-start: auto; }
+.ak-margin-block-end-auto { margin-block-end: auto; }
+
+/* Padding utilities */
+.ak-padding-inline-start-0 { padding-inline-start: 0; }
+.ak-padding-inline-end-0 { padding-inline-end: 0; }
+.ak-padding-block-start-0 { padding-block-start: 0; }
+.ak-padding-block-end-0 { padding-block-end: 0; }
+
+/* Border utilities */
+.ak-border-inline-start { border-inline-start: 1px solid var(--ak-border); }
+.ak-border-inline-end { border-inline-end: 1px solid var(--ak-border); }
+.ak-border-block-start { border-block-start: 1px solid var(--ak-border); }
+.ak-border-block-end { border-block-end: 1px solid var(--ak-border); }
+
+/* Inset utilities (for positioned elements) */
+.ak-inset-inline-start-0 { inset-inline-start: 0; }
+.ak-inset-inline-end-0 { inset-inline-end: 0; }
+.ak-inset-block-start-0 { inset-block-start: 0; }
+.ak-inset-block-end-0 { inset-block-end: 0; }
+
+/* Text alignment */
+.ak-text-start { text-align: start; }
+.ak-text-end { text-align: end; }
+.ak-text-center { text-align: center; }
+.ak-text-justify { text-align: justify; }
+
+/* Float */
+.ak-float-inline-start { float: inline-start; }
+.ak-float-inline-end { float: inline-end; }
+
+/* Flex/Grid alignment */
+.ak-justify-start { justify-content: flex-start; }
+.ak-justify-end { justify-content: flex-end; }
+.ak-justify-center { justify-content: center; }
+.ak-justify-between { justify-content: space-between; }
+.ak-justify-around { justify-content: space-around; }
+.ak-justify-evenly { justify-content: space-evenly; }
+
+.ak-items-start { align-items: flex-start; }
+.ak-items-end { align-items: flex-end; }
+.ak-items-center { align-items: center; }
+.ak-items-stretch { align-items: stretch; }
+.ak-items-baseline { align-items: baseline; }
+
+/* Self alignment */
+.ak-self-start { align-self: flex-start; }
+.ak-self-end { align-self: flex-end; }
+.ak-self-center { align-self: center; }
+.ak-self-stretch { align-self: stretch; }
+.ak-self-baseline { align-self: baseline; }
+
+/* ─── Responsive Spacing Scale (8pt grid) ────────────────────────────────── */
+
+:root {
+  --ak-space-0: 0;
+  --ak-space-1: 4px;
+  --ak-space-2: 8px;
+  --ak-space-3: 12px;
+  --ak-space-4: 16px;
+  --ak-space-5: 20px;
+  --ak-space-6: 24px;
+  --ak-space-8: 32px;
+  --ak-space-10: 40px;
+  --ak-space-12: 48px;
+  --ak-space-16: 64px;
+  --ak-space-20: 80px;
+  --ak-space-24: 96px;
+}
+
+/* Margin utilities using spacing scale */
+.ak-m-inset-0 { margin: var(--ak-space-0); }
+.ak-m-inset-1 { margin: var(--ak-space-1); }
+.ak-m-inset-2 { margin: var(--ak-space-2); }
+.ak-m-inset-3 { margin: var(--ak-space-3); }
+.ak-m-inset-4 { margin: var(--ak-space-4); }
+.ak-m-inset-5 { margin: var(--ak-space-5); }
+.ak-m-inset-6 { margin: var(--ak-space-6); }
+.ak-m-inset-8 { margin: var(--ak-space-8); }
+
+.ak-m-block-0 { margin-block: var(--ak-space-0); }
+.ak-m-block-1 { margin-block: var(--ak-space-1); }
+.ak-m-block-2 { margin-block: var(--ak-space-2); }
+.ak-m-block-3 { margin-block: var(--ak-space-3); }
+.ak-m-block-4 { margin-block: var(--ak-space-4); }
+.ak-m-block-5 { margin-block: var(--ak-space-5); }
+.ak-m-block-6 { margin-block: var(--ak-space-6); }
+.ak-m-block-8 { margin-block: var(--ak-space-8); }
+
+.ak-m-inline-0 { margin-inline: var(--ak-space-0); }
+.ak-m-inline-1 { margin-inline: var(--ak-space-1); }
+.ak-m-inline-2 { margin-inline: var(--ak-space-2); }
+.ak-m-inline-3 { margin-inline: var(--ak-space-3); }
+.ak-m-inline-4 { margin-inline: var(--ak-space-4); }
+.ak-m-inline-5 { margin-inline: var(--ak-space-5); }
+.ak-m-inline-6 { margin-inline: var(--ak-space-6); }
+.ak-m-inline-8 { margin-inline: var(--ak-space-8); }
+
+.ak-m-start-0 { margin-inline-start: var(--ak-space-0); }
+.ak-m-start-1 { margin-inline-start: var(--ak-space-1); }
+.ak-m-start-2 { margin-inline-start: var(--ak-space-2); }
+.ak-m-start-3 { margin-inline-start: var(--ak-space-3); }
+.ak-m-start-4 { margin-inline-start: var(--ak-space-4); }
+.ak-m-start-5 { margin-inline-start: var(--ak-space-5); }
+.ak-m-start-6 { margin-inline-start: var(--ak-space-6); }
+.ak-m-start-8 { margin-inline-start: var(--ak-space-8); }
+
+.ak-m-end-0 { margin-inline-end: var(--ak-space-0); }
+.ak-m-end-1 { margin-inline-end: var(--ak-space-1); }
+.ak-m-end-2 { margin-inline-end: var(--ak-space-2); }
+.ak-m-end-3 { margin-inline-end: var(--ak-space-3); }
+.ak-m-end-4 { margin-inline-end: var(--ak-space-4); }
+.ak-m-end-5 { margin-inline-end: var(--ak-space-5); }
+.ak-m-end-6 { margin-inline-end: var(--ak-space-6); }
+.ak-m-end-8 { margin-inline-end: var(--ak-space-8); }
+
+/* Padding utilities using spacing scale */
+.ak-p-inset-0 { padding: var(--ak-space-0); }
+.ak-p-inset-1 { padding: var(--ak-space-1); }
+.ak-p-inset-2 { padding: var(--ak-space-2); }
+.ak-p-inset-3 { padding: var(--ak-space-3); }
+.ak-p-inset-4 { padding: var(--ak-space-4); }
+.ak-p-inset-5 { padding: var(--ak-space-5); }
+.ak-p-inset-6 { padding: var(--ak-space-6); }
+.ak-p-inset-8 { padding: var(--ak-space-8); }
+
+.ak-p-block-0 { padding-block: var(--ak-space-0); }
+.ak-p-block-1 { padding-block: var(--ak-space-1); }
+.ak-p-block-2 { padding-block: var(--ak-space-2); }
+.ak-p-block-3 { padding-block: var(--ak-space-3); }
+.ak-p-block-4 { padding-block: var(--ak-space-4); }
+.ak-p-block-5 { padding-block: var(--ak-space-5); }
+.ak-p-block-6 { padding-block: var(--ak-space-6); }
+.ak-p-block-8 { padding-block: var(--ak-space-8); }
+
+.ak-p-inline-0 { padding-inline: var(--ak-space-0); }
+.ak-p-inline-1 { padding-inline: var(--ak-space-1); }
+.ak-p-inline-2 { padding-inline: var(--ak-space-2); }
+.ak-p-inline-3 { padding-inline: var(--ak-space-3); }
+.ak-p-inline-4 { padding-inline: var(--ak-space-4); }
+.ak-p-inline-5 { padding-inline: var(--ak-space-5); }
+.ak-p-inline-6 { padding-inline: var(--ak-space-6); }
+.ak-p-inline-8 { padding-inline: var(--ak-space-8); }
+
+.ak-p-start-0 { padding-inline-start: var(--ak-space-0); }
+.ak-p-start-1 { padding-inline-start: var(--ak-space-1); }
+.ak-p-start-2 { padding-inline-start: var(--ak-space-2); }
+.ak-p-start-3 { padding-inline-start: var(--ak-space-3); }
+.ak-p-start-4 { padding-inline-start: var(--ak-space-4); }
+.ak-p-start-5 { padding-inline-start: var(--ak-space-5); }
+.ak-p-start-6 { padding-inline-start: var(--ak-space-6); }
+.ak-p-start-8 { padding-inline-start: var(--ak-space-8); }
+
+.ak-p-end-0 { padding-inline-end: var(--ak-space-0); }
+.ak-p-end-1 { padding-inline-end: var(--ak-space-1); }
+.ak-p-end-2 { padding-inline-end: var(--ak-space-2); }
+.ak-p-end-3 { padding-inline-end: var(--ak-space-3); }
+.ak-p-end-4 { padding-inline-end: var(--ak-space-4); }
+.ak-p-end-5 { padding-inline-end: var(--ak-space-5); }
+.ak-p-end-6 { padding-inline-end: var(--ak-space-6); }
+.ak-p-end-8 { padding-inline-end: var(--ak-space-8); }
+
+/* Gap utilities */
+.ak-gap-0 { gap: var(--ak-space-0); }
+.ak-gap-1 { gap: var(--ak-space-1); }
+.ak-gap-2 { gap: var(--ak-space-2); }
+.ak-gap-3 { gap: var(--ak-space-3); }
+.ak-gap-4 { gap: var(--ak-space-4); }
+.ak-gap-5 { gap: var(--ak-space-5); }
+.ak-gap-6 { gap: var(--ak-space-6); }
+.ak-gap-8 { gap: var(--ak-space-8); }
+
+.ak-gap-block-0 { gap: var(--ak-space-0) var(--ak-space-0); }
+.ak-gap-block-1 { gap: var(--ak-space-1) var(--ak-space-1); }
+.ak-gap-block-2 { gap: var(--ak-space-2) var(--ak-space-2); }
+.ak-gap-block-3 { gap: var(--ak-space-3) var(--ak-space-3); }
+.ak-gap-block-4 { gap: var(--ak-space-4) var(--ak-space-4); }
+.ak-gap-block-5 { gap: var(--ak-space-5) var(--ak-space-5); }
+.ak-gap-block-6 { gap: var(--ak-space-6) var(--ak-space-6); }
+.ak-gap-block-8 { gap: var(--ak-space-8) var(--ak-space-8); }
+
+/* ─── Component-Specific RTL Patterns ────────────────────────────────────── */
+
+/* Card with logical properties */
+.ak-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--ak-space-4);
+  border-radius: 12px;
+  border: 1px solid var(--ak-border);
+  background: var(--ak-surface);
+}
+
+/* List item with logical properties */
+.ak-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--ak-space-4);
+  padding-block: var(--ak-space-2);
+  border-block-end: 1px solid var(--ak-border);
+}
+
+.ak-list-item:last-child {
+  border-block-end: none;
+}
+
+/* Badge with logical properties */
+.ak-badge {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--ak-space-2);
+  padding-block: var(--ak-space-1);
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Button with logical properties */
+.ak-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ak-space-2);
+  padding-inline: var(--ak-space-4);
+  padding-block: var(--ak-space-2);
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.ak-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Input with logical properties */
+.ak-input {
+  width: 100%;
+  padding-inline: var(--ak-space-3);
+  padding-block: var(--ak-space-2);
+  border-radius: 8px;
+  border: 1px solid var(--ak-border);
+  background: var(--ak-surface);
+  color: var(--ak-text);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.ak-input:focus {
+  outline: none;
+  border-color: var(--ak-accent);
+  box-shadow: 0 0 0 3px var(--ak-accent-focus-shadow);
+}
+
+/* Table with logical properties */
+.ak-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: start;
+}
+
+.ak-table th,
+.ak-table td {
+  padding: var(--ak-space-3);
+  border-block-end: 1px solid var(--ak-border);
+}
+
+.ak-table th {
+  text-align: start;
+  font-weight: 600;
+  color: var(--ak-text-muted);
+  background: var(--ak-surface-2);
+}
+
+/* Modal/Dialog with logical properties */
+.ak-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ak-modal-content {
+  background: var(--ak-surface);
+  border-radius: 16px;
+  padding: var(--ak-space-6);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: var(--ak-shadow-md);
+}
+
+/* Tooltip with logical properties */
+.ak-tooltip {
+  position: absolute;
+  z-index: 100;
+  padding-inline: var(--ak-space-2);
+  padding-block: var(--ak-space-1);
+  border-radius: 6px;
+  background: var(--ak-text);
+  color: var(--ak-bg);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Dropdown/Select with logical properties */
+.ak-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ak-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  inset-inline-start: 0;
+  margin-block-start: var(--ak-space-1);
+  min-width: 200px;
+  background: var(--ak-surface);
+  border: 1px solid var(--ak-border);
+  border-radius: 8px;
+  box-shadow: var(--ak-shadow-md);
+  overflow: hidden;
+  z-index: 100;
+}
+
+[dir="rtl"] .ak-dropdown-menu {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+}
+
+/* Tabs with logical properties */
+.ak-tabs {
+  display: flex;
+  border-block-end: 1px solid var(--ak-border);
+}
+
+.ak-tab {
+  padding-inline: var(--ak-space-4);
+  padding-block: var(--ak-space-3);
+  border: none;
+  background: transparent;
+  color: var(--ak-text-muted);
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+}
+
+.ak-tab[aria-selected="true"] {
+  color: var(--ak-accent);
+}
+
+.ak-tab[aria-selected="true"]::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
+  border-block-end: 2px solid var(--ak-accent);
+}
+
+/* Progress bar with logical properties */
+.ak-progress {
+  width: 100%;
+  height: 8px;
+  background: var(--ak-surface-2);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.ak-progress-bar {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+/* Avatar with logical properties */
+.ak-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--ak-accent);
+  color: white;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* Divider with logical properties */
+.ak-divider {
+  border-block-end: 1px solid var(--ak-border);
+}
+
+.ak-divider-vertical {
+  border-inline-end: 1px solid var(--ak-border);
+  height: 100%;
+}
+
+/* ─── RTL-Aware Animations ───────────────────────────────────────────────── */
+
+@keyframes ak-slide-in-start {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ak-slide-in-end {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+[dir="ltr"] .ak-slide-in {
+  animation: ak-slide-in-start 0.3s ease forwards;
+}
+
+[dir="rtl"] .ak-slide-in {
+  animation: ak-slide-in-end 0.3s ease forwards;
+}
+
+@keyframes ak-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ak-fade-in {
+  animation: ak-fade-in 0.2s ease forwards;
+}
+
+/* ─── Print Styles ───────────────────────────────────────────────────────── */
+
+@media print {
+  .ak-no-print { display: none !important; }
+  .ak-print-only { display: block !important; }
+}

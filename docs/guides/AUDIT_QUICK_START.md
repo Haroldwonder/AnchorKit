@@ -61,7 +61,7 @@ export STELLAR_SECRET_KEY=SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 Or use Soroban identity:
 ```bash
-soroban config identity generate --global my-identity
+stellar keys generate --global my-identity
 export SOROBAN_IDENTITY=my-identity
 ```
 

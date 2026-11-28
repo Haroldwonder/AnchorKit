@@ -701,6 +701,20 @@ let score: u32 = client.get_anchor_health_score(&anchor);
 if score >= 80 { /* high-quality anchor */ }
 ```
 
+The score is returned unconditionally, even when it is below the configured minimum.
+
+---
+
+### `is_anchor_healthy`
+
+```rust
+fn is_anchor_healthy(env: Env, anchor: Address) -> bool
+```
+
+Returns `true` when `get_anchor_health_score(anchor)` is at or above the threshold set by `set_health_failure_threshold`, or when no threshold is set. Returns `false` for an unhealthy anchor instead of failing.
+
+**Errors:** `CacheNotFound (49)`, `CacheExpired (48)`
+
 ---
 
 ## Anchor Info Discovery
