@@ -1,99 +1,83 @@
+use std::fs;
+use std::io::Read;
+use std::path::PathBuf;
+
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "contract-cli", version, about = "Contract CLI")]
+#[command(name = "anchorkit", version, about = "AnchorKit CLI")]
 struct Cli {
+    /// Secret key passed directly as a flag (insecure; prefer env, --secret-file, or keyring)
+    #[arg(long, global = true, env = "ANCHORKIT_SECRET_KEY", hide_env_values = true)]
+    secret_key: Option<String>,
+
+    /// Read the secret key from a file
+    #[arg(long, global = true, value_name = "PATH")]
+    secret_file: Option<PathBuf>,
+
+    /// Read the secret key from the OS keyring
+    #[arg(long, global = true)]
+    secret_keyring: bool,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Command,
 }
 
 #[derive(Subcommand)]
-enum Commands {
-    /// Register a new entry
-    Register {
-        /// Identifier to register
-        id: String,
-        /// Simulate the transaction without submitting
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Attest to an existing entry
-    Attest {
-        /// Identifier to attest
-        id: String,
-        /// Simulate the transaction without submitting
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Revoke an existing entry
-    Revoke {
-        /// Identifier to revoke
-        id: String,
-        /// Simulate the transaction without submitting
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Pause the contract
-    Pause {
-        /// Simulate the transaction without submitting
-        #[arg(long)]
-        dry_run: bool,
-    },
+enum Command {
+    /// Print the resolved secret key source (does not print the secret)
+    Status,
 }
 
-fn main() {
+/// Resolve the secret key from the available sources, in priority order:
+/// --secret-file, --secret-keyring, then the flag/env value.
+fn resolve_secret(cli: &Cli) -> Result<String> {
+    if let Some(path) = &cli.secret_file {
+        let mut contents = String::new();
+        fs::File::open(path)
+            .with_context(|| format!("failed to open secret file {}", path.display()))?
+            .read_to_string(&mut contents)
+            .with_context(|| format!("failed to read secret file {}", path.display()))?;
+        let trimmed = contents.trim();
+        if trimmed.is_empty() {
+            return Err(anyhow!("secret file {} is empty", path.display()));
+        }
+        return Ok(trimmed.to_string());
+    }
+
+    if cli.secret_keyring {
+        let entry = keyring::Entry::new("anchorkit", "secret_key")
+            .context("failed to open OS keyring entry")?;
+        return entry
+            .get_password()
+            .context("failed to read secret key from OS keyring");
+    }
+
+    if let Some(secret) = &cli.secret_key {
+        if std::env::var_os("ANCHORKIT_SECRET_KEY").is_some() {
+            return Ok(secret.clone());
+        }
+        eprintln!(
+            "warning: passing a secret key as a command-line flag exposes it in shell history and process lists; prefer ANCHORKIT_SECRET_KEY, --secret-file, or --secret-keyring"
+        );
+        return Ok(secret.clone());
+    }
+
+    Err(anyhow!(
+        "no secret key provided; set ANCHORKIT_SECRET_KEY, use --secret-file, or use --secret-keyring"
+    ))
+}
+
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Register { id, dry_run } => {
-            run_state_change("register", Some(&id), dry_run);
-        }
-        Commands::Attest { id, dry_run } => {
-            run_state_change("attest", Some(&id), dry_run);
-        }
-        Commands::Revoke { id, dry_run } => {
-            run_state_change("revoke", Some(&id), dry_run);
-        }
-        Commands::Pause { dry_run } => {
-            run_state_change("pause", None, dry_run);
+    match &cli.command {
+        Command::Status => {
+            let secret = resolve_secret(&cli)?;
+            println!("secret key resolved ({} bytes)", secret.len());
         }
     }
-}
 
-/// Simulate or submit a state-changing contract call.
-///
-/// When `dry_run` is set, the transaction is simulated and the expected
-/// result and fee are printed without submitting anything on-chain.
-fn run_state_change(action: &str, id: Option<&str>, dry_run: bool) {
-    let (expected_result, expected_fee) = simulate(action, id);
-
-    if dry_run {
-        println!("[dry-run] action: {action}");
-        if let Some(id) = id {
-            println!("[dry-run] id: {id}");
-        }
-        println!("[dry-run] expected result: {expected_result}");
-        println!("[dry-run] expected fee: {expected_fee}");
-        println!("[dry-run] transaction not submitted");
-        return;
-    }
-
-    submit(action, id);
-}
-
-/// Placeholder simulation returning the expected result and fee.
-fn simulate(action: &str, id: Option<&str>) -> (String, String) {
-    let result = match id {
-        Some(id) => format!("{action} would succeed for '{id}'"),
-        None => format!("{action} would succeed"),
-    };
-    (result, "0.001".to_string())
-}
-
-/// Placeholder submission path for the actual transaction.
-fn submit(action: &str, id: Option<&str>) {
-    match id {
-        Some(id) => println!("submitted {action} for '{id}'"),
-        None => println!("submitted {action}"),
-    }
+    Ok(())
 }
