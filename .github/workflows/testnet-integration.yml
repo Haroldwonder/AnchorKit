@@ -17,6 +17,9 @@ on:
   # Manual trigger for the end-to-end CLI smoke test (#1574).
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
